@@ -53,6 +53,7 @@ namespace NobetaVR
         internal ConfigEntry<bool> HandTracking;
         internal ConfigEntry<bool> DetachedHands;
         internal ConfigEntry<float> HandVertexWeight;
+        internal ConfigEntry<bool> CapWristHole;
         internal ConfigEntry<bool> CarryHandAttachments;
         internal ConfigEntry<float> HandReachScale;
         internal ConfigEntry<float> HandOffsetSide;
@@ -67,6 +68,8 @@ namespace NobetaVR
         internal ConfigEntry<bool> DisableGameAimIk;
         internal ConfigEntry<bool> StopFinalIkFixTransforms;
         internal ConfigEntry<bool> AimFromView;
+        internal ConfigEntry<bool> AimFromHand;
+        internal ConfigEntry<float> AimPitchOffset;
         internal ConfigEntry<float> AimDistance;
         internal ConfigEntry<bool> HudEnabled;
         internal ConfigEntry<float> HudDistance;
@@ -150,6 +153,12 @@ namespace NobetaVR
               + "them gone there is no reach to run out of and nothing to tune: your hand is "
               + "where your hand is. Turn this off to drive her real arms with IK instead.");
 
+            CapWristHole = Config.Bind("Hands", "CapWristHole", true,
+                "Closes the opening the cut leaves at the wrist. Without it the hand is an "
+              + "open shell and you can see its inside, since the mesh has no back faces. "
+              + "The rim is found from the geometry — after a cut, an edge belonging to only "
+              + "one triangle is by definition on the boundary — and filled with a fan.");
+
             HandVertexWeight = Config.Bind("Hands", "HandVertexWeight", 0.5f,
                 "How much of a vertex must belong to the hand bone for it to be cut out with the "
               + "hand, from 0 to 1. Lower takes more of the wrist and risks a ragged edge where "
@@ -227,6 +236,17 @@ namespace NobetaVR
               + "in the headset the camera has moved into Nobeta's head and the reticle is on a "
               + "floating panel, so the shot goes somewhere defensible with nothing to say "
               + "where. Aiming later moves to the wand hand.");
+
+            AimFromHand = Config.Bind("Aim", "AimFromHand", true,
+                "Aims along the wand hand instead of along your gaze. Pointing a wand is the more "
+              + "natural of the two once the hand is tracked, and it is the only one that lets you "
+              + "aim somewhere you are not looking. The view stays the fallback whenever the hands "
+              + "are not being drawn — menus, cutscenes, hand tracking turned off.");
+
+            AimPitchOffset = Config.Bind("Aim", "AimPitchOffset", -35f,
+                "Angle between the controller and where the wand points, in degrees. A Touch "
+              + "controller is gripped at an angle rather than in line with what it is aiming, so "
+              + "its own forward points somewhat below the wand.");
 
             AimDistance = Config.Bind("Aim", "AimDistance", 15f,
                 "How far down the view the aim target sits when nothing is in the way, in "

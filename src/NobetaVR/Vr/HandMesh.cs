@@ -4,33 +4,40 @@ using Il2CppInterop.Runtime.InteropTypes.Arrays;
 namespace NobetaVR.Vr
 {
     /// <summary>
-    /// Cuts the hand out of the character's mesh as a small rigid mesh of its own.
+    /// Cuts the hand out of the character's mesh, keeping its skinning.
     ///
-    /// This replaces an approach that could not have worked, and the reason is worth keeping
-    /// because it explains what was on screen. Reusing the character's skinned mesh with a
-    /// rewritten bone array means every vertex is still a weighted blend of several bones, and
-    /// every bone that is not the hand was being sent to a single collapsed point. A wrist
-    /// vertex weighted half to the hand and half to the forearm therefore landed halfway between
-    /// where it belongs and that point — so the hand did not render wrongly, it rendered
-    /// *shrunk*, pulled towards its own pivot in proportion to how much of each vertex belonged
-    /// to the arm. Two small scraps of geometry is exactly what that looks like.
+    /// The blend is what defeated the two earlier approaches, and restating it explains why this
+    /// one works. A skinned vertex is a weighted mixture of several bones. Redrawing the
+    /// character's mesh with a rewritten bone array cannot isolate a hand, because every wrist
+    /// vertex is part hand and part forearm: send the forearm to a collapsed point and the vertex
+    /// lands partway there, so the hand renders shrunk towards its own pivot rather than wrongly.
+    /// Two small scraps of geometry is exactly what that looks like.
     ///
-    /// Taking the triangles out removes the blend from the problem entirely. What is kept is
-    /// what belongs to the hand outright; it is baked into the hand bone's own space using the
-    /// bind pose, so it needs no skinning at all and is simply drawn wherever the hand is.
-    /// Normals come along and are transformed the same way, so lighting is unchanged.
+    /// Cutting the triangles out removes the arm from the mixture instead of hiding it. What is
+    /// kept is what belongs to the wrist and below; the bone weights are kept with it and
+    /// renumbered onto a skeleton of just those bones, so the fingers still bend to whatever the
+    /// game's animation is doing. Baking the pose flat would have been simpler and would have
+    /// given a pair of permanently open hands.
     /// </summary>
     internal static class HandMesh
     {
+        internal sealed class Result
+        {
+            public Mesh Mesh;
+
+            /// <summary>The character's own bones this mesh is skinned to, in bone-array order.</summary>
+            public Transform[] Bones;
+        }
+
         /// <summary>
-        /// Builds the hand's mesh, or returns null if the character's mesh cannot be read.
+        /// Builds the hand's mesh, or returns null when this renderer holds none of it.
         ///
-        /// A mesh shipped in a game usually has Read/Write disabled, in which case Unity keeps no
-        /// CPU copy and the vertex arrays come back empty. That is a property of the build, not
-        /// something to work around, so it is checked up front and reported plainly.
+        /// Null is the common case rather than a fault: a character's meshes usually share one
+        /// skeleton, so the hair and the cape carry the hand bone in their bone arrays while
+        /// holding not one triangle of it.
         /// </summary>
-        public static Mesh Build(SkinnedMeshRenderer source, Transform handBone, string side,
-                                 float minimumWeight)
+        public static Result Build(SkinnedMeshRenderer source, Transform handBone, string side,
+                                   float minimumWeight)
         {
             var mesh = source.sharedMesh;
             if (mesh == null) return null;
@@ -42,15 +49,13 @@ namespace NobetaVR.Vr
                 return null;
             }
 
-            var handIndex = IndexOf(source.bones, handBone);
-            if (handIndex < 0) return null;
+            var sourceBones = source.bones;
+            if (sourceBones == null) return null;
 
-            // The fingers count as the hand. They are skinned to their own bones —
-            // Bip001 L Finger0 and its neighbours — so weighing vertices against the hand bone
-            // alone kept the palm and dropped every finger, which is what came out: hands with
-            // nothing on the end of them. Everything below the wrist is one rigid piece here, so
-            // the whole subtree is treated as one owner.
-            var owners = OwnedBones(source.bones, handBone);
+            // The fingers count as the hand. They are skinned to their own bones — Bip001 L
+            // Finger0 and its neighbours — so weighing vertices against the hand bone alone kept
+            // the palm and dropped every finger.
+            var owners = OwnedBones(sourceBones, handBone);
 
             var vertices = mesh.vertices;
             var normals = mesh.normals;
@@ -59,15 +64,7 @@ namespace NobetaVR.Vr
             var bindposes = mesh.bindposes;
 
             if (vertices == null || vertices.Length == 0 || weights == null || bindposes == null)
-            {
-                Plugin.Log.LogWarning($"mesh '{mesh.name}' reports itself readable but returned no "
-                                    + "vertex data.");
                 return null;
-            }
-
-            // Into the hand bone's own space, so the result is a rigid mesh that needs only a
-            // transform rather than a skeleton.
-            var toHandSpace = bindposes[handIndex];
 
             var belongs = new bool[vertices.Length];
             var owned = 0;
@@ -77,16 +74,23 @@ namespace NobetaVR.Vr
                 belongs[i] = true;
                 owned++;
             }
-
             if (owned == 0) return null;
 
-            var result = new Mesh { name = $"NobetaVR {side} Hand" };
+            // Bones are renumbered as they are met, so the result carries a skeleton of a dozen
+            // bones rather than the character's whole array.
+            var boneRemap = new int[sourceBones.Length];
+            for (var i = 0; i < boneRemap.Length; i++) boneRemap[i] = -1;
+
+            var keptBones = new System.Collections.Generic.List<Transform>();
+            var keptBindposes = new System.Collections.Generic.List<Matrix4x4>();
+
             var remap = new int[vertices.Length];
             for (var i = 0; i < remap.Length; i++) remap[i] = -1;
 
             var keptVertices = new System.Collections.Generic.List<Vector3>();
             var keptNormals = new System.Collections.Generic.List<Vector3>();
             var keptUv = new System.Collections.Generic.List<Vector2>();
+            var keptWeights = new System.Collections.Generic.List<BoneWeight>();
             var submeshTriangles = new System.Collections.Generic.List<int[]>();
             var totalTriangles = 0;
 
@@ -99,8 +103,8 @@ namespace NobetaVR.Vr
                 {
                     int a = triangles[t], b = triangles[t + 1], c = triangles[t + 2];
 
-                    // Whole triangles only. Keeping partial ones would leave edges anchored to
-                    // vertices that are not here, which is the torn look this is avoiding.
+                    // Whole triangles only. A partial one leaves edges anchored to vertices that
+                    // are not here, which is the torn look this is avoiding.
                     if (!belongs[a] || !belongs[b] || !belongs[c]) continue;
 
                     kept.Add(Emit(a));
@@ -112,48 +116,245 @@ namespace NobetaVR.Vr
                 submeshTriangles.Add(kept.ToArray());
             }
 
-            if (totalTriangles == 0)
-            {
-                // Normal, and not worth a warning on its own: several meshes share one skeleton,
-                // so most of them list the hand bone while holding none of its geometry. The
-                // caller tries them all and reports only if none of them had any.
-                Object.Destroy(result);
-                return null;
-            }
+            if (totalTriangles == 0) return null;
 
-            result.SetVertices(ToIl2Cpp(keptVertices));
-            if (keptNormals.Count == keptVertices.Count) result.SetNormals(ToIl2Cpp(keptNormals));
-            if (keptUv.Count == keptVertices.Count) result.SetUVs(0, ToIl2Cpp2(keptUv));
+            var capped = 0;
+            if (Plugin.Instance.CapWristHole.Value)
+                capped = Cap(submeshTriangles, keptVertices, keptNormals, keptUv, keptWeights);
 
-            result.subMeshCount = submeshTriangles.Count;
+            var built = new Mesh { name = $"NobetaVR {side} hand" };
+            built.SetVertices(ToVector3Array(keptVertices));
+            if (keptNormals.Count == keptVertices.Count) built.SetNormals(ToVector3Array(keptNormals));
+            if (keptUv.Count == keptVertices.Count) built.SetUVs(0, ToVector2Array(keptUv));
+
+            built.boneWeights = ToBoneWeightArray(keptWeights);
+            built.bindposes = ToMatrixArray(keptBindposes);
+
+            built.subMeshCount = submeshTriangles.Count;
             for (var sub = 0; sub < submeshTriangles.Count; sub++)
-                result.SetTriangles(new Il2CppStructArray<int>(submeshTriangles[sub]), sub);
+                built.SetTriangles(new Il2CppStructArray<int>(submeshTriangles[sub]), sub);
 
-            result.RecalculateBounds();
+            built.RecalculateBounds();
 
             Plugin.Log.LogInfo($"{side} hand cut out: {keptVertices.Count} vertices, "
-                             + $"{totalTriangles} triangles from '{mesh.name}' "
-                             + $"({owned} of {vertices.Length} vertices owned)");
-            return result;
+                             + $"{totalTriangles} triangles, {keptBones.Count} bones "
+                             + $"from '{mesh.name}'"
+                             + (capped > 0 ? $", {capped} triangles capping the wrist" : ""));
+
+            return new Result { Mesh = built, Bones = keptBones.ToArray() };
 
             int Emit(int index)
             {
                 if (remap[index] >= 0) return remap[index];
 
                 remap[index] = keptVertices.Count;
-                keptVertices.Add(toHandSpace.MultiplyPoint3x4(vertices[index]));
-                if (normals != null && normals.Length == vertices.Length)
-                    keptNormals.Add(toHandSpace.MultiplyVector(normals[index]).normalized);
-                if (uv != null && uv.Length == vertices.Length)
-                    keptUv.Add(uv[index]);
+                keptVertices.Add(vertices[index]);
+                if (normals != null && normals.Length == vertices.Length) keptNormals.Add(normals[index]);
+                if (uv != null && uv.Length == vertices.Length) keptUv.Add(uv[index]);
+                keptWeights.Add(Renumber(weights[index]));
 
                 return remap[index];
+            }
+
+            // Weights on bones outside the hand are dropped and the rest renormalised, so a wrist
+            // vertex that was part forearm becomes wholly the wrist's rather than being dragged
+            // towards a bone this mesh does not have. That drag was the earlier bug, in miniature.
+            BoneWeight Renumber(BoneWeight weight)
+            {
+                var renumbered = new BoneWeight();
+                var total = 0f;
+
+                Take(weight.boneIndex0, weight.weight0, 0);
+                Take(weight.boneIndex1, weight.weight1, 1);
+                Take(weight.boneIndex2, weight.weight2, 2);
+                Take(weight.boneIndex3, weight.weight3, 3);
+
+                if (total <= 0f)
+                {
+                    renumbered.boneIndex0 = 0;
+                    renumbered.weight0 = 1f;
+                    return renumbered;
+                }
+
+                renumbered.weight0 /= total;
+                renumbered.weight1 /= total;
+                renumbered.weight2 /= total;
+                renumbered.weight3 /= total;
+                return renumbered;
+
+                void Take(int bone, float value, int slot)
+                {
+                    if (value <= 0f || !Owned(owners, bone)) return;
+
+                    if (boneRemap[bone] < 0)
+                    {
+                        boneRemap[bone] = keptBones.Count;
+                        keptBones.Add(sourceBones[bone]);
+                        keptBindposes.Add(bindposes[bone]);
+                    }
+
+                    var index = boneRemap[bone];
+                    total += value;
+
+                    switch (slot)
+                    {
+                        case 0: renumbered.boneIndex0 = index; renumbered.weight0 = value; break;
+                        case 1: renumbered.boneIndex1 = index; renumbered.weight1 = value; break;
+                        case 2: renumbered.boneIndex2 = index; renumbered.weight2 = value; break;
+                        default: renumbered.boneIndex3 = index; renumbered.weight3 = value; break;
+                    }
+                }
             }
         }
 
         /// <summary>
-        /// How much of a vertex belongs to the hand, counting every bone at or below the wrist.
+        /// Closes the openings left by the cut, so you cannot see inside the wrist.
+        ///
+        /// Cutting triangles out of a closed surface leaves a hole, and a hole in a mesh with no
+        /// back faces shows its interior. The rim of that hole needs no guesswork to find: in a
+        /// closed surface every edge is shared by two triangles, so after the cut the edges that
+        /// belong to exactly one are precisely the boundary. Chaining them end to end gives the
+        /// loops around each opening.
+        ///
+        /// Each loop is filled with a fan to its own centre. The rim vertices are duplicated for
+        /// the cap rather than reused, so the cap can be given a flat normal of its own without
+        /// disturbing the rounded shading of the wrist beside it. Winding is decided by
+        /// measurement rather than assumption: the cap's normal is compared against the direction
+        /// leading away from the hand, and the triangles are reversed if it points the wrong way.
+        /// A cap facing inwards is invisible and would look exactly like no cap at all.
         /// </summary>
+        private static int Cap(System.Collections.Generic.List<int[]> submeshTriangles,
+                               System.Collections.Generic.List<Vector3> vertices,
+                               System.Collections.Generic.List<Vector3> normals,
+                               System.Collections.Generic.List<Vector2> uv,
+                               System.Collections.Generic.List<BoneWeight> weights)
+        {
+            var hasNormals = normals.Count == vertices.Count;
+            var hasUv = uv.Count == vertices.Count;
+
+            // Directed edges, counted regardless of direction. A pair seen twice is interior.
+            var seen = new System.Collections.Generic.Dictionary<long, int>();
+            var direction = new System.Collections.Generic.Dictionary<long, (int From, int To)>();
+
+            foreach (var triangles in submeshTriangles)
+            {
+                for (var i = 0; i + 2 < triangles.Length; i += 3)
+                {
+                    Count(triangles[i], triangles[i + 1]);
+                    Count(triangles[i + 1], triangles[i + 2]);
+                    Count(triangles[i + 2], triangles[i]);
+                }
+            }
+
+            var next = new System.Collections.Generic.Dictionary<int, int>();
+            foreach (var pair in seen)
+            {
+                if (pair.Value != 1) continue;
+                var edge = direction[pair.Key];
+                next[edge.From] = edge.To;
+            }
+            if (next.Count == 0) return 0;
+
+            // The hand's middle, to tell which way is out of the wrist.
+            var centre = Vector3.zero;
+            foreach (var vertex in vertices) centre += vertex;
+            centre /= vertices.Count;
+
+            var cap = new System.Collections.Generic.List<int>();
+            var visited = new System.Collections.Generic.HashSet<int>();
+            var added = 0;
+
+            foreach (var start in next.Keys)
+            {
+                if (visited.Contains(start)) continue;
+
+                var loop = new System.Collections.Generic.List<int>();
+                var current = start;
+
+                while (visited.Add(current))
+                {
+                    loop.Add(current);
+                    if (!next.TryGetValue(current, out current)) break;
+                }
+
+                // Two vertices cannot enclose anything; a stray edge is not an opening.
+                if (loop.Count < 3) continue;
+                added += Fill(loop);
+            }
+
+            if (cap.Count == 0) return 0;
+
+            // Into the submesh with the most geometry, which is the skin rather than any small
+            // detail material, so the cap is shaded like the wrist it closes.
+            var biggest = 0;
+            for (var i = 1; i < submeshTriangles.Count; i++)
+                if (submeshTriangles[i].Length > submeshTriangles[biggest].Length) biggest = i;
+
+            var merged = new System.Collections.Generic.List<int>(submeshTriangles[biggest]);
+            merged.AddRange(cap);
+            submeshTriangles[biggest] = merged.ToArray();
+
+            return added;
+
+            void Count(int a, int b)
+            {
+                var key = a < b ? ((long)a << 32) | (uint)b : ((long)b << 32) | (uint)a;
+                seen[key] = seen.TryGetValue(key, out var count) ? count + 1 : 1;
+                direction[key] = (a, b);
+            }
+
+            int Fill(System.Collections.Generic.List<int> loop)
+            {
+                var middle = Vector3.zero;
+                var middleUv = Vector2.zero;
+                foreach (var index in loop)
+                {
+                    middle += vertices[index];
+                    if (hasUv) middleUv += uv[index];
+                }
+                middle /= loop.Count;
+                if (hasUv) middleUv /= loop.Count;
+
+                var outward = (middle - centre).normalized;
+                if (outward.sqrMagnitude < 1e-6f) outward = Vector3.up;
+
+                // Duplicated rim, so the cap gets its own flat normal.
+                var rim = new int[loop.Count];
+                for (var i = 0; i < loop.Count; i++)
+                {
+                    rim[i] = vertices.Count;
+                    vertices.Add(vertices[loop[i]]);
+                    if (hasNormals) normals.Add(outward);
+                    if (hasUv) uv.Add(uv[loop[i]]);
+                    weights.Add(weights[loop[i]]);
+                }
+
+                var centreIndex = vertices.Count;
+                vertices.Add(middle);
+                if (hasNormals) normals.Add(outward);
+                if (hasUv) uv.Add(middleUv);
+                weights.Add(weights[loop[0]]);
+
+                // Measured, not assumed: build one triangle, see which way it faces, and reverse
+                // the whole fan if it faces into the hand.
+                var first = Vector3.Cross(vertices[rim[1]] - vertices[rim[0]],
+                                          middle - vertices[rim[0]]);
+                var flip = Vector3.Dot(first, outward) < 0f;
+
+                for (var i = 0; i < rim.Length; i++)
+                {
+                    var a = rim[i];
+                    var b = rim[(i + 1) % rim.Length];
+
+                    if (flip) { cap.Add(b); cap.Add(a); cap.Add(centreIndex); }
+                    else { cap.Add(a); cap.Add(b); cap.Add(centreIndex); }
+                }
+
+                return rim.Length;
+            }
+        }
+
+        /// <summary>How much of a vertex belongs to the hand, counting every bone below the wrist.</summary>
         private static float WeightOn(BoneWeight weight, bool[] owners)
         {
             var total = 0f;
@@ -167,9 +368,6 @@ namespace NobetaVR.Vr
         private static bool Owned(bool[] owners, int index) =>
             index >= 0 && index < owners.Length && owners[index];
 
-        /// <summary>
-        /// Flags every bone of the renderer that is the hand or a descendant of it.
-        /// </summary>
         private static bool[] OwnedBones(Il2CppReferenceArray<Transform> bones, Transform handBone)
         {
             var owners = new bool[bones.Length];
@@ -190,26 +388,30 @@ namespace NobetaVR.Vr
             return owners;
         }
 
-        private static int IndexOf(Il2CppReferenceArray<Transform> bones, Transform bone)
-        {
-            if (bones == null || bone == null) return -1;
-            var wanted = bone.GetInstanceID();
-
-            for (var i = 0; i < bones.Length; i++)
-                if (bones[i] != null && bones[i].GetInstanceID() == wanted) return i;
-            return -1;
-        }
-
-        private static Il2CppStructArray<Vector3> ToIl2Cpp(System.Collections.Generic.List<Vector3> values)
+        private static Il2CppStructArray<Vector3> ToVector3Array(System.Collections.Generic.List<Vector3> values)
         {
             var array = new Il2CppStructArray<Vector3>(values.Count);
             for (var i = 0; i < values.Count; i++) array[i] = values[i];
             return array;
         }
 
-        private static Il2CppStructArray<Vector2> ToIl2Cpp2(System.Collections.Generic.List<Vector2> values)
+        private static Il2CppStructArray<Vector2> ToVector2Array(System.Collections.Generic.List<Vector2> values)
         {
             var array = new Il2CppStructArray<Vector2>(values.Count);
+            for (var i = 0; i < values.Count; i++) array[i] = values[i];
+            return array;
+        }
+
+        private static Il2CppStructArray<BoneWeight> ToBoneWeightArray(System.Collections.Generic.List<BoneWeight> values)
+        {
+            var array = new Il2CppStructArray<BoneWeight>(values.Count);
+            for (var i = 0; i < values.Count; i++) array[i] = values[i];
+            return array;
+        }
+
+        private static Il2CppStructArray<Matrix4x4> ToMatrixArray(System.Collections.Generic.List<Matrix4x4> values)
+        {
+            var array = new Il2CppStructArray<Matrix4x4>(values.Count);
             for (var i = 0; i < values.Count; i++) array[i] = values[i];
             return array;
         }

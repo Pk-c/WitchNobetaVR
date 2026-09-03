@@ -35,6 +35,20 @@ namespace NobetaVR.Vr
             public Mesh[] Meshes;
 
             /// <summary>
+            /// The character's own hand and finger bones, paired with our copies of them. Every
+            /// frame the copies take the originals' local rotations, so the fingers do whatever
+            /// the game's animation is doing while the hand sits on the controller.
+            /// </summary>
+            public Transform[] SourceBones;
+            public Transform[] CopiedBones;
+
+            /// <summary>
+            /// The copy of the hand bone itself. Excluded from the per-frame pose copy: it is the
+            /// anchor the controller places, not something the animation gets to move.
+            /// </summary>
+            public Transform CopyRoot;
+
+            /// <summary>
             /// Props that were parented to the real hand and have been moved onto ours, with
             /// enough remembered to put them back.
             /// </summary>
@@ -111,12 +125,34 @@ namespace NobetaVR.Vr
             holder.hideFlags = HideFlags.HideAndDontSave;
             holder.transform.SetParent(_holder, false);
 
-            // The cut-outs live in the hand bone's own space, so what carries them has to match
-            // that bone's world scale — not its local one, which silently drops any scale the
-            // character's hierarchy applies and draws the hand at the wrong size.
-            holder.transform.localScale = handBone.lossyScale;
+            // A copy of the hand and its fingers, kept outside the character so the arm can be
+            // collapsed without taking the copy with it. It is posed from the originals each
+            // frame rather than animated: the originals are still being animated by the game,
+            // collapsed or not, because a zero scale does not stop a bone's local rotation.
+            var copyRoot = Object.Instantiate(handBone.gameObject).transform;
+            copyRoot.SetParent(holder.transform, false);
+            copyRoot.localPosition = Vector3.zero;
+            copyRoot.localRotation = Quaternion.identity;
+
+            // The copy is meant to be a skeleton and nothing else. Instantiate duplicates the
+            // whole subtree, so the wand hanging off the hand bone came along — and lifting that
+            // duplicate out of the collapsed arm put a second wand in the scene, drawn by us.
+            // Anything that renders is stripped; only the bones are wanted.
+            StripRenderers(copyRoot);
+
+            // The cut-out is skinned through bind poses expressed in the character's own scale,
+            // so the bone that carries it has to match the real hand bone's world scale. This is
+            // set here rather than on the holder: two transforms multiplying scales is one more
+            // place for it to be applied twice or not at all.
+            copyRoot.localScale = handBone.lossyScale;
+
+            var originalTree = handBone.GetComponentsInChildren<Transform>(true);
+            var copiedTree = copyRoot.GetComponentsInChildren<Transform>(true);
+            copyRoot.name = $"{side} hand bones";
 
             var meshes = new System.Collections.Generic.List<Mesh>();
+            var sourceBones = new System.Collections.Generic.List<Transform>();
+            var copiedBones = new System.Collections.Generic.List<Transform>();
 
             for (var i = 0; i < renderers.Length; i++)
             {
@@ -124,20 +160,47 @@ namespace NobetaVR.Vr
                 if (source == null || source.sharedMesh == null) continue;
                 if (!Uses(source, wanted)) continue;
 
-                var mesh = HandMesh.Build(source, handBone, side, Plugin.Instance.HandVertexWeight.Value);
-                if (mesh == null) continue;
+                var cut = HandMesh.Build(source, handBone, side, Plugin.Instance.HandVertexWeight.Value);
+                if (cut == null) continue;
+
+                // The cut mesh is skinned to the character's bones; the renderer is given our
+                // copies of exactly those, in the same order.
+                var bones = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<Transform>(cut.Bones.Length);
+                var complete = true;
+
+                for (var b = 0; b < cut.Bones.Length; b++)
+                {
+                    var copy = MatchInCopy(cut.Bones[b], originalTree, copiedTree);
+                    if (copy == null) { complete = false; break; }
+
+                    bones[b] = copy;
+                    if (!sourceBones.Contains(cut.Bones[b]))
+                    {
+                        sourceBones.Add(cut.Bones[b]);
+                        copiedBones.Add(copy);
+                    }
+                }
+
+                if (!complete)
+                {
+                    Plugin.Log.LogWarning($"{side} hand: a bone of '{source.name}' has no copy; skipping it.");
+                    Object.Destroy(cut.Mesh);
+                    continue;
+                }
 
                 var part = new GameObject(source.name);
                 part.hideFlags = HideFlags.HideAndDontSave;
                 part.transform.SetParent(holder.transform, false);
 
-                part.AddComponent<MeshFilter>().sharedMesh = mesh;
-
-                var renderer = part.AddComponent<MeshRenderer>();
+                var renderer = part.AddComponent<SkinnedMeshRenderer>();
+                renderer.sharedMesh = cut.Mesh;
                 renderer.sharedMaterials = source.sharedMaterials;
+                renderer.bones = bones;
+                renderer.rootBone = copyRoot;
+                renderer.updateWhenOffscreen = true;
                 renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
-                meshes.Add(mesh);
+                meshes.Add(cut.Mesh);
             }
 
             if (meshes.Count == 0)
@@ -149,7 +212,56 @@ namespace NobetaVR.Vr
                 return null;
             }
 
-            return new Hand { Root = holder.transform, Meshes = meshes.ToArray() };
+            return new Hand
+            {
+                // The bone is what gets placed. The holder only keeps these objects together.
+                Root = copyRoot,
+                CopyRoot = copyRoot,
+                Meshes = meshes.ToArray(),
+                SourceBones = sourceBones.ToArray(),
+                CopiedBones = copiedBones.ToArray(),
+            };
+        }
+
+        /// <summary>
+        /// The copy of a given original bone, found by its position in the two identical trees.
+        ///
+        /// By structure rather than by name: names are not unique in a skeleton, Instantiate
+        /// appends "(Clone)" to the root, and this method renames it anyway. An earlier version
+        /// matched on names and quietly kept nothing.
+        /// </summary>
+        private static Transform MatchInCopy(
+            Transform bone,
+            Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppArrayBase<Transform> originals,
+            Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppArrayBase<Transform> copies)
+        {
+            if (bone == null) return null;
+
+            var wanted = bone.GetInstanceID();
+            var count = Mathf.Min(originals.Length, copies.Length);
+
+            for (var i = 0; i < count; i++)
+            {
+                var original = originals[i];
+                if (original != null && original.GetInstanceID() == wanted) return copies[i];
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Removes everything from a copied bone tree that draws something, leaving the bones.
+        /// </summary>
+        private static void StripRenderers(Transform copy)
+        {
+            var renderers = copy.GetComponentsInChildren<Renderer>(true);
+            if (renderers == null) return;
+
+            for (var i = 0; i < renderers.Length; i++)
+            {
+                var renderer = renderers[i];
+                if (renderer == null) continue;
+                Object.Destroy(renderer.gameObject);
+            }
         }
 
         private static bool Uses(SkinnedMeshRenderer renderer, int boneInstanceId)
@@ -270,6 +382,30 @@ namespace NobetaVR.Vr
 
             var upper = left ? _leftUpper : _rightUpper;
             if (upper != null) upper.localScale = Vector3.zero;
+
+            // The fingers follow the game's animation. Local rotations are copied, not world
+            // ones: the originals sit inside a collapsed arm, so their world transforms are
+            // meaningless, while their local rotations are exactly what the animator wrote.
+            //
+            // The hand bone itself is skipped, and that exception is the whole difference between
+            // a hand on your controller and one at an odd angle beside it. The palm is skinned to
+            // that bone, so it is one of the bones copied — but its copy is also the anchor being
+            // placed, and its local transform is measured relative to a forearm that is no longer
+            // in the picture. Writing the animation onto it moved the anchor out from under the
+            // hand every frame.
+            if (hand.SourceBones != null)
+            {
+                for (var i = 0; i < hand.SourceBones.Length; i++)
+                {
+                    var from = hand.SourceBones[i];
+                    var to = hand.CopiedBones[i];
+                    if (from == null || to == null) continue;
+                    if (ReferenceEquals(to, hand.CopyRoot)) continue;
+
+                    to.localRotation = from.localRotation;
+                    to.localPosition = from.localPosition;
+                }
+            }
 
             hand.Root.SetPositionAndRotation(position, rotation);
         }

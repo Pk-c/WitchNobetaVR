@@ -248,6 +248,17 @@ namespace NobetaVR.Ui
             _items.Add(Degrees("Hand roll", () => cfg.HandRotationRoll));
 
             _items.Add(new Item { Label = "", IsHeading = true });
+            _items.Add(new Item { Label = "AIM", IsHeading = true });
+
+            _items.Add(new Item
+            {
+                Label = "Aim from",
+                Value = () => cfg.AimFromHand.Value ? "Wand hand" : "Gaze",
+                Adjust = _ => cfg.AimFromHand.Value = !cfg.AimFromHand.Value,
+            });
+            _items.Add(Degrees("Wand pitch", () => cfg.AimPitchOffset));
+
+            _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item
             {
                 Label = "Reset to default",
@@ -285,6 +296,7 @@ namespace NobetaVR.Ui
                          cfg.HandOffsetSide, cfg.HandOffsetUp,
                          cfg.HandOffsetForward, cfg.HandRotationPitch,
                          cfg.HandRotationYaw, cfg.HandRotationRoll,
+                         cfg.AimFromHand, cfg.AimPitchOffset,
                      })
             {
                 entry.BoxedValue = entry.DefaultValue;

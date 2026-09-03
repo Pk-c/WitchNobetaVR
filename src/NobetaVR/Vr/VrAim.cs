@@ -26,9 +26,21 @@ namespace NobetaVR.Vr
             if (!Plugin.Instance.AimFromView.Value) return;
             if (playerCamera == null || view == null) return;
 
-            var distance = Plugin.Instance.AimDistance.Value;
+            var cfg = Plugin.Instance;
+            var distance = cfg.AimDistance.Value;
+
+            // From the wand hand when there is one, from the eyes otherwise. Pointing a wand is
+            // the more natural of the two once the hand is tracked, and it is the only one that
+            // lets you aim somewhere you are not looking; the view remains the fallback for
+            // menus, cutscenes and any moment the hands are not being drawn.
             var origin = view.position;
             var direction = view.forward;
+
+            if (cfg.AimFromHand.Value && VrHands.AimOrigin.HasValue)
+            {
+                origin = VrHands.AimOrigin.Value;
+                direction = VrHands.AimDirection;
+            }
 
             // Straight out from the eyes unless something is in the way. Without the cast the
             // target sits behind whatever you are actually pointing at, and a spell aimed at a

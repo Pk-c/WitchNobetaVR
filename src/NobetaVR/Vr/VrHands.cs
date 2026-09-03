@@ -58,6 +58,14 @@ namespace NobetaVR.Vr
 
         private readonly DetachedHands _detached = new();
 
+        /// <summary>
+        /// Where the wand hand is and which way it points, in world space, or null when hand
+        /// tracking is not running. Published so aiming can come from the hand rather than the
+        /// head without either of them having to know about the other.
+        /// </summary>
+        internal static Vector3? AimOrigin { get; private set; }
+        internal static Vector3 AimDirection { get; private set; } = Vector3.forward;
+
         private Transform _boundRoot;
         private bool _reported;
 
@@ -100,6 +108,8 @@ namespace NobetaVR.Vr
 
             YieldTheArms(girl);
             SetFinalIkRestoring(girl.transform, false);
+
+            AimOrigin = null;
 
             if (Plugin.Instance.DetachedHands.Value)
             {
@@ -419,6 +429,18 @@ namespace NobetaVR.Vr
                                                 cfg.HandRotationRoll.Value);
 
             _detached.Place(left, world, handRotation);
+
+            // The wand is in the right hand, so that is the one aiming. The direction is taken
+            // from the controller rather than from the hand bone: a Biped hand's axes have no
+            // relation to how a controller is held — the same trap as the head bone's 96-degree
+            // forward — while the controller's forward is the thing you actually point.
+            if (!left)
+            {
+                AimOrigin = world;
+                AimDirection = controllerWorld
+                             * Quaternion.Euler(Plugin.Instance.AimPitchOffset.Value, 0f, 0f)
+                             * Vector3.forward;
+            }
         }
 
         // -- posing --------------------------------------------------------------------
