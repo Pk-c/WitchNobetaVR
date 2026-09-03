@@ -20,9 +20,11 @@ are redistributed.
 - **Room-scale movement** — your physical position and rotation move the character, and the
   game's own collision resolves it
 - **Touch controller bindings** for the whole control set, remappable
-- **Motion-controlled hands** driving the character's existing IK
+- **Motion-controlled hands**, the character's own hands on your controllers, shown while
+  she is yours to move and handed back to the game for cutscenes and menus
 - **A VR settings page** that applies live and is adjusted from inside the headset
-- **The interface readable in VR**, locked in front of you, hideable
+- **The interface readable in VR**, locked in front of you, hideable, with a reticle in
+  the world that marks where the shot will actually land
 
 ## Installing
 

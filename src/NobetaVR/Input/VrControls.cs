@@ -45,6 +45,13 @@ namespace NobetaVR.Input
         [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         internal VrInput Input => _input;
 
+        /// <summary>
+        /// Whether one of the game's own menus currently has the input. Read by the hands,
+        /// which stand down while she cannot be moved.
+        /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
+        internal bool GameMenuOpen => _gameUi.MenuOpen;
+
         /// <summary>Captured from a postfix on PlayerInputController.Init.</summary>
         internal PlayerInputController InputController;
         internal PlayerCamera Camera;

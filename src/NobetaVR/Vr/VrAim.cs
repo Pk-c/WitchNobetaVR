@@ -18,13 +18,29 @@ namespace NobetaVR.Vr
     internal static class VrAim
     {
         /// <summary>
+        /// Where the shot is going this frame, in world space, or null when nothing is
+        /// aiming. Published so the reticle can mark the point without having to work out
+        /// which mode found it, or repeat the raycast that did.
+        /// </summary>
+        internal static Vector3? Target { get; private set; }
+
+        /// <summary>
         /// Called from the postfix on <c>PlayerCamera.Update</c>, after the game has placed its
         /// own aim target for the frame, so this is the value that survives to be used.
         /// </summary>
         public static void Apply(PlayerCamera playerCamera, Transform view)
         {
-            if (!Plugin.Instance.AimFromView.Value) return;
+            Target = null;
             if (playerCamera == null || view == null) return;
+
+            if (!Plugin.Instance.AimFromView.Value)
+            {
+                // Not ours to place — but still worth reading back, so the reticle marks
+                // where the game is aiming whether or not the mod moved it.
+                var own = playerCamera.g_AimTarget;
+                if (own != null) Target = own.position;
+                return;
+            }
 
             var cfg = Plugin.Instance;
             var distance = cfg.AimDistance.Value;
@@ -49,6 +65,8 @@ namespace NobetaVR.Vr
                                         ~0, QueryTriggerInteraction.Ignore)
                 ? hit.point
                 : origin + direction * distance;
+
+            Target = point;
 
             Place(playerCamera.g_AimTarget, point);
 

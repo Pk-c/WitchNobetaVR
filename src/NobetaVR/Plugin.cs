@@ -53,27 +53,25 @@ namespace NobetaVR
         internal ConfigEntry<float> NeckModelDown;
         internal ConfigEntry<float> NeckModelBack;
         internal ConfigEntry<bool> BodyFollowsView;
-        internal ConfigEntry<bool> HandTracking;
-        internal ConfigEntry<bool> DetachedHands;
         internal ConfigEntry<float> HandVertexWeight;
         internal ConfigEntry<bool> CapWristHole;
         internal ConfigEntry<bool> CarryHandAttachments;
-        internal ConfigEntry<float> HandReachScale;
-        internal ConfigEntry<float> HandOffsetSide;
-        internal ConfigEntry<float> HandOffsetUp;
-        internal ConfigEntry<float> HandOffsetForward;
+        internal ConfigEntry<bool> HoldWandStill;
+        internal ConfigEntry<float> WandFollowSpeed;
         internal ConfigEntry<float> HandRotationPitch;
         internal ConfigEntry<float> HandRotationYaw;
         internal ConfigEntry<float> HandRotationRoll;
-        internal ConfigEntry<bool> HandFollowRotation;
-        internal ConfigEntry<float> ForearmTwistShare;
-        internal ConfigEntry<bool> HandDiagnostics;
         internal ConfigEntry<bool> DisableGameAimIk;
         internal ConfigEntry<bool> StopFinalIkFixTransforms;
         internal ConfigEntry<bool> AimFromView;
         internal ConfigEntry<bool> AimFromHand;
         internal ConfigEntry<float> AimPitchOffset;
+        internal ConfigEntry<float> AimYawOffset;
+        internal ConfigEntry<float> AimRollOffset;
         internal ConfigEntry<float> AimDistance;
+        internal ConfigEntry<bool> ShowAimReticle;
+        internal ConfigEntry<float> AimReticleSize;
+        internal ConfigEntry<bool> HideGameCrosshair;
         internal ConfigEntry<bool> HudEnabled;
         internal ConfigEntry<float> HudDistance;
         internal ConfigEntry<float> HudSize;
@@ -141,21 +139,6 @@ namespace NobetaVR
               + "EyeOffsetForward this is the one thing worth tuning by eye — it is model "
               + "geometry, not preference.");
 
-            HandTracking = Config.Bind(
-                "Hands", "HandTracking", true,
-                "Puts Nobeta's hands where your controllers are, bending her arms to follow. The "
-              + "game ships no limb IK — only an aim solver, a look-at and one for her hair — so "
-              + "the mod solves the arms itself and corrects the animated pose rather than "
-              + "replacing it.");
-
-            DetachedHands = Config.Bind("Hands", "DetachedHands", true,
-                "Shows the hands alone, exactly where your controllers are, with the arms hidden. "
-              + "This rig fights arm IK on every front — one forearm bone to spread a wrist roll "
-              + "over, wrist vertices shared with a sleeve, and a dynamic-bone cape sharing "
-              + "LateUpdate — for a pair of arms you can barely see in first person anyway. With "
-              + "them gone there is no reach to run out of and nothing to tune: your hand is "
-              + "where your hand is. Turn this off to drive her real arms with IK instead.");
-
             CapWristHole = Config.Bind("Hands", "CapWristHole", true,
                 "Closes the opening the cut leaves at the wrist. Without it the hand is an "
               + "open shell and you can see its inside, since the mesh has no back faces. "
@@ -174,42 +157,31 @@ namespace NobetaVR
               + "something are moved: finger bones live there too, and taking those out of the "
               + "skeleton deforms the character's own hand.");
 
-            HandReachScale = Config.Bind("Hands", "HandReachScale", 0.2f,
-                "How much of your reach maps onto Nobeta's. She is a child and you are not: her "
-              + "arms span perhaps half of yours, so at 1.0 most of your range asks for a hand "
-              + "further than she can put one, and the arm locks out straight. Lower it if her "
-              + "arms still snap straight at the edges of your reach, raise it if her hands feel "
-              + "like they lag behind yours.");
+            HoldWandStill = Config.Bind("Hands", "HoldWandStill", true,
+                "Steadies the wand in her hand. It is a bone of the rig rather than a prop "
+              + "hanging off one, so the animator kicks it on every shot. On a monitor that "
+              + "recoil is a flourish behind a crosshair that does not move; in a headset "
+              + "the wand is the sight, and a sight that swings out from under your hand "
+              + "each time you fire and settles somewhere new makes the next shot "
+              + "guesswork. Nothing is lost by steadying it: the shot comes from the "
+              + "controller, never from the wand's transform, so this only stops the "
+              + "picture disagreeing with where the shot was always going.");
 
-            HandOffsetSide = Config.Bind("Hands", "HandOffsetSide", 0f,
-                "Sideways offset from the controller to the hand bone, in metres. Mirrored "
-              + "between hands, so one value serves both.");
-            HandOffsetUp = Config.Bind("Hands", "HandOffsetUp", 0f,
-                "Vertical offset from the controller to the hand bone, in metres.");
-            HandOffsetForward = Config.Bind("Hands", "HandOffsetForward", 0f,
-                "Forward offset from the controller to the hand bone, in metres, in the "
-              + "controller's own frame. Negative by "
-              + "default because a controller is gripped in the palm while the bone sits at the "
-              + "wrist, a little behind it.");
+            WandFollowSpeed = Config.Bind("Hands", "WandFollowSpeed", 3f,
+                "How quickly the steadied wand catches up with the pose the animation is "
+              + "asking for, per second. Slow on purpose, and a follow rather than a pin: "
+              + "pinning it to one frame's pose put the wand somewhere it had never been, "
+              + "because the animator goes on writing that bone and no single frame of it "
+              + "is the socket. Following slowly always arrives where the game wants the "
+              + "wand, and a recoil is long over before it gets there. Raise it if the wand "
+              + "lags behind a deliberate change of pose; lower it if a shot still throws "
+              + "your aim off.");
+
             HandRotationPitch = Config.Bind("Hands", "HandRotationPitch", 0f,
                 "Wrist pitch adjustment, in degrees. Zero by default: the difference between how "
               + "a controller is held and how the hand bone is oriented is taken from the rig "
               + "itself, so an identity controller rotation reproduces the pose the animator "
               + "authored. These three are for taste, not for correcting the rig.");
-            ForearmTwistShare = Config.Bind("Hands", "ForearmTwistShare", 0f,
-                "How much of the wrist's roll the forearm takes, from 0 to 1. A real forearm "
-              + "carries pronation along its whole length, so turning a palm over rotates the arm "
-              + "from the elbow down; a rig with a single forearm bone has nowhere to put that, "
-              + "and leaving it all on the hand shears the wrist. Raise it if the wrist still "
-              + "looks wrung, lower it if the elbow rolls when only the hand should.");
-
-            HandFollowRotation = Config.Bind("Hands", "HandFollowRotation", true,
-                "Lets the controller twist the wrist. Turn it off if the forearm wrings: its "
-              + "vertices are "
-              + "weighted partly to the hand bone, so a large wrist angle can wring it, and from "
-              + "inside a headset that looks exactly like the arm itself being broken. With it "
-              + "off the hand keeps the animated relationship to the forearm, which is always "
-              + "anatomically right and is the way to judge the arm on its own.");
 
             StopFinalIkFixTransforms = Config.Bind("Hands", "StopFinalIkFixTransforms", true,
                 "Stops FinalIK restoring the animated pose over the mod's arm solve. Its solvers "
@@ -227,12 +199,6 @@ namespace NobetaVR
               + "and the cape was dragged along by the spine. Aiming is not lost: it comes from "
               + "the view instead.");
 
-            HandDiagnostics = Config.Bind("Hands", "HandDiagnostics", false,
-                "Writes the arm's bone lengths, the distance being asked of it, and the bone "
-              + "scales to the log once a second. Only useful with the IK arms; those numbers "
-              + "say whether a bad-looking arm is out of reach or sheared by a non-uniform "
-              + "scale, which looking at it cannot.");
-
             AimFromView = Config.Bind("Aim", "AimFromView", true,
                 "Puts the game's aim target on the line you are looking down. On a monitor that "
               + "line comes from the third-person camera and a reticle painted over the world; "
@@ -244,16 +210,53 @@ namespace NobetaVR
                 "Aims along the wand hand instead of along your gaze. Pointing a wand is the more "
               + "natural of the two once the hand is tracked, and it is the only one that lets you "
               + "aim somewhere you are not looking. The view stays the fallback whenever the hands "
-              + "are not being drawn — menus, cutscenes, hand tracking turned off.");
+              + "are not being drawn — menus, cutscenes, and any moment she is not "
+              + "yours to move.");
 
             AimPitchOffset = Config.Bind("Aim", "AimPitchOffset", 25f,
                 "Angle between the controller and where the wand points, in degrees. A Touch "
               + "controller is gripped at an angle rather than in line with what it is aiming, so "
               + "its own forward points somewhat below the wand.");
 
+            AimYawOffset = Config.Bind("Aim", "AimYawOffset", 0f,
+                "Sideways angle between the controller and where the wand points, in "
+              + "degrees. Zero unless a grip is habitually turned in or out; with the pitch "
+              + "above it covers every direction the wand can be sent, which is why the roll "
+              + "below is a refinement rather than a third axis.");
+
+            AimRollOffset = Config.Bind("Aim", "AimRollOffset", 0f,
+                "Which way round the controller the pitch and yaw above are applied, in "
+              + "degrees about the controller's own forward axis. It cannot send the wand "
+              + "anywhere those two cannot — turning a direction about itself leaves it "
+              + "where it was — but it turns the plane they work in, so a wand that comes "
+              + "out low and off to one side can be brought back with the pitch alone once "
+              + "this is set.");
+
             AimDistance = Config.Bind("Aim", "AimDistance", 15f,
                 "How far down the view the aim target sits when nothing is in the way, in "
               + "metres. When something is, the target lands on it instead.");
+
+            ShowAimReticle = Config.Bind("Aim", "ShowAimReticle", true,
+                "Marks where the shot will land, in the world, on whatever the aim ray "
+              + "found. The game's own crosshair cannot say that in a headset. It is fixed at "
+              + "the centre of the screen, which is the aim line on a monitor and is neither "
+              + "the wand nor your gaze here, and it is painted on a flat panel at a fixed "
+              + "distance, so it would read at a different place in each eye. A mark placed in "
+              + "the world has neither problem, and it is the same answer whichever aim mode "
+              + "is on.");
+
+            AimReticleSize = Config.Bind("Aim", "AimReticleSize", 0.035f,
+                "How big the reticle is, as a fraction of how far away it is. Angular rather "
+              + "than absolute on purpose: a fixed world size disappears at range, which is "
+              + "when a shot needs it most, and swells into a dinner plate against a near "
+              + "wall.");
+
+            HideGameCrosshair = Config.Bind("Aim", "HideGameCrosshair", false,
+                "Switches off the game's centred crosshair. Off by default, because that mark "
+              + "is not only a crosshair — it grows with the charge and carries the "
+              + "magic's colour, and that information has nowhere else to go yet. Turn it on "
+              + "once the world reticle is doing the aiming and the one that never moves has "
+              + "become a smudge on the lens.");
 
             HandRotationYaw = Config.Bind("Hands", "HandRotationYaw", 0f,
                 "Wrist yaw adjustment, in degrees.");
@@ -454,6 +457,7 @@ namespace NobetaVR
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Input.VrControls>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.HudPanel>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.VrMenu>();
+            ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.AimReticle>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Vr.VrHands>();
             // Reported rather than assumed: a patch that silently fails to apply would look
             // exactly like the bug it was written to fix.
@@ -477,6 +481,7 @@ namespace NobetaVR
             host.AddComponent<NobetaVR.Input.VrControls>();
             host.AddComponent<NobetaVR.Ui.HudPanel>();
             host.AddComponent<NobetaVR.Ui.VrMenu>();
+            host.AddComponent<NobetaVR.Ui.AimReticle>();
             host.AddComponent<NobetaVR.Vr.VrHands>();
         }
     }

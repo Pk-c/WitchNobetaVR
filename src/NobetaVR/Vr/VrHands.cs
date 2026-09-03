@@ -8,19 +8,20 @@ namespace NobetaVR.Vr
     /// <summary>
     /// Puts Nobeta's hands where your controllers are.
     ///
-    /// The controller pose arrives in tracking space, the same space the headset pose does, so
-    /// the two are related by simple subtraction: a controller's offset from the headset is the
-    /// hand's offset from the eyes. That offset is turned into the world by the view's yaw and
-    /// hung off Nobeta's head bone — not off the camera, which carries the player's comfort
-    /// offsets and would put her hands above her own shoulders.
+    /// The controller pose arrives in tracking space, the same space the headset pose does,
+    /// so the two are related by simple subtraction: a controller's offset from the headset
+    /// is the hand's offset from the eyes. Turned into the world by the view's yaw and hung
+    /// off the camera, that puts her hand exactly where your hand is, one to one, with
+    /// nothing in between that could be off.
     ///
-    /// It is also scaled. She is a child and you are not, so an unscaled offset asks for a hand
-    /// further out than her arm can put one, and the solver has nothing to do but lock the arm
-    /// straight.
+    /// The hands are her own, cut out of the character's mesh and drawn as rigid geometry
+    /// with the arms collapsed behind them; <see cref="DetachedHands"/> records why the arms
+    /// are not solved instead. They are shown only while she is yours to move — the game
+    /// gets her whole body back, arms and hands included, for cutscenes, conversations,
+    /// menus and death.
     ///
-    /// Runs in LateUpdate, after the animator has posed the skeleton. The solver corrects the
-    /// animated pose rather than replacing it, so everything the game animates that the arms are
-    /// not doing still happens.
+    /// Runs in LateUpdate, after the animator has posed the skeleton, so the fingers can be
+    /// copied from whatever the game is animating them to do.
     /// </summary>
     public sealed class VrHands : MonoBehaviour
     {
@@ -43,13 +44,6 @@ namespace NobetaVR.Vr
             /// </summary>
             public Quaternion RestRelativeToBody = Quaternion.identity;
 
-            /// <summary>
-            /// The hand's orientation relative to the forearm, in the animated pose. Used when
-            /// the wrist is left to the game: it is the one relationship that is always
-            /// anatomically right, whatever the arm is doing.
-            /// </summary>
-            public Quaternion RestRelativeToFore = Quaternion.identity;
-
             public bool Valid => Upper != null && Fore != null && Hand != null;
         }
 
@@ -59,15 +53,34 @@ namespace NobetaVR.Vr
         private readonly DetachedHands _detached = new();
 
         /// <summary>
-        /// Where the wand hand is and which way it points, in world space, or null when hand
-        /// tracking is not running. Published so aiming can come from the hand rather than the
-        /// head without either of them having to know about the other.
+        /// Where the wand hand is and which way it points, in world space, or null on any
+        /// frame the hands are not being drawn. Published so aiming can come from the hand
+        /// rather than the head without either of them having to know about the other.
         /// </summary>
         internal static Vector3? AimOrigin { get; private set; }
         internal static Vector3 AimDirection { get; private set; } = Vector3.forward;
 
         private Transform _boundRoot;
         private bool _reported;
+
+        /// <summary>
+        /// Whether she is the player's to move this frame.
+        ///
+        /// Read by anything that has to stand down with the hands — the aim reticle, so
+        /// far — and kept here because this is where the question is already being asked.
+        /// The change is logged once rather than every frame: if the hands never appear, the
+        /// log says whether this was ever true, which separates a gate that is wrong from
+        /// hands that failed to build.
+        /// </summary>
+        internal static bool PlayerInControl { get; private set; }
+
+        private static void SetInControl(bool value)
+        {
+            if (value == PlayerInControl) return;
+            PlayerInControl = value;
+            Plugin.Log.LogInfo(value ? "hands on: she is yours to move"
+                                     : "hands off: the game has her");
+        }
 
         /// <summary>
         /// Solves in LateUpdate, after the animator has posed the skeleton.
@@ -83,26 +96,33 @@ namespace NobetaVR.Vr
         /// </summary>
         private void LateUpdate()
         {
-            if (!Plugin.Instance.HandTracking.Value) return;
-
             var controls = VrControls.Instance;
-            if (controls == null || controls.Camera == null) return;
+            var girl = controls != null && controls.Camera != null
+                ? controls.Camera.wizardGirl
+                : null;
 
-            var girl = controls.Camera.wizardGirl;
-            if (girl == null) return;
-
-            if (!Bind(girl.transform)) return;
-
-            var head = VrCamera.HeadBone;
-            if (head == null) return;
-
-            // Give her her arms back whenever the game has taken the camera. A cutscene, a
-            // death, the face-camera mode: in every one of them she is being framed and acted
-            // deliberately, often close up, and an armless Nobeta gesturing through a
-            // conversation is not a trade worth making for hands nobody is holding.
-            if (BodyFacing.Mode != PlayerCamera.CameraMode.Normal)
+            // No character to put hands on at all: the title screen, a loading screen, the
+            // gap between stages. Said out loud rather than returned quietly, because
+            // anything keyed off it has to stand down too.
+            if (girl == null || !Bind(girl.transform))
             {
-                Release();
+                SetInControl(false);
+                return;
+            }
+
+            // Give her her arms back the moment she stops being yours to move. In a
+            // cutscene, a conversation, a menu or a death she is being framed and acted
+            // deliberately, often close up, and an armless Nobeta gesturing through a
+            // conversation is not a trade worth making for hands nobody is holding. The
+            // cut-out hands are kept rather than rebuilt: cutting them out of the mesh
+            // costs a visible hitch, and every doorway would pay it twice.
+            SetInControl(PlayerHasControl(controls, girl));
+
+            if (!PlayerInControl)
+            {
+                AimOrigin = null;
+                _detached.SetShown(false);
+                SetFinalIkRestoring(girl.transform, true);
                 return;
             }
 
@@ -111,20 +131,38 @@ namespace NobetaVR.Vr
 
             AimOrigin = null;
 
-            if (Plugin.Instance.DetachedHands.Value)
-            {
-                if (!_detached.Attached)
-                    _detached.Attach(_left.Upper, _left.Hand, _right.Upper, _right.Hand);
+            if (!_detached.Attached)
+                _detached.Attach(_left.Upper, _left.Hand, _right.Upper, _right.Hand);
 
-                PlaceDetached(_left, XRNode.LeftHand, true);
-                PlaceDetached(_right, XRNode.RightHand, false);
-                return;
-            }
+            _detached.SetShown(true);
 
-            if (_detached.Attached) _detached.Detach();
+            PlaceDetached(_left, XRNode.LeftHand, true);
+            PlaceDetached(_right, XRNode.RightHand, false);
+        }
 
-            Apply(_left, XRNode.LeftHand, head, girl.transform, -1f);
-            Apply(_right, XRNode.RightHand, head, girl.transform, 1f);
+        /// <summary>
+        /// Whether the player is the one moving her this frame.
+        ///
+        /// Three things have to agree, and each catches a case the other two miss. The
+        /// camera mode covers the game staging her — cutscenes, death, the face-camera
+        /// mode. The game's own controllable flag is what
+        /// <c>WizardGirlManage.SetPlayerInput</c> writes, so it covers every scripted
+        /// moment that leaves the camera where it was: a conversation, a door, a pickup.
+        /// And a bound UI controller means a menu is up, which stops her without touching
+        /// either of the other two.
+        /// </summary>
+        private static bool PlayerHasControl(VrControls controls, WizardGirlManage girl)
+        {
+            if (BodyFacing.Mode != PlayerCamera.CameraMode.Normal) return false;
+            if (controls.GameMenuOpen) return false;
+
+            var player = girl.playerController;
+            if (player == null) return false;
+
+            var runtime = player.runtimeData;
+            if (runtime == null) return false;
+
+            return runtime.Controllable && !runtime.IsDead;
         }
 
         private bool _weightReported;
@@ -261,12 +299,10 @@ namespace NobetaVR.Vr
             if (_left.Valid)
             {
                 _left.RestRelativeToBody = Quaternion.Inverse(root.rotation) * _left.Hand.rotation;
-                _left.RestRelativeToFore = Quaternion.Inverse(_left.Fore.rotation) * _left.Hand.rotation;
             }
             if (_right.Valid)
             {
                 _right.RestRelativeToBody = Quaternion.Inverse(root.rotation) * _right.Hand.rotation;
-                _right.RestRelativeToFore = Quaternion.Inverse(_right.Fore.rotation) * _right.Hand.rotation;
             }
 
             if (!_reported)
@@ -294,9 +330,9 @@ namespace NobetaVR.Vr
             if (hand == null || upper == null) return;
 
             // The elbow is whichever bone on the path from the hand has the upper arm as its
-            // parent. Deriving it this way also verifies the ancestry the solver depends on: if
-            // the walk reaches the root without meeting the upper arm, these are not one chain
-            // and there is nothing safe to solve.
+            // parent. Deriving it rather than naming it also verifies the ancestry: if the
+            // walk reaches the root without meeting the upper arm, these two bones are not
+            // one arm, and collapsing the upper one would take something else with it.
             Transform mid = null;
             for (var t = hand; t != null; t = t.parent)
             {
@@ -329,37 +365,6 @@ namespace NobetaVR.Vr
             return null;
         }
 
-        private static float _nextDiagnostic;
-
-        /// <summary>
-        /// Reports what the solver is actually being asked for.
-        ///
-        /// Four attempts at these arms have each been a hypothesis tested by putting a headset
-        /// on, and three were wrong. These are the numbers that separate the remaining
-        /// candidates without another round of that: if the target distance keeps exceeding the
-        /// arm's own length, the reach scale is still too generous and the arm is locking out;
-        /// if the bone scales are not uniform, setting world rotations on them shears the mesh
-        /// and no amount of correct geometry will help.
-        /// </summary>
-        private static void Diagnose(Arm arm, Vector3 target, float side)
-        {
-            if (!Plugin.Instance.HandDiagnostics.Value) return;
-            if (side < 0f) return;                       // one hand is enough
-            if (Time.unscaledTime < _nextDiagnostic) return;
-            _nextDiagnostic = Time.unscaledTime + 1f;
-
-            var shoulder = arm.Upper.position;
-            var upperLength = Vector3.Distance(shoulder, arm.Fore.position);
-            var foreLength = Vector3.Distance(arm.Fore.position, arm.Hand.position);
-            var wanted = Vector3.Distance(shoulder, target);
-            var limit = upperLength + foreLength;
-
-            Plugin.Log.LogInfo(
-                $"arm: upper {upperLength:F3} + fore {foreLength:F3} = {limit:F3} m, "
-              + $"target {wanted:F3} m {(wanted > limit ? "OUT OF REACH" : "ok")}; "
-              + $"scales upper {arm.Upper.lossyScale} fore {arm.Fore.lossyScale} hand {arm.Hand.lossyScale}");
-        }
-
         private static void Report(string side, Arm arm)
         {
             if (!arm.Valid)
@@ -374,15 +379,17 @@ namespace NobetaVR.Vr
             for (var t = arm.Hand.parent; t != null && !ReferenceEquals(t, arm.Upper.parent); t = t.parent)
                 path = t.name + " > " + path;
 
-            Plugin.Log.LogInfo($"{side} arm chain: {path}   (solving {arm.Upper.name} and {arm.Fore.name})");
+            Plugin.Log.LogInfo($"{side} arm chain: {path}   (collapsing {arm.Upper.name}, elbow {arm.Fore.name})");
         }
 
         private void OnDisable() => Release();
 
         /// <summary>
-        /// Hands the skeleton back to the game, in full: bones reparented, and FinalIK allowed
-        /// to restore poses again. Used when the component goes away and whenever the game takes
-        /// over the staging, so nothing the mod did outlives its turn.
+        /// Hands the skeleton back to the game and takes the cut-out hands apart: props
+        /// reparented, arms unscaled, FinalIK allowed to restore poses again. This is the
+        /// full teardown, for the component going away or the character being replaced.
+        /// Handing her back for a cutscene only hides the hands; see
+        /// <see cref="DetachedHands.SetShown"/>.
         /// </summary>
         private void Release()
         {
@@ -393,11 +400,10 @@ namespace NobetaVR.Vr
         /// <summary>
         /// One hand, one to one, exactly where the controller is.
         ///
-        /// Anchored on the camera rather than on her head bone, and unscaled, which is the
-        /// opposite of what the IK path wants and right for the same reason: with the arms gone
-        /// there is no reach to run out of, so the hand can simply be where your hand is. That
-        /// correspondence is the whole point — you reach for something and the hand is there,
-        /// with nothing in between that could be off.
+        /// Anchored on the camera and unscaled. With the arms gone there is no reach to run
+        /// out of, so the hand can simply be where your hand is, and that correspondence is
+        /// the whole point — you reach for something and the hand is there, with nothing in
+        /// between that could be off.
         /// </summary>
         private void PlaceDetached(Arm arm, XRNode node, bool left)
         {
@@ -417,12 +423,9 @@ namespace NobetaVR.Vr
             var controllerWorld = VrCamera.ViewYaw * rotation;
             var world = camera.position + VrCamera.ViewYaw * (position - HeadPose.Raw);
 
-            world += controllerWorld * new Vector3(cfg.HandOffsetSide.Value * (left ? -1f : 1f),
-                                                   cfg.HandOffsetUp.Value,
-                                                   cfg.HandOffsetForward.Value);
-
-            // The rig's own rest orientation still does the work of matching a controller's
-            // convention to a Biped hand bone's axes, exactly as it did for the IK path.
+            // The rig's own rest orientation does the work of matching a controller's
+            // convention to a Biped hand bone's axes; the three Euler values on top are the
+            // adjustment left for taste.
             var handRotation = controllerWorld * arm.RestRelativeToBody
                              * Quaternion.Euler(cfg.HandRotationPitch.Value,
                                                 cfg.HandRotationYaw.Value,
@@ -438,85 +441,11 @@ namespace NobetaVR.Vr
             {
                 AimOrigin = world;
                 AimDirection = controllerWorld
-                             * Quaternion.Euler(Plugin.Instance.AimPitchOffset.Value, 0f, 0f)
+                             * Quaternion.AngleAxis(cfg.AimRollOffset.Value, Vector3.forward)
+                             * Quaternion.Euler(cfg.AimPitchOffset.Value,
+                                                cfg.AimYawOffset.Value, 0f)
                              * Vector3.forward;
             }
-        }
-
-        // -- posing --------------------------------------------------------------------
-
-        private static void Apply(Arm arm, XRNode node, Transform head, Transform body, float side)
-        {
-            if (!arm.Valid) return;
-
-            var device = InputDevices.GetDeviceAtXRNode(node);
-            if (!device.isValid) return;
-
-            if (!InputDevices.TryGetFeatureValue_Vector3f(device.deviceId, "DevicePosition", out var position)
-             || !InputDevices.TryGetFeatureValue_Quaternionf(device.deviceId, "DeviceRotation", out var rotation))
-                return;
-
-            var cfg = Plugin.Instance;
-
-            // The controller's offset from the headset, in tracking space, is the hand's offset
-            // from the eyes. Rotated by the view's yaw rather than by the full camera rotation:
-            // the headset's own pitch and roll are already in the camera, and applying them
-            // again would swing the hands every time the player looked down.
-            var fromHead = position - HeadPose.Raw;
-
-            // Scaled, because Nobeta is a child and you are not. Her arm spans perhaps half of
-            // yours, so an unscaled offset asks for a hand well past anywhere she can reach; the
-            // solver then clamps to full extension and the arm locks out straight, which is the
-            // spike the screenshot showed. Scaling maps your reach onto hers proportionally
-            // instead, so the middle of your range lands in the middle of hers.
-            var reach = cfg.HandReachScale.Value;
-            var world = head.position + VrCamera.ViewYaw * (fromHead * reach);
-
-            var controllerWorld = VrCamera.ViewYaw * rotation;
-
-            // Rig first, taste second. The rest orientation puts the wrist where the animator
-            // had it; the Euler values are a small adjustment on top, and are zero by default
-            // because with the rig-derived part in place there is nothing left to correct.
-            var handRotation = controllerWorld * arm.RestRelativeToBody
-                             * Quaternion.Euler(cfg.HandRotationPitch.Value,
-                                                cfg.HandRotationYaw.Value,
-                                                cfg.HandRotationRoll.Value);
-
-            // A controller is not held where a hand bone sits: the grip is in the palm and the
-            // bone is at the wrist. Expressed in the controller's own frame, which is the one
-            // you can reason about while wearing the headset. The sideways part is mirrored so
-            // one setting serves both hands.
-            world += controllerWorld * new Vector3(cfg.HandOffsetSide.Value * side,
-                                                   cfg.HandOffsetUp.Value,
-                                                   cfg.HandOffsetForward.Value);
-
-            // Anchoring on the head bone rather than on the camera is deliberate. The camera
-            // carries HeadOffset, the player's own comfort adjustment -- 23 cm of it in the
-            // tuned defaults -- and hanging her hands off that would place them a hand's width
-            // above her shoulders, which is exactly where an arm cannot go.
-
-            // Which way the elbow points, in the body's own frame: out from the chest, down,
-            // and back. Taken from the body rather than from the current pose on purpose — the
-            // pose puts shoulder, elbow and wrist almost in a line while she stands at rest, and
-            // a direction derived from three nearly collinear points is noise.
-            var pole = body.rotation * new Vector3(side * 0.35f, -0.60f, -0.70f);
-
-            // The wrist is left to the game by default.
-            //
-            // Twisting it from the controller is the obvious thing to want and the thing that
-            // wrecks the arm: forearm vertices are weighted partly to the hand bone, so a large
-            // wrist angle wrings the mesh -- the "candy wrapper" -- and from inside the headset
-            // that is indistinguishable from the arm itself being broken. Keeping the animated
-            // hand-to-forearm relationship is always anatomically right, and it means the arm
-            // can be judged on its own. Turn HandFollowRotation on once it looks right.
-            var wrist = cfg.HandFollowRotation.Value
-                ? handRotation
-                : arm.Fore.rotation * arm.RestRelativeToFore;
-
-            TwoBoneIk.Solve(arm.Upper, arm.Fore, arm.Hand, world, wrist, pole,
-                            arm.RestRelativeToFore, cfg.ForearmTwistShare.Value);
-
-            Diagnose(arm, world, side);
         }
     }
 }

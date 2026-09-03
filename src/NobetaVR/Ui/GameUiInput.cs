@@ -31,6 +31,13 @@ namespace NobetaVR.Ui
         private const float ThenEvery = 0.12f;
 
         /// <summary>
+        /// Whether one of the game's own menus is up. The game binds a UI controller only
+        /// while something is actually open, so its presence is the answer, and it covers
+        /// every screen at once rather than one flag per menu.
+        /// </summary>
+        public bool MenuOpen => Controller() != null;
+
+        /// <summary>
         /// Returns true when a menu was up and took the input, so the gameplay bindings can
         /// stand down. The game only binds a UI controller while something is actually open,
         /// which makes that check the gate as well as the target.

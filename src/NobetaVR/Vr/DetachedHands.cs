@@ -50,10 +50,19 @@ namespace NobetaVR.Vr
 
             /// <summary>
             /// Props that were parented to the real hand and have been moved onto ours, with
-            /// enough remembered to put them back.
+            /// enough remembered to put them back — and to hold them where they were taken
+            /// from, which is a separate problem; see <see cref="HoldAttachments"/>.
             /// </summary>
             public Transform[] Attachments;
             public Transform[] AttachmentParents;
+
+            /// <summary>
+            /// The steadied pose each prop is being held at, carried frame to frame. Not a
+            /// snapshot: it chases the animated pose, slowly. See
+            /// <see cref="SteadyAttachments"/>.
+            /// </summary>
+            public Vector3[] AttachmentPositions;
+            public Quaternion[] AttachmentRotations;
         }
 
         private Transform _holder;
@@ -64,6 +73,8 @@ namespace NobetaVR.Vr
 
         private bool _attached;
         public bool Attached => _attached;
+
+        private bool _shown = true;
 
         public void Attach(Transform leftUpper, Transform leftHand,
                            Transform rightUpper, Transform rightHand)
@@ -78,6 +89,11 @@ namespace NobetaVR.Vr
                 _holder = holder.transform;
             }
 
+            // The holder outlives any one pair of hands, and it may have been left hidden
+            // by the last one. A rebuild under an inactive parent draws nothing at all.
+            _holder.gameObject.SetActive(true);
+            _shown = true;
+
             _leftUpper = leftUpper;
             _rightUpper = rightUpper;
             if (_leftUpper != null) _leftUpperScale = _leftUpper.localScale;
@@ -88,8 +104,12 @@ namespace NobetaVR.Vr
 
             if (Plugin.Instance.CarryHandAttachments.Value)
             {
-                CarryAttachments(_left, leftHand, "left");
-                CarryAttachments(_right, rightHand, "right");
+                CollectAttachments(_left, leftHand, "left");
+                CollectAttachments(_right, rightHand, "right");
+                MoveAttachments(_left, true);
+                MoveAttachments(_right, true);
+                ResyncAttachments(_left);
+                ResyncAttachments(_right);
             }
 
             _attached = _left != null || _right != null;
@@ -278,13 +298,16 @@ namespace NobetaVR.Vr
         }
 
         /// <summary>
-        /// Moves whatever hangs off the real hand onto ours.
+        /// Notes whatever hangs off the real hand, so it can be moved onto ours and put
+        /// back again.
         ///
-        /// Off by default. The wand is parented to the hand bone and is hidden and shown by the
-        /// game as its animations call for it; lifting it out of the collapsed arm makes it
-        /// visible at times the game never intended, which is exactly what happened.
+        /// The wand is parented to the hand bone and is hidden and shown by the game as its
+        /// animations call for it. It has to travel with the hand that is being drawn: left
+        /// on the real hand it is collapsed into the shoulder and never appears, and left on
+        /// ours it disappears the moment the game takes her back for a cutscene, which is
+        /// exactly when a wand is being pointed at something.
         /// </summary>
-        private static void CarryAttachments(Hand hand, Transform handBone, string side)
+        private static void CollectAttachments(Hand hand, Transform handBone, string side)
         {
             if (hand == null || handBone == null) return;
 
@@ -293,6 +316,8 @@ namespace NobetaVR.Vr
 
             hand.Attachments = new Transform[count];
             hand.AttachmentParents = new Transform[count];
+            hand.AttachmentPositions = new Vector3[count];
+            hand.AttachmentRotations = new Quaternion[count];
 
             // Collected before any reparenting: moving a child renumbers the ones after it.
             for (var i = 0; i < count; i++) hand.Attachments[i] = handBone.GetChild(i);
@@ -313,8 +338,89 @@ namespace NobetaVR.Vr
                 }
 
                 hand.AttachmentParents[i] = child.parent;
-                child.SetParent(hand.Root, false);
+
                 Plugin.Log.LogInfo($"{side} hand carries '{child.name}'");
+            }
+        }
+
+        /// <summary>
+        /// Moves the collected props between the character's hand and ours.
+        /// </summary>
+        private static void MoveAttachments(Hand hand, bool toOurs)
+        {
+            if (hand == null || hand.Attachments == null) return;
+
+            for (var i = 0; i < hand.Attachments.Length; i++)
+            {
+                var child = hand.Attachments[i];
+                var parent = toOurs ? hand.Root : hand.AttachmentParents[i];
+                if (child != null && parent != null) child.SetParent(parent, false);
+            }
+        }
+
+        /// <summary>
+        /// Steadies the props against the animation, without deciding where they belong.
+        ///
+        /// The wand is not an object hanging off the hand, it is a bone of the rig —
+        /// `Bone_Weapon`, a child of the right hand — so the animator kicks it on every
+        /// shot. On a monitor that recoil is a flourish behind a crosshair that does not
+        /// move. In a headset the wand *is* the sight: the thing you line the shot up with
+        /// swings out from under your hand each time you fire and settles somewhere you
+        /// have to re-learn, and the next shot is guesswork.
+        ///
+        /// Damped rather than pinned, and that distinction is the whole of it. Pinning it
+        /// to the pose it was taken in was the first attempt and put the wand somewhere it
+        /// had never been: the animator goes on writing that bone even from outside the
+        /// character — which is what the recoil was in the first place — so any one
+        /// frame's pose is not the socket, it is just that frame. Chasing the animated
+        /// pose slowly cannot make that mistake: it always converges on wherever the game
+        /// wants the wand, and a recoil is over long before it arrives.
+        ///
+        /// It also costs nothing if the reparenting did break the animator's binding after
+        /// all: the value read back is then the one we wrote, and chasing that holds still.
+        ///
+        /// Nothing is lost either way. The shot never came from the wand's transform — it
+        /// comes from the controller — so this only stops the picture disagreeing with
+        /// where the shot was always going.
+        /// </summary>
+        private static void SteadyAttachments(Hand hand, float t)
+        {
+            if (hand.Attachments == null) return;
+
+            for (var i = 0; i < hand.Attachments.Length; i++)
+            {
+                var child = hand.Attachments[i];
+                if (child == null) continue;
+
+                // Read first: whatever is there now is the animator's word for this frame,
+                // because it ran before any LateUpdate did.
+                hand.AttachmentPositions[i] =
+                    Vector3.Lerp(hand.AttachmentPositions[i], child.localPosition, t);
+                hand.AttachmentRotations[i] =
+                    Quaternion.Slerp(hand.AttachmentRotations[i], child.localRotation, t);
+
+                child.localPosition = hand.AttachmentPositions[i];
+                child.localRotation = hand.AttachmentRotations[i];
+            }
+        }
+
+        /// <summary>
+        /// Starts the steadied pose from where the prop actually is.
+        ///
+        /// Called whenever a prop changes hands, so that coming back from a cutscene does
+        /// not begin with the wand sliding in from wherever it was left half a scene ago.
+        /// </summary>
+        private static void ResyncAttachments(Hand hand)
+        {
+            if (hand == null || hand.Attachments == null) return;
+
+            for (var i = 0; i < hand.Attachments.Length; i++)
+            {
+                var child = hand.Attachments[i];
+                if (child == null) continue;
+
+                hand.AttachmentPositions[i] = child.localPosition;
+                hand.AttachmentRotations[i] = child.localRotation;
             }
         }
 
@@ -322,6 +428,41 @@ namespace NobetaVR.Vr
         {
             var renderers = subtree.GetComponentsInChildren<Renderer>(true);
             return renderers != null && renderers.Length > 0;
+        }
+
+        /// <summary>
+        /// Shows or hides the hands without taking them apart.
+        ///
+        /// Cutting a hand out of the character's mesh is not free, and the game takes her
+        /// back constantly — every conversation, every menu, every door. Rebuilding on each
+        /// return would put a hitch on all of them, so hiding is a scale and a deactivation:
+        /// the arms get their own scale back, the wand goes back on the real hand, and the
+        /// cut-out geometry waits offstage until she is yours to move again.
+        /// </summary>
+        public void SetShown(bool shown)
+        {
+            if (!_attached || _shown == shown) return;
+            _shown = shown;
+
+            if (shown)
+            {
+                MoveAttachments(_left, true);
+                MoveAttachments(_right, true);
+                ResyncAttachments(_left);
+                ResyncAttachments(_right);
+            }
+            else
+            {
+                // The arms come back before the props do: a prop returned to a bone that is
+                // still collapsed would be handed back at zero scale.
+                if (_leftUpper != null) _leftUpper.localScale = _leftUpperScale;
+                if (_rightUpper != null) _rightUpper.localScale = _rightUpperScale;
+
+                MoveAttachments(_left, false);
+                MoveAttachments(_right, false);
+            }
+
+            if (_holder != null) _holder.gameObject.SetActive(shown);
         }
 
         /// <summary>
@@ -339,6 +480,8 @@ namespace NobetaVR.Vr
             Destroy(_right);
             _left = _right = null;
             _attached = false;
+            _shown = true;
+            if (_holder != null) _holder.gameObject.SetActive(true);
         }
 
         private static void Destroy(Hand hand)
@@ -405,6 +548,14 @@ namespace NobetaVR.Vr
                     to.localRotation = from.localRotation;
                     to.localPosition = from.localPosition;
                 }
+            }
+
+            if (Plugin.Instance.HoldWandStill.Value)
+            {
+                // Frame-rate independent, as the HUD's follow is: the fraction remaining
+                // after dt seconds rather than a fixed fraction per frame.
+                var t = 1f - Mathf.Exp(-Plugin.Instance.WandFollowSpeed.Value * Time.deltaTime);
+                SteadyAttachments(hand, t);
             }
 
             hand.Root.SetPositionAndRotation(position, rotation);

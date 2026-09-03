@@ -33,19 +33,6 @@ namespace NobetaVR.Ui
         private bool _failed;
         private Vector3 _direction;
 
-        /// <summary>
-        /// Shaders are stripped to what the game itself uses, so the one we want may not be in
-        /// the build. These are tried in order of preference; all are alpha-blended, and all are
-        /// ones a game with a uGUI interface is overwhelmingly likely to have kept.
-        /// </summary>
-        private static readonly string[] ShaderCandidates =
-        {
-            "UI/Default",
-            "Sprites/Default",
-            "Unlit/Transparent",
-            "Universal Render Pipeline/Unlit",
-        };
-
         private void LateUpdate()
         {
             if (_failed || !Plugin.Instance.HudEnabled.Value) return;
@@ -61,14 +48,12 @@ namespace NobetaVR.Ui
         private bool Build()
         {
             var cfg = Plugin.Instance;
-            var shader = FindShader();
+            var shader = TransparentShader.Find();
             if (shader == null)
             {
-                // Deliberately gives up rather than falling back to whatever Shader.Find last
-                // returned. An opaque shader here does not degrade gracefully: it hangs a solid
-                // white slab in front of the player's face, which is worse than no interface.
-                Plugin.Log.LogError("No alpha-blended shader survived stripping, so the HUD panel "
-                                  + "would be an opaque slab. Leaving it off.");
+                // Nothing to fall back on: an opaque shader here hangs a solid white slab
+                // in front of the player's face, which is worse than no interface at all.
+                Plugin.Log.LogError("The HUD panel would be an opaque slab. Leaving it off.");
                 _failed = true;
                 return false;
             }
@@ -118,17 +103,6 @@ namespace NobetaVR.Ui
 
             Plugin.Log.LogInfo($"HUD panel built: {w}x{h}, shader '{shader.name}'");
             return true;
-        }
-
-        private static Shader FindShader()
-        {
-            foreach (var name in ShaderCandidates)
-            {
-                var shader = Shader.Find(name);
-                if (shader != null) return shader;
-                Plugin.Log.LogInfo($"shader '{name}' is not in this build");
-            }
-            return null;
         }
 
         /// <summary>

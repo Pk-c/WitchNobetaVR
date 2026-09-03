@@ -202,50 +202,22 @@ namespace NobetaVR.Ui
             _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "HANDS", IsHeading = true });
 
-            _items.Add(new Item
-            {
-                Label = "Hand tracking",
-                Value = () => cfg.HandTracking.Value ? "On" : "Off",
-                Adjust = _ => cfg.HandTracking.Value = !cfg.HandTracking.Value,
-            });
-            _items.Add(new Item
-            {
-                Label = "Hand style",
-                Value = () => cfg.DetachedHands.Value ? "Hands only" : "Full arms (IK)",
-                Adjust = _ => cfg.DetachedHands.Value = !cfg.DetachedHands.Value,
-            });
-            _items.Add(new Item
-            {
-                Label = "Hand reach scale",
-                Value = () => $"{cfg.HandReachScale.Value:F2}",
-                Adjust = d => cfg.HandReachScale.Value =
-                    Mathf.Clamp(cfg.HandReachScale.Value + d * 0.05f, 0.2f, 1.5f),
-            });
-            _items.Add(new Item
-            {
-                Label = "Forearm twist share",
-                Value = () => $"{cfg.ForearmTwistShare.Value:F2}",
-                Adjust = d => cfg.ForearmTwistShare.Value =
-                    Mathf.Clamp(cfg.ForearmTwistShare.Value + d * 0.05f, 0f, 1f),
-            });
-            _items.Add(new Item
-            {
-                Label = "Wrist follows controller",
-                Value = () => cfg.HandFollowRotation.Value ? "On" : "Off",
-                Adjust = _ => cfg.HandFollowRotation.Value = !cfg.HandFollowRotation.Value,
-            });
-            _items.Add(Axis("Hand offset side", () => cfg.HandOffsetSide));
-            _items.Add(Axis("Hand offset up", () => cfg.HandOffsetUp));
-            _items.Add(Axis("Hand offset forward", () => cfg.HandOffsetForward));
-            _items.Add(new Item
-            {
-                Label = "Hand pitch",
-                Value = () => $"{cfg.HandRotationPitch.Value:F0}°",
-                Adjust = d => cfg.HandRotationPitch.Value =
-                    Mathf.Clamp(cfg.HandRotationPitch.Value + d * 5f, -180f, 180f),
-            });
+            _items.Add(Degrees("Hand pitch", () => cfg.HandRotationPitch));
             _items.Add(Degrees("Hand yaw", () => cfg.HandRotationYaw));
             _items.Add(Degrees("Hand roll", () => cfg.HandRotationRoll));
+            _items.Add(new Item
+            {
+                Label = "Wand steadied",
+                Value = () => cfg.HoldWandStill.Value ? "On" : "Off",
+                Adjust = _ => cfg.HoldWandStill.Value = !cfg.HoldWandStill.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Wand follow speed",
+                Value = () => $"{cfg.WandFollowSpeed.Value:F1}/s",
+                Adjust = d => cfg.WandFollowSpeed.Value =
+                    Mathf.Clamp(cfg.WandFollowSpeed.Value + d * 0.5f, 0.5f, 30f),
+            });
 
             _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "AIM", IsHeading = true });
@@ -257,6 +229,27 @@ namespace NobetaVR.Ui
                 Adjust = _ => cfg.AimFromHand.Value = !cfg.AimFromHand.Value,
             });
             _items.Add(Degrees("Wand pitch", () => cfg.AimPitchOffset));
+            _items.Add(Degrees("Wand yaw", () => cfg.AimYawOffset));
+            _items.Add(Degrees("Wand roll", () => cfg.AimRollOffset));
+            _items.Add(new Item
+            {
+                Label = "Reticle",
+                Value = () => cfg.ShowAimReticle.Value ? "On" : "Off",
+                Adjust = _ => cfg.ShowAimReticle.Value = !cfg.ShowAimReticle.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Reticle size",
+                Value = () => $"{cfg.AimReticleSize.Value * 100f:F1}",
+                Adjust = d => cfg.AimReticleSize.Value =
+                    Mathf.Clamp(cfg.AimReticleSize.Value + d * 0.002f, 0.004f, 0.06f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Game crosshair",
+                Value = () => cfg.HideGameCrosshair.Value ? "Hidden" : "Shown",
+                Adjust = _ => cfg.HideGameCrosshair.Value = !cfg.HideGameCrosshair.Value,
+            });
 
             _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item
@@ -291,12 +284,11 @@ namespace NobetaVR.Ui
                          cfg.SmoothTurn, cfg.SnapTurnDegrees, cfg.SmoothTurnSpeed,
                          cfg.HeadOffsetX, cfg.HeadOffsetY, cfg.HeadOffsetZ,
                          cfg.HeadBobbing, cfg.HeadHideDistance,
-                         cfg.HandTracking, cfg.DetachedHands, cfg.HandReachScale, cfg.HandFollowRotation,
-                         cfg.ForearmTwistShare,
-                         cfg.HandOffsetSide, cfg.HandOffsetUp,
-                         cfg.HandOffsetForward, cfg.HandRotationPitch,
-                         cfg.HandRotationYaw, cfg.HandRotationRoll,
-                         cfg.AimFromHand, cfg.AimPitchOffset,
+                         cfg.HandRotationPitch, cfg.HandRotationYaw, cfg.HandRotationRoll,
+                         cfg.HoldWandStill, cfg.WandFollowSpeed,
+                         cfg.AimFromHand,
+                         cfg.AimPitchOffset, cfg.AimYawOffset, cfg.AimRollOffset,
+                         cfg.ShowAimReticle, cfg.AimReticleSize, cfg.HideGameCrosshair,
                      })
             {
                 entry.BoxedValue = entry.DefaultValue;
