@@ -49,14 +49,39 @@ namespace NobetaVR.Ui
             return true;
         }
 
-        private IUIController Controller()
+        /// <summary>
+        /// Opens the game's pause menu, the way the game's own Escape binding does.
+        ///
+        /// The pause menu is not something to be found and switched on: it is behind
+        /// <c>ISceneMenuController</c>, which the game rebinds as scenes come and go, exactly
+        /// like the UI controller above. Asking the manager for the current one each time is
+        /// therefore both the call and the check — there is no scene menu to open on the title
+        /// screen or mid-cutscene, and a null is the game saying so rather than a fault.
+        /// </summary>
+        public bool OpenSceneMenu()
+        {
+            var manager = Manager();
+            var menu = manager != null ? manager.sceneMenuController : null;
+            if (menu == null) return false;
+
+            menu.OpenSceneMenu();
+            return true;
+        }
+
+        private GameInputManager Manager()
         {
             if (_manager == null)
             {
                 var found = UnityEngine.Object.FindObjectOfType(Il2CppType.Of<GameInputManager>());
                 _manager = found != null ? found.TryCast<GameInputManager>() : null;
             }
-            return _manager != null ? _manager.uiController : null;
+            return _manager;
+        }
+
+        private IUIController Controller()
+        {
+            var manager = Manager();
+            return manager != null ? manager.uiController : null;
         }
 
         private void Navigate(IUIController ui, VrInput input)

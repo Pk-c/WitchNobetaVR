@@ -4,15 +4,33 @@ using UnityEngine;
 namespace NobetaVR.Input
 {
     /// <summary>
-    /// Drives Nobeta from the Touch controllers: left stick to move, right stick to turn.
+    /// Drives Nobeta from the Touch controllers.
     ///
-    /// Both go through the game's own seams rather than around them. Movement is handed to
-    /// <c>PlayerInputController.Move</c>, the same method the game's own bindings call, so
+    /// Everything goes through the game's own seams rather than around them. Movement is handed
+    /// to <c>PlayerInputController.Move</c>, the same method the game's own bindings call, so
     /// everything downstream — walk and dash states, the animator, the character controller —
-    /// behaves exactly as it does on a pad. Turning adds to <c>PlayerCamera.g_fX</c>, the
-    /// camera's own yaw, so the view, the direction movement is relative to, and the game's
-    /// idea of where you are looking all stay one value instead of three that must be kept in
-    /// step.
+    /// behaves exactly as it does on a pad; the same is true of every other action here, each
+    /// of which calls the method its keyboard or pad binding calls. Turning is the one
+    /// exception, and adds to <c>PlayerCamera.g_fX</c>, the camera's own yaw, so the view, the
+    /// direction movement is relative to, and the game's idea of where you are looking all stay
+    /// one value instead of three that must be kept in step.
+    ///
+    /// The map:
+    ///
+    /// <list type="table">
+    /// <item><term>Left stick</term><description>move; click to run</description></item>
+    /// <item><term>Right stick</term><description>turn; click and hold for the magic wheel</description></item>
+    /// <item><term>A / B</term><description>jump / dodge</description></item>
+    /// <item><term>X</term><description>use item</description></item>
+    /// <item><term>Y</term><description>interact; held, the pause menu</description></item>
+    /// <item><term>Triggers</term><description>left prays, right shoots</description></item>
+    /// <item><term>Grips</term><description>left cycles items, right focuses; together, recentre</description></item>
+    /// </list>
+    ///
+    /// Three of those share a control with something else — Y with the pause menu, the grips
+    /// with recentring, the right stick with turning — and each of the three is resolved here
+    /// rather than by asking the player to be careful. See <see cref="Interact"/>,
+    /// <see cref="Grips"/> and <see cref="MagicWheel"/>.
     /// </summary>
     public sealed class VrControls : MonoBehaviour
     {
@@ -36,7 +54,19 @@ namespace NobetaVR.Input
 
         // Held state from the previous frame, so a press can be told from a hold. Actions that
         // fire once need the edge; actions the game tracks itself need the level.
-        private bool _recenterHeld, _jumpHeld, _dodgeHeld, _shootHeld, _runHeld;
+        private bool _jumpHeld, _dodgeHeld, _useItemHeld, _chantHeld;
+        private bool _shootHeld, _runHeld, _aimHeld;
+
+        // Y is two actions on one button, so its press has to be timed rather than acted on.
+        private bool _yHeld, _pauseFired;
+        private float _yDownAt;
+
+        // The grips are three actions across two buttons: one each, and a third for both.
+        private bool _leftGripHeld, _rightGripHeld;
+        private float _leftGripAt, _rightGripAt;
+        private bool _gripsConsumed, _cyclePending;
+
+        private bool _wheelOpen;
 
         private void Awake() => Instance = this;
 
@@ -51,33 +81,188 @@ namespace NobetaVR.Input
             // Our own menu reads the controllers itself, and a game menu takes them over while
             // it is up. Either way the gameplay bindings stand down: without this the same
             // stick both walks Nobeta and scrolls the menu she is standing in.
-            if (Ui.VrMenu.Instance != null && Ui.VrMenu.Instance.IsOpen) return;
-            if (_gameUi.Update(_input)) return;
+            if (Ui.VrMenu.Instance != null && Ui.VrMenu.Instance.IsOpen) { StandDown(); return; }
 
-            Recenter();
+            // The wheel is held open by us rather than by the game's menu stack, so it is
+            // settled before that gate rather than behind it. Were it behind, anything binding
+            // a UI controller while the wheel was up would leave it open with nothing left able
+            // to close it.
+            var wheel = MagicWheel();
+
+            if (!wheel && _gameUi.Update(_input)) { StandDown(); return; }
+
+            Grips();
             Move();
-            Turn();
+            if (!wheel) Turn();
             Actions();
             Vr.RoomScale.Apply(Camera != null ? Camera.wizardGirl : null, Vr.VrCamera.ViewYaw);
         }
 
         /// <summary>
-        /// Puts the head back on Nobeta, on the edge of a press rather than while held.
+        /// Hands the controllers back when a menu takes them.
+        ///
+        /// Anything the game is tracking as held has to be told it ended, or it stays latched
+        /// with nothing left to clear it: a menu opened mid-trigger leaves Nobeta shooting, and
+        /// focus is worse, because nothing on screen says why the aim will not let go. The
+        /// one-shot edges are set to what the buttons are actually doing rather than to false,
+        /// so a button still down when the menu closes is not read as a fresh press.
         /// </summary>
-        private void Recenter()
+        private void StandDown()
         {
-            // Both sticks together opens the VR menu, so a right click with the left one down
-            // is not a recentre. Checked here rather than by ordering, because the menu is a
-            // separate component and their update order is not ours to decide.
-            if (_input.Pressed(VrInput.Hand.Left, VrInput.Button.StickClick))
+            if (InputController != null)
             {
-                _recenterHeld = true;
-                return;
+                if (_shootHeld) InputController.Shoot(false);
+                if (_runHeld) InputController.Dash(false);
+                if (_aimHeld) InputController.Aim(false);
+                if (_wheelOpen) InputController.AppearMagicMenu(false);
+                if (_wasMoving) InputController.Move(Vector2.zero);
             }
 
-            var held = _input.Pressed(VrInput.Hand.Right, VrInput.Button.StickClick);
-            if (held && !_recenterHeld) Vr.HeadPose.Recenter();
-            _recenterHeld = held;
+            _shootHeld = _runHeld = _aimHeld = _wheelOpen = _wasMoving = false;
+            _snapArmed = true;
+
+            _jumpHeld = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
+            _dodgeHeld = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary);
+            _useItemHeld = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Primary);
+            _chantHeld = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Trigger);
+            _yHeld = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Secondary);
+            _pauseFired = _yHeld;   // the Y that opened the menu must not interact on release
+
+            _leftGripHeld = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Grip);
+            _rightGripHeld = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Grip);
+            _cyclePending = false;
+            _gripsConsumed = _leftGripHeld || _rightGripHeld;   // nothing fires until both are up
+        }
+
+        /// <summary>
+        /// The magic wheel, on a held right stick click, pointed at with the same stick.
+        ///
+        /// The game's own wheel works exactly this way — <c>AppearMagicMenu</c> takes a held
+        /// flag and <c>MoveMenuPointer</c> takes the stick — so there is nothing to rebuild,
+        /// only somewhere to send it. Turning stands down while it is up, since the stick that
+        /// opened the wheel is the stick that has to point around it.
+        ///
+        /// A right click with the left one already down is the mod's own settings menu opening,
+        /// not the wheel. That is checked here rather than by update order, because VrMenu is a
+        /// separate component and Unity's order between the two is not ours to decide.
+        /// </summary>
+        private bool MagicWheel()
+        {
+            if (InputController == null) return false;
+
+            var open = _input.Pressed(VrInput.Hand.Right, VrInput.Button.StickClick)
+                    && !_input.Pressed(VrInput.Hand.Left, VrInput.Button.StickClick);
+
+            if (open != _wheelOpen)
+            {
+                _wheelOpen = open;
+                InputController.AppearMagicMenu(open);
+            }
+
+            if (_wheelOpen) InputController.MoveMenuPointer(_input.RightStick);
+
+            return _wheelOpen;
+        }
+
+        /// <summary>
+        /// The grips: focus on the right, item cycling on the left, recentre on both.
+        ///
+        /// Sharing two buttons between three actions only works if the combination can be told
+        /// from its halves, and the two halves are not alike. Focus is a hold the game tracks
+        /// itself, so it can start immediately and be taken back if the other grip joins it.
+        /// Cycling is a one-shot, and a one-shot cannot be taken back — so it waits out the
+        /// window instead. An item step that arrives a fifth of a second late is not something
+        /// you notice; a recentre that also changed your item is.
+        ///
+        /// The window also runs the other way. Both grips down is only a recentre if they went
+        /// down together: holding focus and then reaching for an item is an ordinary thing to
+        /// do, and it must not put your head back on Nobeta.
+        /// </summary>
+        private void Grips()
+        {
+            if (InputController == null) return;
+
+            var left = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Grip);
+            var right = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Grip);
+            var now = Time.unscaledTime;
+            var window = Plugin.Instance.RecentreGripWindow.Value;
+
+            if (left && !_leftGripHeld) { _leftGripAt = now; _cyclePending = true; }
+            if (right && !_rightGripHeld) _rightGripAt = now;
+            _leftGripHeld = left;
+            _rightGripHeld = right;
+
+            if (left && right && !_gripsConsumed
+                && Mathf.Abs(_leftGripAt - _rightGripAt) <= window)
+            {
+                _gripsConsumed = true;
+                _cyclePending = false;
+                Aim(false);
+                Vr.HeadPose.Recenter();
+            }
+
+            // Both have to come up before either hand acts on its own again, or letting go of
+            // one grip after a recentre would read as the other being freshly squeezed.
+            if (!left && !right) _gripsConsumed = false;
+            if (_gripsConsumed) return;
+
+            if (!left) _cyclePending = false;
+            else if (_cyclePending && now - _leftGripAt >= window)
+            {
+                _cyclePending = false;
+                if (Plugin.Instance.ItemCycleForward.Value) InputController.SelectItemRightward();
+                else InputController.SelectItemLeftward();
+            }
+
+            Aim(right);
+        }
+
+        /// <summary>
+        /// Focus, level-triggered, because the game tracks the hold itself.
+        ///
+        /// What the game does to its camera on the way in is left alone: the FOV zoom is
+        /// already inert, since under XR the projection comes from the display subsystem rather
+        /// than from <c>Camera.fieldOfView</c>, and the shoulder-cam offset is overwritten every
+        /// frame by the first-person view. The half that matters — the game holding its aim
+        /// where <c>VrAim</c> put it — is the half that still runs.
+        /// </summary>
+        private void Aim(bool held)
+        {
+            if (_aimHeld == held || InputController == null) return;
+            _aimHeld = held;
+            InputController.Aim(held);
+        }
+
+        /// <summary>
+        /// Y: interact on a tap, the pause menu on a hold.
+        ///
+        /// Both are on the one button, so interact cannot fire on the press — until it comes
+        /// back up there is no telling which of the two was meant. It fires on release instead,
+        /// and only when the hold was short. The timer runs on unscaled time, because opening
+        /// the pause menu is precisely the thing that stops the scaled one.
+        /// </summary>
+        private void Interact()
+        {
+            var y = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Secondary);
+
+            if (y && !_yHeld)
+            {
+                _yDownAt = Time.unscaledTime;
+                _pauseFired = false;
+            }
+            else if (y && !_pauseFired
+                     && Time.unscaledTime - _yDownAt >= Plugin.Instance.PauseHoldSeconds.Value)
+            {
+                _pauseFired = true;
+                if (!_gameUi.OpenSceneMenu())
+                    Plugin.Log.LogInfo("nothing here to pause; no scene menu is bound");
+            }
+            else if (!y && _yHeld && !_pauseFired)
+            {
+                InputController.Interact();
+            }
+
+            _yHeld = y;
         }
 
         /// <summary>
@@ -85,9 +270,9 @@ namespace NobetaVR.Input
         ///
         /// Each one calls the method the game's own bindings call, so nothing downstream can
         /// tell a Touch controller from a pad. The split between edge and level is the game's,
-        /// not ours: `Jump` and `Dodge` are one-shots and must fire on the press only, while
-        /// `Shoot` and `Dash` take a held flag because the game tracks the hold itself and
-        /// needs to be told when it ends.
+        /// not ours: `Jump`, `Dodge`, `UseItem` and `Chant` are one-shots and must fire on the
+        /// press only, while `Shoot` and `Dash` take a held flag because the game tracks the
+        /// hold itself and needs to be told when it ends.
         ///
         /// A and B are on the right controller, X and Y on the left; the action set maps both
         /// pairs to the same primary/secondary actions, so the hand is what picks between them.
@@ -105,6 +290,19 @@ namespace NobetaVR.Input
             var dodge = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary);
             if (dodge && !_dodgeHeld) InputController.Dodge();
             _dodgeHeld = dodge;
+
+            // X — use the selected item
+            var useItem = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Primary);
+            if (useItem && !_useItemHeld) InputController.UseItem();
+            _useItemHeld = useItem;
+
+            // Left trigger — pray, which is how she takes her mana back
+            var chant = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Trigger);
+            if (chant && !_chantHeld) InputController.Chant();
+            _chantHeld = chant;
+
+            // Y — interact, or the pause menu when it is held
+            Interact();
 
             // Right trigger — shoot
             var shoot = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Trigger);

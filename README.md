@@ -63,12 +63,25 @@ Touch-style controllers. Everything here is remappable from
 | --- | --- |
 | Left stick | Move — forward, back and strafe, relative to where you are looking |
 | Right stick | Turn — snap by default, 45° a step; smooth is a setting |
-| Right stick click | Recentre: puts your head back on Nobeta |
 | Left stick click | Run |
+| Right stick click, held | The magic wheel; point at an arcane with the same stick and let go |
 | A | Jump |
 | B | Dodge roll |
+| X | Use the selected item |
+| Y | Interact |
+| Y, held two seconds | The game's pause menu |
+| Left trigger | Pray, to take her mana back |
 | Right trigger | Shoot |
+| Left grip | Step through the items |
+| Right grip | Focus — the game's held shot |
+| Both grips together | Recentre: puts your head back on Nobeta |
 | Both sticks clicked | The mod's VR settings |
+
+Three of those share a control. Y is interact when tapped and the pause menu when held, so
+interact happens when you let go rather than when you press. The grips recentre only when
+squeezed together — squeeze the second one later and it means what it says on its own, so
+you can reach for an item without losing your focus. And the right stick stops turning while
+the wheel is up, since that is the stick pointing around it.
 
 Walking physically moves Nobeta, through the game's own collision. She turns to face wherever
 you look, including when you turn on the spot.

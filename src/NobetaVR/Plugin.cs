@@ -45,6 +45,9 @@ namespace NobetaVR
         internal ConfigEntry<float> SnapTurnDegrees;
         internal ConfigEntry<bool> SmoothTurn;
         internal ConfigEntry<float> SmoothTurnSpeed;
+        internal ConfigEntry<float> PauseHoldSeconds;
+        internal ConfigEntry<float> RecentreGripWindow;
+        internal ConfigEntry<bool> ItemCycleForward;
         internal ConfigEntry<bool> RoomScale;
         internal ConfigEntry<float> RoomScaleMaxStep;
         internal ConfigEntry<float> NeckModelDown;
@@ -171,7 +174,7 @@ namespace NobetaVR
               + "something are moved: finger bones live there too, and taking those out of the "
               + "skeleton deforms the character's own hand.");
 
-            HandReachScale = Config.Bind("Hands", "HandReachScale", 0.6f,
+            HandReachScale = Config.Bind("Hands", "HandReachScale", 0.2f,
                 "How much of your reach maps onto Nobeta's. She is a child and you are not: her "
               + "arms span perhaps half of yours, so at 1.0 most of your range asks for a hand "
               + "further than she can put one, and the arm locks out straight. Lower it if her "
@@ -183,7 +186,7 @@ namespace NobetaVR
               + "between hands, so one value serves both.");
             HandOffsetUp = Config.Bind("Hands", "HandOffsetUp", 0f,
                 "Vertical offset from the controller to the hand bone, in metres.");
-            HandOffsetForward = Config.Bind("Hands", "HandOffsetForward", -0.04f,
+            HandOffsetForward = Config.Bind("Hands", "HandOffsetForward", 0f,
                 "Forward offset from the controller to the hand bone, in metres, in the "
               + "controller's own frame. Negative by "
               + "default because a controller is gripped in the palm while the bone sits at the "
@@ -193,7 +196,7 @@ namespace NobetaVR
               + "a controller is held and how the hand bone is oriented is taken from the rig "
               + "itself, so an identity controller rotation reproduces the pose the animator "
               + "authored. These three are for taste, not for correcting the rig.");
-            ForearmTwistShare = Config.Bind("Hands", "ForearmTwistShare", 0.6f,
+            ForearmTwistShare = Config.Bind("Hands", "ForearmTwistShare", 0f,
                 "How much of the wrist's roll the forearm takes, from 0 to 1. A real forearm "
               + "carries pronation along its whole length, so turning a palm over rotates the arm "
               + "from the elbow down; a rig with a single forearm bone has nowhere to put that, "
@@ -224,11 +227,11 @@ namespace NobetaVR
               + "and the cape was dragged along by the spine. Aiming is not lost: it comes from "
               + "the view instead.");
 
-            HandDiagnostics = Config.Bind("Hands", "HandDiagnostics", true,
+            HandDiagnostics = Config.Bind("Hands", "HandDiagnostics", false,
                 "Writes the arm's bone lengths, the distance being asked of it, and the bone "
-              + "scales to the log once a second. On by default while the arms are being brought "
-              + "up, because those numbers say whether a bad-looking arm is out of reach or "
-              + "sheared by a non-uniform scale, and no amount of looking at it can.");
+              + "scales to the log once a second. Only useful with the IK arms; those numbers "
+              + "say whether a bad-looking arm is out of reach or sheared by a non-uniform "
+              + "scale, which looking at it cannot.");
 
             AimFromView = Config.Bind("Aim", "AimFromView", true,
                 "Puts the game's aim target on the line you are looking down. On a monitor that "
@@ -243,7 +246,7 @@ namespace NobetaVR
               + "aim somewhere you are not looking. The view stays the fallback whenever the hands "
               + "are not being drawn — menus, cutscenes, hand tracking turned off.");
 
-            AimPitchOffset = Config.Bind("Aim", "AimPitchOffset", -35f,
+            AimPitchOffset = Config.Bind("Aim", "AimPitchOffset", 25f,
                 "Angle between the controller and where the wand points, in degrees. A Touch "
               + "controller is gripped at an angle rather than in line with what it is aiming, so "
               + "its own forward points somewhat below the wand.");
@@ -254,8 +257,11 @@ namespace NobetaVR
 
             HandRotationYaw = Config.Bind("Hands", "HandRotationYaw", 0f,
                 "Wrist yaw adjustment, in degrees.");
-            HandRotationRoll = Config.Bind("Hands", "HandRotationRoll", 0f,
-                "Wrist roll adjustment, in degrees.");
+            HandRotationRoll = Config.Bind("Hands", "HandRotationRoll", -50f,
+                "Wrist roll adjustment, in degrees. Not zero, because the rest orientation "
+              + "taken from the rig only accounts for how the hand bone sits on the body — "
+              + "not for how a Touch controller is gripped, which is turned about its own "
+              + "axis relative to what it points at. This is that difference, measured.");
 
             HeadHideDistance = Config.Bind(
                 "Camera", "HeadHideDistance", 0.35f,
@@ -336,6 +342,25 @@ namespace NobetaVR
             SmoothTurnSpeed = Config.Bind(
                 "Controls", "SmoothTurnSpeed", 130f,
                 "Degrees per second when SmoothTurn is on.");
+
+            PauseHoldSeconds = Config.Bind(
+                "Controls", "PauseHoldSeconds", 2f,
+                "How long Y must be held to open the game's pause menu, in seconds. Y is also "
+              + "interact, which is why interact fires when you let go rather than when you "
+              + "press: until the button comes back up there is no telling which of the two you "
+              + "meant.");
+
+            RecentreGripWindow = Config.Bind(
+                "Controls", "RecentreGripWindow", 0.2f,
+                "How close together the two grips must be squeezed to count as recentring "
+              + "rather than as focus and item cycling, in seconds. Squeezing the second grip "
+              + "later than this is taken at face value, so reaching for an item while holding "
+              + "focus does not put your head back on Nobeta.");
+
+            ItemCycleForward = Config.Bind(
+                "Controls", "ItemCycleForward", true,
+                "Which way the left grip steps through the item bar. On is the direction the "
+              + "game calls rightward; turn it off to walk the bar the other way.");
 
             AlignViewToBodyOnSpawn = Config.Bind(
                 "Camera", "AlignViewToBodyOnSpawn", true,
