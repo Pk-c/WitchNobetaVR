@@ -1,0 +1,258 @@
+using UnityEngine;
+
+namespace NobetaVR.Vr
+{
+    /// <summary>
+    /// Moves the viewpoint from the end of the game's camera boom to Nobeta's head, and takes
+    /// off the things a third-person camera does that a head must not.
+    ///
+    /// The game's camera is left running throughout. Its yaw is still the player's look
+    /// direction, still driven by the stick, and everything downstream of it — cutscene modes,
+    /// aiming, lock-on — keeps working. What changes is where the view sits and which parts of
+    /// the game's framing survive.
+    /// </summary>
+    internal sealed class FirstPerson
+    {
+        private PlayerCamera _playerCamera;
+        private Transform _head;
+        private Vector3 _headScale = Vector3.one;
+        private bool _headScaleSaved;
+        private bool _comfortApplied;
+
+        /// <summary>Forgets everything tied to one PlayerCamera instance; call when it changes.</summary>
+        public void Rebind(PlayerCamera playerCamera)
+        {
+            RestoreHead();
+            _playerCamera = playerCamera;
+            _head = null;
+            _headScaleSaved = false;
+            _comfortApplied = false;
+            _candidatesReported = false;
+        }
+
+        /// <summary>
+        /// Finds the bone the view sits on.
+        ///
+        /// <c>NobetaIKController.head</c> is the obvious candidate and the wrong one: on this
+        /// rig it resolves to a transform called <c>HeadDirect</c>, a look-at helper rather than
+        /// the skull. Anchoring there put the camera inside a head that was never hidden — the
+        /// scale-to-nothing landed on the helper, which has no mesh — so the view filled with
+        /// the inside of Nobeta's face. The facing diagnostic ruled out the other explanation:
+        /// camera and body agreed to within 13 degrees, so nothing was ever turned around.
+        ///
+        /// So the skeleton is searched instead, and the helper is kept only as a starting point
+        /// for finding the character root. Candidates are logged the first time, because a bone
+        /// name is a fact about the model that no amount of reasoning will produce.
+        ///
+        /// Re-resolved while null, since the skin loads asynchronously: on the opening frames of
+        /// a stage the chain exists but ends in nothing.
+        /// </summary>
+        private Transform Head()
+        {
+            if (_head != null) return _head;
+            if (_playerCamera == null) return null;
+
+            var girl = _playerCamera.wizardGirl;
+            var skin = girl != null ? girl.skinController : null;
+            var ik = skin != null ? skin.ik : null;
+            var helper = ik != null ? ik.head : null;
+            if (helper == null) return null;
+
+            var root = girl != null ? girl.transform : helper.root;
+            _head = FindHeadBone(root, helper);
+
+            if (_head != null)
+            {
+                Plugin.Log.LogInfo($"first person anchored to '{Path(_head)}' "
+                                 + $"(IK helper was '{helper.name}')");
+            }
+            return _head;
+        }
+
+        private static readonly string[] NotABone = { "direct", "target", "look", "aim", "end", "ik" };
+
+        /// <summary>
+        /// Picks the head bone out of the skeleton by name, preferring an exact "Head" and
+        /// rejecting the helpers that merely contain the word.
+        /// </summary>
+        private Transform FindHeadBone(Transform root, Transform fallback)
+        {
+            var wanted = Plugin.Instance.HeadBoneName.Value;
+            Transform exact = null, partial = null;
+            var candidates = new System.Collections.Generic.List<string>();
+
+            foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            {
+                var name = t.name;
+                if (name.IndexOf("head", System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+
+                candidates.Add(name);
+
+                if (!string.IsNullOrEmpty(wanted))
+                {
+                    if (name == wanted) return t;
+                    continue;
+                }
+
+                var lower = name.ToLowerInvariant();
+                var helperish = false;
+                foreach (var bad in NotABone)
+                    if (lower.Contains(bad)) { helperish = true; break; }
+                if (helperish) continue;
+
+                if (lower == "head") exact = t;
+                else partial ??= t;
+            }
+
+            if (!_candidatesReported)
+            {
+                _candidatesReported = true;
+                Plugin.Log.LogInfo($"head-bone candidates under '{root.name}': "
+                                 + (candidates.Count > 0 ? string.Join(", ", candidates) : "none"));
+                if (!string.IsNullOrEmpty(wanted))
+                    Plugin.Log.LogInfo($"HeadBoneName is set to '{wanted}'");
+            }
+
+            var chosen = exact ?? partial;
+            if (chosen == null)
+            {
+                Plugin.Log.LogWarning($"No head bone found; falling back to the IK helper "
+                                    + $"'{fallback.name}', which will put the view inside her head.");
+                return fallback;
+            }
+            return chosen;
+        }
+
+        private bool _candidatesReported;
+
+        private static string Path(Transform t)
+        {
+            var path = t.name;
+            for (var p = t.parent; p != null; p = p.parent) path = p.name + "/" + path;
+            return path;
+        }
+
+        /// <summary>
+        /// Where the view should sit and which way it should face, before the headset's own
+        /// pose is added on top.
+        ///
+        /// Returns false when the head bone is not available yet, in which case the caller
+        /// keeps the game's own camera pose and the view simply stays in third person for a
+        /// few frames rather than snapping somewhere wrong.
+        /// </summary>
+        public bool GetOrigin(Quaternion gameCameraRotation, out Vector3 position, out Quaternion rotation)
+        {
+            position = default;
+            rotation = default;
+
+            var head = Head();
+            if (head == null) return false;
+
+            ApplyComfort();
+            HideHead();
+
+            var cfg = Plugin.Instance;
+
+            // The offset is in head-bone space, so it follows the head when an animation turns
+            // it. The bone sits at the base of the skull on most rigs, and the eyes are forward
+            // and up from there; the exact numbers belong to the model, so they are settings
+            // rather than constants.
+            position = head.position
+                     + head.rotation * new Vector3(0f, cfg.EyeOffsetUp.Value, cfg.EyeOffsetForward.Value);
+
+            // Yaw from the game, pitch and roll from your neck.
+            //
+            // Taking the game camera's full rotation would add its pitch to the headset's, so
+            // looking up would pitch twice and the horizon would tilt with every camera shake.
+            // Yaw alone keeps stick turning working while leaving the other two axes to the
+            // only thing entitled to them.
+            var yaw = gameCameraRotation.eulerAngles.y + cfg.ViewYawOffset.Value;
+            rotation = cfg.YawFromGameCamera.Value ? Quaternion.Euler(0f, yaw, 0f)
+                                                   : Quaternion.identity;
+
+            ReportFacing(gameCameraRotation, head);
+            return true;
+        }
+
+        /// <summary>
+        /// Says once, in numbers, which way everything is pointing.
+        ///
+        /// "I can see Nobeta's face" has more than one cause — the view could be turned around,
+        /// or it could be inside an unhidden head looking at the inside of the face mesh — and
+        /// they are not distinguishable from in there. These three readings separate them: if
+        /// the camera and the body disagree by about 180 degrees the view is backwards, and if
+        /// the head scale is not zero the head was never hidden.
+        /// </summary>
+        private bool _facingReported;
+
+        private void ReportFacing(Quaternion gameCameraRotation, Transform head)
+        {
+            if (_facingReported || _playerCamera == null) return;
+            var girl = _playerCamera.wizardGirl;
+            if (girl == null) return;
+            _facingReported = true;
+
+            var camFwd = gameCameraRotation * Vector3.forward;
+            var bodyFwd = girl.transform.forward;
+            var headFwd = head.forward;
+
+            Plugin.Log.LogInfo($"facing: camera->body {Vector3.Angle(camFwd, bodyFwd):F1} deg, "
+                             + $"camera->headBone {Vector3.Angle(camFwd, headFwd):F1} deg, "
+                             + $"head localScale {head.localScale}");
+        }
+
+        /// <summary>
+        /// Turns off the two things the game does to its camera that stop being charming once
+        /// the camera is your head: the breathing sway, and combat shake.
+        ///
+        /// Both are fine on a monitor and both move the horizon under you in a headset. They
+        /// are switched off through the game's own API rather than by fighting the values it
+        /// writes, so nothing has to be reapplied per frame.
+        /// </summary>
+        private void ApplyComfort()
+        {
+            if (_comfortApplied || _playerCamera == null) return;
+            _comfortApplied = true;
+
+            if (Plugin.Instance.DisableRespiration.Value)
+            {
+                _playerCamera.SetRespiration(false);
+                Plugin.Log.LogInfo("camera respiration off");
+            }
+
+            if (Plugin.Instance.DisableCameraShake.Value)
+            {
+                _playerCamera.g_bShakeEnable = false;
+                Plugin.Log.LogInfo("camera shake off");
+            }
+        }
+
+        /// <summary>
+        /// Scales the head bone away so you are not looking at the inside of Nobeta's skull.
+        ///
+        /// Scaling the bone rather than disabling a renderer is deliberate: the mesh is shared
+        /// with the rest of the body, so there is no head renderer to switch off, and the hair
+        /// is parented to this bone and goes with it. It is reapplied whenever the bone is
+        /// rebound rather than every frame, and put back on Rebind so a skin change does not
+        /// leave a headless Nobeta behind.
+        /// </summary>
+        private void HideHead()
+        {
+            if (!Plugin.Instance.HideHead.Value || _head == null) return;
+
+            if (!_headScaleSaved)
+            {
+                _headScale = _head.localScale;
+                _headScaleSaved = true;
+            }
+
+            if (_head.localScale != Vector3.zero) _head.localScale = Vector3.zero;
+        }
+
+        public void RestoreHead()
+        {
+            if (_headScaleSaved && _head != null) _head.localScale = _headScale;
+            _headScaleSaved = false;
+        }
+    }
+}

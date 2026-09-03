@@ -1,0 +1,36 @@
+NobetaVR — third-party components
+=================================
+
+NobetaVR's own code is MIT licensed; see LICENSE.
+
+The release archive additionally contains the following third-party components,
+redistributed unmodified under their own licences. Nothing here is a derivative
+of, or contains any part of, Little Witch Nobeta.
+
+BepInEx 6 (Unity.IL2CPP), version 6.0.0-pre.2
+    https://github.com/BepInEx/BepInEx
+    LGPL-2.1. Redistributed unmodified. Includes Il2CppInterop (LGPL-3.0),
+    HarmonyX (MIT) and a .NET 6 runtime (MIT).
+
+OpenXR Plugin (com.unity.xr.openxr), version 1.6.0
+    copyright (c) 2020 Unity Technologies ApS
+    https://docs.unity3d.com/Packages/com.unity.xr.openxr@1.6/
+    Three files are redistributed unmodified:
+        UnityOpenXR.dll
+        openxr_loader.dll                 (the Khronos OpenXR loader)
+        UnitySubsystemsManifest.json
+    The package's source is under the Unity Companion License; its binaries are
+    under the Unity Package Distribution License, which permits exactly this
+    redistribution. Both licence texts travel with the binaries, as
+    UnityOpenXR-LICENSE.md and UnityOpenXR-THIRD-PARTY-NOTICES.md next to the
+    DLLs, as those licences require.
+
+    Version 1.6.0 is pinned because its package.json declares compatibility with
+    Unity 2020.3, the engine this game was built with.
+
+BepInEx/interop
+    NOT redistributed, by design. Il2CppInterop generates these proxy
+    assemblies on the user's machine, from the user's own installed copy of
+    the game, on first launch. They describe the game's types and are a
+    derivative of the shipped binary, so they are neither committed to this
+    repository nor placed in a release archive.

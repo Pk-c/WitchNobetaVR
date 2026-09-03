@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>apidump</AssemblyName>
+    <RootNamespace>ApiDump</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- No native apphost: the 8.0.100 SDK on this machine has a broken CreateAppHost
+         task, and this tool is only ever launched through `dotnet apidump.dll` anyway. -->
+    <UseAppHost>false</UseAppHost>
+    <OutputPath>$(MSBuildThisFileDirectory)..\..\build\apidump\</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Reflection.MetadataLoadContext" Version="8.0.0" />
+  </ItemGroup>
+</Project>
