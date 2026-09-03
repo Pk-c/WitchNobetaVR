@@ -113,7 +113,18 @@
       <HintPath>$(Interop)\Unity.InputSystem.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="Assembly-CSharp">
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(Interop)\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>$(Interop)\Unity.TextMeshPro.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="MarsSDK.Runtime">
+      <HintPath>$(Interop)\MarsSDK.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>    <Reference Include="Assembly-CSharp">
       <HintPath>$(Interop)\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>

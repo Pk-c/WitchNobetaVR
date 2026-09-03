@@ -1,0 +1,432 @@
+using System;
+using System.Collections.Generic;
+using System.Text;
+using Il2CppInterop.Runtime;
+using NobetaVR.Input;
+using NobetaVR.Vr;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace NobetaVR.Ui
+{
+    /// <summary>
+    /// The mod's own settings, in the headset, on a panel you can read while wearing it.
+    ///
+    /// Built as a world-space canvas rather than captured like the game's interface. Nothing
+    /// here exists on the flat screen to capture, and a world-space canvas renders in stereo by
+    /// itself, at full resolution, with no texture in the middle.
+    ///
+    /// The whole page is one text block with the selected line marked, rather than a widget per
+    /// setting. It reads the same, it cannot be mislaid by a layout group, and it means the menu
+    /// needs exactly two objects on screen instead of one per row.
+    /// </summary>
+    public sealed class VrMenu : MonoBehaviour
+    {
+        public VrMenu(IntPtr ptr) : base(ptr) { }
+
+        private sealed class Item
+        {
+            public string Label;
+            public Func<string> Value;
+            public Action<int> Adjust;   // -1 or +1; null for a heading
+            public Action Activate;      // for items that do something rather than hold a value
+            public bool IsHeading;
+        }
+
+        private readonly List<Item> _items = new();
+        private int _selected;
+
+        private GameObject _root;
+        private Text _text;
+        private bool _open;
+        private bool _failed;
+
+        private bool _toggleHeld;
+        private Vector2 _lastStick;
+        private float _repeatAt;
+
+        public bool IsOpen => _open;
+
+        internal static VrMenu Instance { get; private set; }
+
+        private void Start()
+        {
+            Instance = this;
+            BuildItems();
+        }
+
+        private void Update()
+        {
+            if (_failed) return;
+
+            var controls = VrControls.Instance;
+            if (controls == null) return;
+
+            HandleToggle(controls);
+            if (!_open) return;
+
+            HandleNavigation(controls);
+            Place();
+            Redraw();
+        }
+
+        // -- opening -------------------------------------------------------------------
+
+        /// <summary>
+        /// Both sticks clicked together. Checked before the individual bindings elsewhere get a
+        /// look in, so that opening the menu does not also recentre you.
+        /// </summary>
+        private void HandleToggle(VrControls controls)
+        {
+            var both = controls.Input.Pressed(VrInput.Hand.Left, VrInput.Button.StickClick)
+                    && controls.Input.Pressed(VrInput.Hand.Right, VrInput.Button.StickClick);
+
+            if (both && !_toggleHeld) Toggle();
+            _toggleHeld = both;
+        }
+
+        private void Toggle()
+        {
+            if (!_open && _root == null && !Build()) return;
+
+            _open = !_open;
+            if (_root != null) _root.SetActive(_open);
+            if (_open) Redraw();
+            Plugin.Log.LogInfo(_open ? "VR menu opened" : "VR menu closed");
+        }
+
+        // -- input ---------------------------------------------------------------------
+
+        private void HandleNavigation(VrControls controls)
+        {
+            var stick = controls.Input.LeftStick;
+            const float dead = 0.5f;
+
+            var vertical = Mathf.Abs(stick.y) > Mathf.Abs(stick.x);
+
+            if (vertical && Mathf.Abs(stick.y) > dead)
+            {
+                if (Repeat(stick)) MoveSelection(stick.y > 0 ? -1 : 1);
+            }
+            else if (!vertical && Mathf.Abs(stick.x) > dead)
+            {
+                if (Repeat(stick)) _items[_selected].Adjust?.Invoke(stick.x > 0 ? 1 : -1);
+            }
+            else
+            {
+                _lastStick = Vector2.zero;
+            }
+
+            // A activates; the same button the game uses to confirm.
+            if (controls.Input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary) && !_activateHeld)
+                _items[_selected].Activate?.Invoke();
+            _activateHeld = controls.Input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
+        }
+
+        private bool _activateHeld;
+
+        private bool Repeat(Vector2 stick)
+        {
+            var fresh = _lastStick.sqrMagnitude < 0.25f;
+            _lastStick = stick;
+
+            if (fresh)
+            {
+                _repeatAt = Time.unscaledTime + 0.35f;
+                return true;
+            }
+
+            if (Time.unscaledTime < _repeatAt) return false;
+            _repeatAt = Time.unscaledTime + 0.10f;
+            return true;
+        }
+
+        private void MoveSelection(int delta)
+        {
+            for (var i = 0; i < _items.Count; i++)
+            {
+                _selected = (_selected + delta + _items.Count) % _items.Count;
+                if (!_items[_selected].IsHeading) return;   // headings are never selectable
+            }
+        }
+
+        // -- content -------------------------------------------------------------------
+
+        private void BuildItems()
+        {
+            var cfg = Plugin.Instance;
+
+            _items.Clear();
+            _items.Add(new Item { Label = "CONTROL", IsHeading = true });
+
+            _items.Add(new Item
+            {
+                Label = "Turn mode",
+                Value = () => cfg.SmoothTurn.Value ? "Smooth" : "Snap",
+                Adjust = _ => cfg.SmoothTurn.Value = !cfg.SmoothTurn.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Snap turn angle",
+                Value = () => $"{cfg.SnapTurnDegrees.Value:F0}°",
+                Adjust = d => cfg.SnapTurnDegrees.Value = Mathf.Clamp(cfg.SnapTurnDegrees.Value + d * 5f, 5f, 180f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Smooth turn speed",
+                Value = () => $"{cfg.SmoothTurnSpeed.Value:F0}°/s",
+                Adjust = d => cfg.SmoothTurnSpeed.Value = Mathf.Clamp(cfg.SmoothTurnSpeed.Value + d * 10f, 20f, 360f),
+            });
+
+            _items.Add(new Item { Label = "", IsHeading = true });
+            _items.Add(new Item { Label = "HEAD", IsHeading = true });
+
+            _items.Add(Axis("Head offset X", () => cfg.HeadOffsetX));
+            _items.Add(Axis("Head offset Y", () => cfg.HeadOffsetY));
+            _items.Add(Axis("Head offset Z", () => cfg.HeadOffsetZ));
+
+            _items.Add(new Item
+            {
+                Label = "Head bobbing",
+                Value = () => cfg.HeadBobbing.Value ? "On" : "Off",
+                Adjust = _ => cfg.HeadBobbing.Value = !cfg.HeadBobbing.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Head hide distance",
+                Value = () => $"{cfg.HeadHideDistance.Value:F2} m",
+                Adjust = d => cfg.HeadHideDistance.Value =
+                    Mathf.Clamp(cfg.HeadHideDistance.Value + d * 0.01f, 0f, 1f),
+            });
+
+            _items.Add(new Item { Label = "", IsHeading = true });
+            _items.Add(new Item { Label = "HANDS", IsHeading = true });
+
+            _items.Add(new Item
+            {
+                Label = "Hand tracking",
+                Value = () => cfg.HandTracking.Value ? "On" : "Off",
+                Adjust = _ => cfg.HandTracking.Value = !cfg.HandTracking.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Hand style",
+                Value = () => cfg.DetachedHands.Value ? "Hands only" : "Full arms (IK)",
+                Adjust = _ => cfg.DetachedHands.Value = !cfg.DetachedHands.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Hand reach scale",
+                Value = () => $"{cfg.HandReachScale.Value:F2}",
+                Adjust = d => cfg.HandReachScale.Value =
+                    Mathf.Clamp(cfg.HandReachScale.Value + d * 0.05f, 0.2f, 1.5f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Forearm twist share",
+                Value = () => $"{cfg.ForearmTwistShare.Value:F2}",
+                Adjust = d => cfg.ForearmTwistShare.Value =
+                    Mathf.Clamp(cfg.ForearmTwistShare.Value + d * 0.05f, 0f, 1f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Wrist follows controller",
+                Value = () => cfg.HandFollowRotation.Value ? "On" : "Off",
+                Adjust = _ => cfg.HandFollowRotation.Value = !cfg.HandFollowRotation.Value,
+            });
+            _items.Add(Axis("Hand offset side", () => cfg.HandOffsetSide));
+            _items.Add(Axis("Hand offset up", () => cfg.HandOffsetUp));
+            _items.Add(Axis("Hand offset forward", () => cfg.HandOffsetForward));
+            _items.Add(new Item
+            {
+                Label = "Hand pitch",
+                Value = () => $"{cfg.HandRotationPitch.Value:F0}°",
+                Adjust = d => cfg.HandRotationPitch.Value =
+                    Mathf.Clamp(cfg.HandRotationPitch.Value + d * 5f, -180f, 180f),
+            });
+            _items.Add(Degrees("Hand yaw", () => cfg.HandRotationYaw));
+            _items.Add(Degrees("Hand roll", () => cfg.HandRotationRoll));
+
+            _items.Add(new Item { Label = "", IsHeading = true });
+            _items.Add(new Item
+            {
+                Label = "Reset to default",
+                Value = () => "(A)",
+                Activate = ResetToDefault,
+            });
+
+            MoveSelection(1);   // land on the first real item rather than a heading
+        }
+
+        private static Item Degrees(string label, Func<BepInEx.Configuration.ConfigEntry<float>> entry) => new()
+        {
+            Label = label,
+            Value = () => $"{entry().Value:F0}°",
+            Adjust = d => entry().Value = Mathf.Clamp(entry().Value + d * 5f, -180f, 180f),
+        };
+
+        private static Item Axis(string label, Func<BepInEx.Configuration.ConfigEntry<float>> entry) => new()
+        {
+            Label = label,
+            Value = () => $"{entry().Value:F2} m",
+            Adjust = d => entry().Value = Mathf.Clamp(entry().Value + d * 0.01f, -0.5f, 0.5f),
+        };
+
+        private void ResetToDefault()
+        {
+            var cfg = Plugin.Instance;
+            foreach (var entry in new BepInEx.Configuration.ConfigEntryBase[]
+                     {
+                         cfg.SmoothTurn, cfg.SnapTurnDegrees, cfg.SmoothTurnSpeed,
+                         cfg.HeadOffsetX, cfg.HeadOffsetY, cfg.HeadOffsetZ,
+                         cfg.HeadBobbing, cfg.HeadHideDistance,
+                         cfg.HandTracking, cfg.DetachedHands, cfg.HandReachScale, cfg.HandFollowRotation,
+                         cfg.ForearmTwistShare,
+                         cfg.HandOffsetSide, cfg.HandOffsetUp,
+                         cfg.HandOffsetForward, cfg.HandRotationPitch,
+                         cfg.HandRotationYaw, cfg.HandRotationRoll,
+                     })
+            {
+                entry.BoxedValue = entry.DefaultValue;
+            }
+            Plugin.Log.LogInfo("VR menu reset to defaults");
+        }
+
+        // -- drawing -------------------------------------------------------------------
+
+        private void Redraw()
+        {
+            if (_text == null) return;
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<b>NobetaVR</b>  <size=18>by Pk_c@ChromaticMod</size>");
+            sb.AppendLine();
+
+            for (var i = 0; i < _items.Count; i++)
+            {
+                var item = _items[i];
+                if (item.IsHeading)
+                {
+                    sb.AppendLine(string.IsNullOrEmpty(item.Label) ? "" : $"<b>{item.Label}</b>");
+                    continue;
+                }
+
+                var marker = i == _selected ? "<color=#FFD24A>▸ " : "  ";
+                var close = i == _selected ? "</color>" : "";
+                sb.AppendLine($"{marker}{item.Label,-22}{item.Value?.Invoke()}{close}");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("<size=18>Left stick: move and change   A: activate   Both sticks: close</size>");
+
+            _text.text = sb.ToString();
+        }
+
+        /// <summary>Sits where the HUD does, so both are read in the same place.</summary>
+        private void Place()
+        {
+            var camera = VrCamera.CameraTransform;
+            if (camera == null || _root == null) return;
+
+            var forward = camera.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 0.0001f) return;
+            forward.Normalize();
+
+            _root.transform.position = camera.position + forward * Plugin.Instance.MenuDistance.Value;
+            _root.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
+        }
+
+        // -- construction --------------------------------------------------------------
+
+        private bool Build()
+        {
+            var font = FindFont();
+            if (font == null)
+            {
+                Plugin.Log.LogError("No font could be obtained at all, so the VR menu would be an "
+                                  + "empty box. Leaving it off.");
+                _failed = true;
+                return false;
+            }
+
+            _root = new GameObject("NobetaVR Menu");
+            UnityEngine.Object.DontDestroyOnLoad(_root);
+            _root.hideFlags = HideFlags.HideAndDontSave;
+
+            var canvas = _root.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+            var rect = canvas.GetComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(900f, 760f);
+
+            // One millimetre per canvas unit: the page is authored at a comfortable pixel size
+            // and then scaled down to metres, which keeps the text crisp in the headset.
+            _root.transform.localScale = Vector3.one * 0.001f;
+
+            var background = new GameObject("Background").AddComponent<Image>();
+            background.transform.SetParent(_root.transform, false);
+            background.color = new Color(0.04f, 0.04f, 0.06f, 0.85f);
+            var backRect = background.GetComponent<RectTransform>();
+            backRect.anchorMin = Vector2.zero;
+            backRect.anchorMax = Vector2.one;
+            backRect.offsetMin = Vector2.zero;
+            backRect.offsetMax = Vector2.zero;
+
+            var textObject = new GameObject("Text");
+            textObject.transform.SetParent(_root.transform, false);
+            _text = textObject.AddComponent<Text>();
+            _text.font = font;
+            _text.fontSize = 28;
+            _text.color = Color.white;
+            _text.supportRichText = true;
+            _text.alignment = TextAnchor.UpperLeft;
+            _text.horizontalOverflow = HorizontalWrapMode.Overflow;
+            _text.verticalOverflow = VerticalWrapMode.Overflow;
+
+            var textRect = _text.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = new Vector2(40f, 40f);
+            textRect.offsetMax = new Vector2(-40f, -40f);
+
+            _root.SetActive(false);
+            Plugin.Log.LogInfo($"VR menu built with font '{font.name}'");
+            return true;
+        }
+
+        /// <summary>
+        /// Gets a font without depending on the game having one we can reach.
+        ///
+        /// The first attempt borrowed TextMeshPro assets from the game and found none:
+        /// `Assembly-CSharp` turns out to reference neither TMP nor uGUI text types at all, so
+        /// there was nothing to borrow. Asking the operating system removes the question —
+        /// `CreateDynamicFontFromOSFont` builds a font from what Windows already has, needs no
+        /// asset from anywhere, and cannot be stripped out of the build because it is an engine
+        /// binding rather than content.
+        /// </summary>
+        private static Font FindFont()
+        {
+            foreach (var name in new[] { "Segoe UI", "Arial", "Tahoma", "Verdana" })
+            {
+                try
+                {
+                    var font = Font.CreateDynamicFontFromOSFont(name, 28);
+                    if (font != null)
+                    {
+                        Plugin.Log.LogInfo($"VR menu using the OS font '{name}'");
+                        return font;
+                    }
+                }
+                catch (Exception e)
+                {
+                    Plugin.Log.LogWarning($"OS font '{name}' unavailable: {e.Message}");
+                }
+            }
+
+            try { return Font.GetDefault(); }
+            catch (Exception e) { Plugin.Log.LogWarning($"Font.GetDefault failed: {e.Message}"); }
+
+            return null;
+        }
+    }
+}

@@ -28,7 +28,13 @@ namespace NobetaVR
         internal ConfigEntry<bool> FirstPerson;
         internal ConfigEntry<float> EyeOffsetForward;
         internal ConfigEntry<float> EyeOffsetUp;
-        internal ConfigEntry<bool> HideHead;
+        internal ConfigEntry<float> HeadHideDistance;
+        internal ConfigEntry<bool> HeadBobbing;
+        internal ConfigEntry<float> HeadOffsetX;
+        internal ConfigEntry<float> HeadOffsetY;
+        internal ConfigEntry<float> HeadOffsetZ;
+        internal ConfigEntry<float> MenuDistance;
+        internal ConfigEntry<float> MenuDeadzone;
         internal ConfigEntry<string> HeadBoneName;
         internal ConfigEntry<bool> YawFromGameCamera;
         internal ConfigEntry<bool> DisableRespiration;
@@ -44,6 +50,31 @@ namespace NobetaVR
         internal ConfigEntry<float> NeckModelDown;
         internal ConfigEntry<float> NeckModelBack;
         internal ConfigEntry<bool> BodyFollowsView;
+        internal ConfigEntry<bool> HandTracking;
+        internal ConfigEntry<bool> DetachedHands;
+        internal ConfigEntry<float> HandVertexWeight;
+        internal ConfigEntry<bool> CarryHandAttachments;
+        internal ConfigEntry<float> HandReachScale;
+        internal ConfigEntry<float> HandOffsetSide;
+        internal ConfigEntry<float> HandOffsetUp;
+        internal ConfigEntry<float> HandOffsetForward;
+        internal ConfigEntry<float> HandRotationPitch;
+        internal ConfigEntry<float> HandRotationYaw;
+        internal ConfigEntry<float> HandRotationRoll;
+        internal ConfigEntry<bool> HandFollowRotation;
+        internal ConfigEntry<float> ForearmTwistShare;
+        internal ConfigEntry<bool> HandDiagnostics;
+        internal ConfigEntry<bool> DisableGameAimIk;
+        internal ConfigEntry<bool> StopFinalIkFixTransforms;
+        internal ConfigEntry<bool> AimFromView;
+        internal ConfigEntry<float> AimDistance;
+        internal ConfigEntry<bool> HudEnabled;
+        internal ConfigEntry<float> HudDistance;
+        internal ConfigEntry<float> HudSize;
+        internal ConfigEntry<float> HudHeightOffset;
+        internal ConfigEntry<float> HudFollowSpeed;
+        internal ConfigEntry<int> HudResolutionWidth;
+        internal ConfigEntry<int> HudResolutionHeight;
         internal ConfigEntry<bool> AlignViewToBodyOnSpawn;
 
         public override void Load()
@@ -104,11 +135,133 @@ namespace NobetaVR
               + "EyeOffsetForward this is the one thing worth tuning by eye — it is model "
               + "geometry, not preference.");
 
-            HideHead = Config.Bind(
-                "Camera", "HideHead", true,
-                "Scales the head bone to nothing so you are not inside Nobeta's skull. The hair "
-              + "is parented to that bone and goes with it. Turn off to see her head from the "
-              + "outside while adjusting the eye offsets.");
+            HandTracking = Config.Bind(
+                "Hands", "HandTracking", true,
+                "Puts Nobeta's hands where your controllers are, bending her arms to follow. The "
+              + "game ships no limb IK — only an aim solver, a look-at and one for her hair — so "
+              + "the mod solves the arms itself and corrects the animated pose rather than "
+              + "replacing it.");
+
+            DetachedHands = Config.Bind("Hands", "DetachedHands", true,
+                "Shows the hands alone, exactly where your controllers are, with the arms hidden. "
+              + "This rig fights arm IK on every front — one forearm bone to spread a wrist roll "
+              + "over, wrist vertices shared with a sleeve, and a dynamic-bone cape sharing "
+              + "LateUpdate — for a pair of arms you can barely see in first person anyway. With "
+              + "them gone there is no reach to run out of and nothing to tune: your hand is "
+              + "where your hand is. Turn this off to drive her real arms with IK instead.");
+
+            HandVertexWeight = Config.Bind("Hands", "HandVertexWeight", 0.5f,
+                "How much of a vertex must belong to the hand bone for it to be cut out with the "
+              + "hand, from 0 to 1. Lower takes more of the wrist and risks a ragged edge where "
+              + "the sleeve was; higher gives a cleaner cut and a shorter hand.");
+
+            CarryHandAttachments = Config.Bind("Hands", "CarryHandAttachments", true,
+                "Moves what is parented to the hand — the wand — onto the detached hand, so it "
+              + "goes where your hand goes. Without it the wand stays on the real hand, which is "
+              + "collapsed into the shoulder, so it never appears at all. Only things that draw "
+              + "something are moved: finger bones live there too, and taking those out of the "
+              + "skeleton deforms the character's own hand.");
+
+            HandReachScale = Config.Bind("Hands", "HandReachScale", 0.6f,
+                "How much of your reach maps onto Nobeta's. She is a child and you are not: her "
+              + "arms span perhaps half of yours, so at 1.0 most of your range asks for a hand "
+              + "further than she can put one, and the arm locks out straight. Lower it if her "
+              + "arms still snap straight at the edges of your reach, raise it if her hands feel "
+              + "like they lag behind yours.");
+
+            HandOffsetSide = Config.Bind("Hands", "HandOffsetSide", 0f,
+                "Sideways offset from the controller to the hand bone, in metres. Mirrored "
+              + "between hands, so one value serves both.");
+            HandOffsetUp = Config.Bind("Hands", "HandOffsetUp", 0f,
+                "Vertical offset from the controller to the hand bone, in metres.");
+            HandOffsetForward = Config.Bind("Hands", "HandOffsetForward", -0.04f,
+                "Forward offset from the controller to the hand bone, in metres, in the "
+              + "controller's own frame. Negative by "
+              + "default because a controller is gripped in the palm while the bone sits at the "
+              + "wrist, a little behind it.");
+            HandRotationPitch = Config.Bind("Hands", "HandRotationPitch", 0f,
+                "Wrist pitch adjustment, in degrees. Zero by default: the difference between how "
+              + "a controller is held and how the hand bone is oriented is taken from the rig "
+              + "itself, so an identity controller rotation reproduces the pose the animator "
+              + "authored. These three are for taste, not for correcting the rig.");
+            ForearmTwistShare = Config.Bind("Hands", "ForearmTwistShare", 0.6f,
+                "How much of the wrist's roll the forearm takes, from 0 to 1. A real forearm "
+              + "carries pronation along its whole length, so turning a palm over rotates the arm "
+              + "from the elbow down; a rig with a single forearm bone has nowhere to put that, "
+              + "and leaving it all on the hand shears the wrist. Raise it if the wrist still "
+              + "looks wrung, lower it if the elbow rolls when only the hand should.");
+
+            HandFollowRotation = Config.Bind("Hands", "HandFollowRotation", true,
+                "Lets the controller twist the wrist. Turn it off if the forearm wrings: its "
+              + "vertices are "
+              + "weighted partly to the hand bone, so a large wrist angle can wring it, and from "
+              + "inside a headset that looks exactly like the arm itself being broken. With it "
+              + "off the hand keeps the animated relationship to the forearm, which is always "
+              + "anatomically right and is the way to judge the arm on its own.");
+
+            StopFinalIkFixTransforms = Config.Bind("Hands", "StopFinalIkFixTransforms", true,
+                "Stops FinalIK restoring the animated pose over the mod's arm solve. Its solvers "
+              + "rewind every bone they manage at the start of their own update — restoration, "
+              + "not solving, so it happens even at weight zero — and they update in LateUpdate "
+              + "exactly as this mod does, in an order Unity does not define. The arm was "
+              + "therefore erased on some frames and not others, which is the flicker, and a limb "
+              + "snapping between two poses is what shook the cape.");
+
+            DisableGameAimIk = Config.Bind("Hands", "DisableGameAimIk", true,
+                "Stands the game's own aim IK down while hand tracking is driving the arms. That "
+              + "solver swings the upper body to point the wand, its chain runs through the "
+              + "spine, and it updates in LateUpdate exactly as this mod does — with no ordering "
+              + "guarantee between them, so the arm flicked between the two poses frame by frame "
+              + "and the cape was dragged along by the spine. Aiming is not lost: it comes from "
+              + "the view instead.");
+
+            HandDiagnostics = Config.Bind("Hands", "HandDiagnostics", true,
+                "Writes the arm's bone lengths, the distance being asked of it, and the bone "
+              + "scales to the log once a second. On by default while the arms are being brought "
+              + "up, because those numbers say whether a bad-looking arm is out of reach or "
+              + "sheared by a non-uniform scale, and no amount of looking at it can.");
+
+            AimFromView = Config.Bind("Aim", "AimFromView", true,
+                "Puts the game's aim target on the line you are looking down. On a monitor that "
+              + "line comes from the third-person camera and a reticle painted over the world; "
+              + "in the headset the camera has moved into Nobeta's head and the reticle is on a "
+              + "floating panel, so the shot goes somewhere defensible with nothing to say "
+              + "where. Aiming later moves to the wand hand.");
+
+            AimDistance = Config.Bind("Aim", "AimDistance", 15f,
+                "How far down the view the aim target sits when nothing is in the way, in "
+              + "metres. When something is, the target lands on it instead.");
+
+            HandRotationYaw = Config.Bind("Hands", "HandRotationYaw", 0f,
+                "Wrist yaw adjustment, in degrees.");
+            HandRotationRoll = Config.Bind("Hands", "HandRotationRoll", 0f,
+                "Wrist roll adjustment, in degrees.");
+
+            HeadHideDistance = Config.Bind(
+                "Camera", "HeadHideDistance", 0.35f,
+                "How close the camera has to get to the head bone, in metres, before her head is "
+              + "hidden. The head is only a problem while your eyes are inside the mesh, and is "
+              + "wanted the rest of the time — when a cutscene pulls back, or an animation "
+              + "carries her head away from the view. Raise it if you catch sight of the inside "
+              + "of her face; lower it if her head vanishes when it should not.");
+
+            HeadBobbing = Config.Bind(
+                "Camera", "HeadBobbing", false,
+                "Lets the walk animation move your viewpoint, because the view rides her head "
+              + "bone. It is the difference between inhabiting her and floating behind her eyes; "
+              + "it is also the first thing to turn off if walking makes you queasy.");
+
+            HeadOffsetX = Config.Bind("Camera", "HeadOffsetX", 0f,
+                "Your own adjustment to the eye position, sideways, in metres. Separate from the "
+              + "eye offsets above, which are the model's geometry rather than your preference.");
+            HeadOffsetY = Config.Bind("Camera", "HeadOffsetY", 0.23f, "Your own adjustment, up, in metres.");
+            HeadOffsetZ = Config.Bind("Camera", "HeadOffsetZ", 0f, "Your own adjustment, forward, in metres.");
+
+            MenuDistance = Config.Bind("Interface", "MenuDistance", 1.2f,
+                "How far in front of you the mod's own settings panel sits, in metres.");
+
+            MenuDeadzone = Config.Bind("Interface", "MenuDeadzone", 0.5f,
+                "How far the stick must move to step through a menu.");
 
             HeadBoneName = Config.Bind(
                 "Camera", "HeadBoneName", "",
@@ -161,7 +314,7 @@ namespace NobetaVR
               + "the stomach.");
 
             SmoothTurnSpeed = Config.Bind(
-                "Controls", "SmoothTurnSpeed", 120f,
+                "Controls", "SmoothTurnSpeed", 130f,
                 "Degrees per second when SmoothTurn is on.");
 
             AlignViewToBodyOnSpawn = Config.Bind(
@@ -206,6 +359,41 @@ namespace NobetaVR
               + "otherwise teleport the character across the level; anything larger is treated "
               + "as a bad sample and absorbed rather than walked.");
 
+            HudEnabled = Config.Bind(
+                "Interface", "HudEnabled", true,
+                "Shows the game's interface on a panel in front of you. The interface is "
+              + "captured rather than rebuilt: screen-space canvases are drawn through a camera "
+              + "of ours into a texture, so Unity keeps control of the layout and the game's own "
+              + "HUD animations keep working. Without this the interface is invisible in the "
+              + "headset — screen-space overlay draws straight to the display, and neither eye "
+              + "renders it.");
+
+            HudDistance = Config.Bind(
+                "Interface", "HudDistance", 1.6f,
+                "How far in front of you the panel sits, in metres.");
+
+            HudSize = Config.Bind(
+                "Interface", "HudSize", 1.8f,
+                "Panel width in metres. Height follows from the capture aspect ratio.");
+
+            HudHeightOffset = Config.Bind(
+                "Interface", "HudHeightOffset", 0f,
+                "Raises or lowers the panel relative to eye level, in metres.");
+
+            HudFollowSpeed = Config.Bind(
+                "Interface", "HudFollowSpeed", 6f,
+                "How quickly the panel catches up with your head. The lag is deliberate: a panel "
+              + "welded to the head is hard to read and makes the world feel strapped to your "
+              + "face. Higher is tighter; very high is uncomfortable.");
+
+            HudResolutionWidth = Config.Bind(
+                "Interface", "HudResolutionWidth", 1920,
+                "Width of the texture the interface is captured into.");
+
+            HudResolutionHeight = Config.Bind(
+                "Interface", "HudResolutionHeight", 1080,
+                "Height of the texture the interface is captured into.");
+
             Log.LogInfo($"NobetaVR {Version} loading");
 
             if (!Enabled.Value)
@@ -219,6 +407,9 @@ namespace NobetaVR
             ClassInjector.RegisterTypeInIl2Cpp<VrRuntime>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Vr.VrCamera>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Input.VrControls>();
+            ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.HudPanel>();
+            ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.VrMenu>();
+            ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Vr.VrHands>();
             // Reported rather than assumed: a patch that silently fails to apply would look
             // exactly like the bug it was written to fix.
             try
@@ -239,6 +430,9 @@ namespace NobetaVR
             host.hideFlags = HideFlags.HideAndDontSave;
             host.AddComponent<VrRuntime>();
             host.AddComponent<NobetaVR.Input.VrControls>();
+            host.AddComponent<NobetaVR.Ui.HudPanel>();
+            host.AddComponent<NobetaVR.Ui.VrMenu>();
+            host.AddComponent<NobetaVR.Vr.VrHands>();
         }
     }
 }

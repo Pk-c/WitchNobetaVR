@@ -21,6 +21,11 @@ namespace NobetaVR.Input
         internal static VrControls Instance { get; private set; }
 
         private readonly VrInput _input = new();
+        private readonly Ui.GameUiInput _gameUi = new();
+
+        /// <summary>The controllers, for anything else that needs to read them.</summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
+        internal VrInput Input => _input;
 
         /// <summary>Captured from a postfix on PlayerInputController.Init.</summary>
         internal PlayerInputController InputController;
@@ -43,6 +48,12 @@ namespace NobetaVR.Input
             _input.Poll();
             if (!_input.Connected) return;
 
+            // Our own menu reads the controllers itself, and a game menu takes them over while
+            // it is up. Either way the gameplay bindings stand down: without this the same
+            // stick both walks Nobeta and scrolls the menu she is standing in.
+            if (Ui.VrMenu.Instance != null && Ui.VrMenu.Instance.IsOpen) return;
+            if (_gameUi.Update(_input)) return;
+
             Recenter();
             Move();
             Turn();
@@ -55,6 +66,15 @@ namespace NobetaVR.Input
         /// </summary>
         private void Recenter()
         {
+            // Both sticks together opens the VR menu, so a right click with the left one down
+            // is not a recentre. Checked here rather than by ordering, because the menu is a
+            // separate component and their update order is not ours to decide.
+            if (_input.Pressed(VrInput.Hand.Left, VrInput.Button.StickClick))
+            {
+                _recenterHeld = true;
+                return;
+            }
+
             var held = _input.Pressed(VrInput.Hand.Right, VrInput.Button.StickClick);
             if (held && !_recenterHeld) Vr.HeadPose.Recenter();
             _recenterHeld = held;

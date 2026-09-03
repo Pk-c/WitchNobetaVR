@@ -50,7 +50,8 @@ foreach (var p in Directory.GetFiles(interop, "*.dll"))
 }
 
 var listTypes = args[0] == "--types";
-var needles = (listTypes ? args.Skip(1) : args).ToArray();
+var listMembers = args[0] == "--members";
+var needles = (listTypes || listMembers ? args.Skip(1) : args).ToArray();
 
 // Il2CppInterop emits some types whose metadata trips MetadataLoadContext when their name
 // is computed. Reading a name must never be able to kill the run.
@@ -72,6 +73,30 @@ foreach (var a in assemblies)
         var n = NameOf(t);
         if (n is not null) all.Add((a, t, n));
     }
+}
+
+// Which type declares a member with this name? The question comes up constantly when the
+// game's own code is the documentation, and searching by type name cannot answer it.
+if (listMembers)
+{
+    const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic
+                           | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    foreach (var needle in needles)
+    {
+        Console.WriteLine($"### members matching '{needle}'");
+        foreach (var (asm, type, name) in all)
+        {
+            MemberInfo[] members;
+            try { members = type.GetMembers(Any); } catch { continue; }
+            foreach (var m in members)
+            {
+                if (!m.Name.Contains(needle, StringComparison.OrdinalIgnoreCase)) continue;
+                Console.WriteLine($"  {name}.{m.Name}   [{asm.GetName().Name}]");
+            }
+        }
+        Console.WriteLine();
+    }
+    return 0;
 }
 
 foreach (var needle in needles)

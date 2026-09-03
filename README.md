@@ -68,6 +68,7 @@ Touch-style controllers. Everything here is remappable from
 | A | Jump |
 | B | Dodge roll |
 | Right trigger | Shoot |
+| Both sticks clicked | The mod's VR settings |
 
 Walking physically moves Nobeta, through the game's own collision. She turns to face wherever
 you look, including when you turn on the spot.

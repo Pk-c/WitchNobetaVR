@@ -50,6 +50,23 @@ namespace NobetaVR.Vr
 
         private readonly FirstPerson _firstPerson = new();
 
+        /// <summary>
+        /// Nobeta's head bone, or null before it resolves.
+        ///
+        /// Anything positioning parts of her body wants this rather than the camera. The camera
+        /// carries the player's comfort offsets, which have nothing to do with where her head
+        /// actually is.
+        /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
+        internal static Transform HeadBone => Instance?._firstPerson.HeadBone;
+
+        /// <summary>The transform the view is being written to, or null before one is bound.</summary>
+        internal static Transform CameraTransform => Instance?._target;
+
+        /// <summary>Points the view back down Nobeta's forward on the next frame.</summary>
+        internal static void RealignToBody() => Instance?._firstPerson.RealignToBody();
+
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         internal void Bind(XrLoader xr)
         {
             _xr = xr;
@@ -243,6 +260,13 @@ namespace NobetaVR.Vr
 
             _writtenPos = _target.position;
             _writtenRot = _target.rotation;
+
+            // Only now is the camera's real position known, and the head's visibility depends on
+            // it. Deciding earlier would test last frame's position against this frame's bone.
+            _firstPerson.UpdateHeadVisibility(_writtenPos);
+
+            // Same reason: the aim line is the view's line, and the view is only final here.
+            VrAim.Apply(_playerCamera, _target);
         }
 
         private void AcquireFallbackCamera()
