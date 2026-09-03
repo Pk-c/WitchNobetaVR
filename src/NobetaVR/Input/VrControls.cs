@@ -29,15 +29,78 @@ namespace NobetaVR.Input
         private bool _snapArmed = true;
         private bool _wasMoving;
 
+        // Held state from the previous frame, so a press can be told from a hold. Actions that
+        // fire once need the edge; actions the game tracks itself need the level.
+        private bool _recenterHeld, _jumpHeld, _dodgeHeld, _shootHeld, _runHeld;
+
         private void Awake() => Instance = this;
 
         private void Update()
         {
+            // Before anything reads it, so the camera and room-scale work from one sample.
+            Vr.HeadPose.Sample();
+
             _input.Poll();
             if (!_input.Connected) return;
 
+            Recenter();
             Move();
             Turn();
+            Actions();
+            Vr.RoomScale.Apply(Camera != null ? Camera.wizardGirl : null, Vr.VrCamera.ViewYaw);
+        }
+
+        /// <summary>
+        /// Puts the head back on Nobeta, on the edge of a press rather than while held.
+        /// </summary>
+        private void Recenter()
+        {
+            var held = _input.Pressed(VrInput.Hand.Right, VrInput.Button.StickClick);
+            if (held && !_recenterHeld) Vr.HeadPose.Recenter();
+            _recenterHeld = held;
+        }
+
+        /// <summary>
+        /// The rest of the on-foot controls.
+        ///
+        /// Each one calls the method the game's own bindings call, so nothing downstream can
+        /// tell a Touch controller from a pad. The split between edge and level is the game's,
+        /// not ours: `Jump` and `Dodge` are one-shots and must fire on the press only, while
+        /// `Shoot` and `Dash` take a held flag because the game tracks the hold itself and
+        /// needs to be told when it ends.
+        ///
+        /// A and B are on the right controller, X and Y on the left; the action set maps both
+        /// pairs to the same primary/secondary actions, so the hand is what picks between them.
+        /// </summary>
+        private void Actions()
+        {
+            if (InputController == null) return;
+
+            // A — jump
+            var jump = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
+            if (jump && !_jumpHeld) InputController.Jump();
+            _jumpHeld = jump;
+
+            // B — dodge roll
+            var dodge = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary);
+            if (dodge && !_dodgeHeld) InputController.Dodge();
+            _dodgeHeld = dodge;
+
+            // Right trigger — shoot
+            var shoot = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Trigger);
+            if (shoot != _shootHeld)
+            {
+                InputController.Shoot(shoot);
+                _shootHeld = shoot;
+            }
+
+            // Left stick click — run
+            var run = _input.Pressed(VrInput.Hand.Left, VrInput.Button.StickClick);
+            if (run != _runHeld)
+            {
+                InputController.Dash(run);
+                _runHeld = run;
+            }
         }
 
         /// <summary>

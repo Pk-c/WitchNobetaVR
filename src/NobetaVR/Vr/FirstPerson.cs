@@ -28,6 +28,7 @@ namespace NobetaVR.Vr
             _headScaleSaved = false;
             _comfortApplied = false;
             _candidatesReported = false;
+            _aligned = false;
         }
 
         /// <summary>
@@ -149,16 +150,10 @@ namespace NobetaVR.Vr
             if (head == null) return false;
 
             ApplyComfort();
+            AlignToBody();
             HideHead();
 
             var cfg = Plugin.Instance;
-
-            // The offset is in head-bone space, so it follows the head when an animation turns
-            // it. The bone sits at the base of the skull on most rigs, and the eyes are forward
-            // and up from there; the exact numbers belong to the model, so they are settings
-            // rather than constants.
-            position = head.position
-                     + head.rotation * new Vector3(0f, cfg.EyeOffsetUp.Value, cfg.EyeOffsetForward.Value);
 
             // Yaw from the game, pitch and roll from your neck.
             //
@@ -169,6 +164,17 @@ namespace NobetaVR.Vr
             var yaw = gameCameraRotation.eulerAngles.y + cfg.ViewYawOffset.Value;
             rotation = cfg.YawFromGameCamera.Value ? Quaternion.Euler(0f, yaw, 0f)
                                                    : Quaternion.identity;
+
+            // The bone gives a position; the direction to nudge it in comes from the view.
+            //
+            // Not from the bone's own axes. `Bip001 Head` is a 3ds Max Biped bone and its local
+            // frame has nothing to do with which way the character is looking — measured at 96
+            // degrees off the view. Offsetting in that frame sent the eye point sideways and
+            // backwards into her body, which looks for all the world like the camera being
+            // turned around. Offsetting along the view is indifferent to how the rig was
+            // authored.
+            position = head.position
+                     + rotation * new Vector3(0f, cfg.EyeOffsetUp.Value, cfg.EyeOffsetForward.Value);
 
             ReportFacing(gameCameraRotation, head);
             return true;
@@ -200,6 +206,36 @@ namespace NobetaVR.Vr
                              + $"camera->headBone {Vector3.Angle(camFwd, headFwd):F1} deg, "
                              + $"head localScale {head.localScale}");
         }
+
+        /// <summary>
+        /// Points the view where Nobeta is facing, once, when a stage opens.
+        ///
+        /// The game is free to frame a new stage however it likes, and it does not always park
+        /// the camera behind her — so the first thing you see can be her spawn direction from
+        /// the wrong side, which in a headset means starting the level facing backwards. On a
+        /// monitor that is a camera angle; in VR it is where your body is pointing.
+        ///
+        /// Now that the body follows the view, this cannot be left to correct itself: she would
+        /// simply turn to match the wrong direction and stay there. So the camera's own yaw is
+        /// set to hers, through the same `g_fX` the turn control writes, which keeps the view,
+        /// the movement frame and the game's idea of the camera as one value.
+        /// </summary>
+        private void AlignToBody()
+        {
+            if (_aligned || !Plugin.Instance.AlignViewToBodyOnSpawn.Value) return;
+            if (_playerCamera == null) return;
+
+            var girl = _playerCamera.wizardGirl;
+            if (girl == null) return;
+
+            _aligned = true;
+
+            var bodyYaw = girl.transform.eulerAngles.y;
+            Plugin.Log.LogInfo($"aligning view to body at spawn: g_fX {_playerCamera.g_fX:F1} -> {bodyYaw:F1}");
+            _playerCamera.g_fX = bodyYaw;
+        }
+
+        private bool _aligned;
 
         /// <summary>
         /// Turns off the two things the game does to its camera that stop being charming once

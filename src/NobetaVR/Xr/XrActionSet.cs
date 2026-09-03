@@ -91,6 +91,31 @@ namespace NobetaVR.Xr
         };
 
         /// <summary>
+        /// Makes a name usable as an OpenXR path component.
+        ///
+        /// Paths are lowercase, and only letters, digits, and <c>- . _ /</c> are allowed.
+        /// A capital letter is not tolerated and not corrected: the runtime answers
+        /// XR_ERROR_PATH_FORMAT_INVALID and the action is simply never created. That failure
+        /// then hides — the action set still attaches, the devices still register, and the
+        /// only symptom is that half the controls silently do nothing. The package has a
+        /// SanitizeStringForOpenXRPath for exactly this; leaving it out cost every action
+        /// whose name was camelCase.
+        /// </summary>
+        private static string SanitizePath(string name)
+        {
+            var chars = new char[name.Length];
+            var n = 0;
+            foreach (var c in name)
+            {
+                if (char.IsUpper(c)) chars[n++] = char.ToLowerInvariant(c);
+                else if (char.IsLower(c) || char.IsDigit(c)) chars[n++] = c;
+                else if (c is '-' or '.' or '_' or '/') chars[n++] = c;
+                // anything else is dropped, as the package does
+            }
+            return new string(chars, 0, n);
+        }
+
+        /// <summary>
         /// Builds and commits the action set. Called once per session, after xrBeginSession and
         /// before the input subsystem starts — the order the package uses, and the order the
         /// runtime requires: actions cannot be attached to a session that has not begun, and
@@ -112,7 +137,7 @@ namespace NobetaVR.Xr
             }
 
             var guid = default(Native.SerializedGuid);
-            var actionSet = Native.CreateActionSet("nobetavr", "NobetaVR", guid);
+            var actionSet = Native.CreateActionSet(SanitizePath("nobetavr"), "NobetaVR", guid);
             if (actionSet == 0)
             {
                 log.LogError($"Could not create the action set. {Native.LastError()}");
@@ -121,11 +146,12 @@ namespace NobetaVR.Xr
 
             var bindings = new List<Native.SerializedBinding>();
             var hands = new[] { LeftHand, RightHand };
+            var created = 0;
 
             foreach (var action in Actions)
             {
                 var actionId = Native.CreateAction(
-                    actionSet, action.Name, action.Name, (uint)action.Type, guid,
+                    actionSet, SanitizePath(action.Name), action.Name, (uint)action.Type, guid,
                     hands, (uint)hands.Length,
                     new[] { action.Usage }, 1);
 
@@ -134,6 +160,8 @@ namespace NobetaVR.Xr
                     log.LogWarning($"Action '{action.Name}' was refused. {Native.LastError()}");
                     continue;
                 }
+
+                created++;
 
                 foreach (var hand in hands)
                 {
@@ -157,7 +185,11 @@ namespace NobetaVR.Xr
                 return false;
             }
 
-            log.LogInfo($"controller actions attached: {Actions.Length} actions, {bindings.Count} bindings");
+            // Reports what was created, not what was asked for. The first version logged the
+            // latter and read as a success while seven of twelve actions had been refused.
+            if (created < Actions.Length)
+                log.LogWarning($"{Actions.Length - created} of {Actions.Length} actions were refused.");
+            log.LogInfo($"controller actions attached: {created} actions, {bindings.Count} bindings");
             return true;
         }
     }

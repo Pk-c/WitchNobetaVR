@@ -54,6 +54,24 @@ alternative does not work — the OpenXR loader sequence, the camera ownership d
 `PlayerCamera`, and the several places IL2CPP stripping forced a different route are all
 explained where they live.
 
+## Controls
+
+Touch-style controllers. Everything here is remappable from
+`BepInEx/config/fr.chromatic.nobetavr.cfg`.
+
+| Input | Action |
+| --- | --- |
+| Left stick | Move — forward, back and strafe, relative to where you are looking |
+| Right stick | Turn — snap by default, 45° a step; smooth is a setting |
+| Right stick click | Recentre: puts your head back on Nobeta |
+| Left stick click | Run |
+| A | Jump |
+| B | Dodge roll |
+| Right trigger | Shoot |
+
+Walking physically moves Nobeta, through the game's own collision. She turns to face wherever
+you look, including when you turn on the spot.
+
 ## When the headset stays black
 
 `BepInEx/LogOutput.log` is where the mod says what happened, and on any XR failure it dumps

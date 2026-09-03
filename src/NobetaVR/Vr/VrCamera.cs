@@ -112,6 +112,11 @@ namespace NobetaVR.Vr
 
             _firstPerson.Rebind(instance);
 
+            // A new stage means a new body somewhere else entirely. Carrying the room offset
+            // across would replay it as one enormous walk the moment the level loads.
+            HeadPose.Forget();
+            RoomScale.Reset();
+
             // The turn control needs the same instance; it owns the camera's yaw.
             var controls = Input.VrControls.Instance;
             if (controls != null) controls.Camera = instance;
@@ -154,10 +159,37 @@ namespace NobetaVR.Vr
             ApplyHeadPose();
         }
 
+        /// <summary>
+        /// The yaw the view is built on, before the headset is added. Room-scale uses this,
+        /// because it converts a physical step into a world direction and the step is already
+        /// expressed in headset space.
+        /// </summary>
+        internal static Quaternion ViewYaw { get; private set; } = Quaternion.identity;
+
+        /// <summary>
+        /// Where you are actually looking, flattened: the game's yaw with the headset's own
+        /// rotation folded in.
+        ///
+        /// This is what the body must follow. Turning physically rotates the headset and
+        /// nothing else — the game's camera yaw only moves when the turn control moves it — so
+        /// a body that follows <see cref="ViewYaw"/> alone ignores every physical turn you
+        /// make, which is exactly the room-scale rotation that went missing.
+        /// </summary>
+        internal static Vector3 ViewForwardFlat { get; private set; } = Vector3.forward;
+
         private void ApplyHeadPose()
         {
-            var headPos = InputTracking.GetLocalPosition(XRNode.CenterEye);
-            var headRot = InputTracking.GetLocalRotation(XRNode.CenterEye);
+            HeadPose.Sample();
+            var headPos = HeadPose.Position;
+            var headRot = HeadPose.Rotation;
+
+            // Room-scale hands the neck's travel to the character, and the view is anchored to
+            // her head bone, so applying that part here as well would move the view twice. What
+            // is left is the vertical -- crouching lowers your eyes without walking her anywhere
+            // -- and the eyes' own offset from the neck, so looking around still swings your
+            // viewpoint the way a head does rather than pivoting on a point between your ears.
+            if (Plugin.Instance.RoomScale.Value)
+                headPos = new Vector3(HeadPose.EyesFromNeck.x, headPos.y, HeadPose.EyesFromNeck.z);
 
             LogPose(headPos, headRot);
 
@@ -199,6 +231,12 @@ namespace NobetaVR.Vr
                 viewPos = fpPos;
                 viewRot = fpRot;
             }
+
+            ViewYaw = viewRot;
+
+            var lookForward = viewRot * headRot * Vector3.forward;
+            lookForward.y = 0f;
+            if (lookForward.sqrMagnitude > 0.0001f) ViewForwardFlat = lookForward.normalized;
 
             _target.rotation = viewRot * headRot;
             _target.position = viewPos + viewRot * headPos;

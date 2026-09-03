@@ -39,6 +39,12 @@ namespace NobetaVR
         internal ConfigEntry<float> SnapTurnDegrees;
         internal ConfigEntry<bool> SmoothTurn;
         internal ConfigEntry<float> SmoothTurnSpeed;
+        internal ConfigEntry<bool> RoomScale;
+        internal ConfigEntry<float> RoomScaleMaxStep;
+        internal ConfigEntry<float> NeckModelDown;
+        internal ConfigEntry<float> NeckModelBack;
+        internal ConfigEntry<bool> BodyFollowsView;
+        internal ConfigEntry<bool> AlignViewToBodyOnSpawn;
 
         public override void Load()
         {
@@ -157,6 +163,48 @@ namespace NobetaVR
             SmoothTurnSpeed = Config.Bind(
                 "Controls", "SmoothTurnSpeed", 120f,
                 "Degrees per second when SmoothTurn is on.");
+
+            AlignViewToBodyOnSpawn = Config.Bind(
+                "Camera", "AlignViewToBodyOnSpawn", true,
+                "Points the view where Nobeta is facing when a stage opens. The game frames a "
+              + "new stage as it likes and does not always park the camera behind her, which on "
+              + "a monitor is a camera angle and in a headset means starting the level facing "
+              + "backwards. With the body following the view this cannot correct itself — she "
+              + "would just turn to match the wrong direction.");
+
+            NeckModelDown = Config.Bind(
+                "Room scale", "NeckModelDown", 0.12f,
+                "How far below your eyes your neck pivots, in metres. You do not turn about your "
+              + "eyes, and without this the headset sweeps a circle every time you turn on the "
+              + "spot — which room-scale cannot distinguish from walking, so it leads the "
+              + "character around that circle. The error closes on a full turn, which is the "
+              + "tell. Set both neck values to zero to track the headset itself.");
+
+            NeckModelBack = Config.Bind(
+                "Room scale", "NeckModelBack", 0.08f,
+                "How far behind your eyes your neck pivots, in metres. See NeckModelDown.");
+
+            BodyFollowsView = Config.Bind(
+                "Camera", "BodyFollowsView", true,
+                "Keeps Nobeta facing where you are looking. This is what turns a sideways push "
+              + "of the stick into a side step: the game moves her relative to the camera and "
+              + "then turns her to face where she is travelling, so without this, pushing left "
+              + "makes her turn left and walk off instead of stepping aside. It goes through the "
+              + "game's own LookAt, so she turns with her usual smoothing, and it stands aside "
+              + "during cutscenes, death and the face-camera mode.");
+
+            RoomScale = Config.Bind(
+                "Room scale", "RoomScale", true,
+                "Walks Nobeta to wherever you physically walk. The step goes through the game's "
+              + "own CharacterController, so walls and slopes are resolved exactly as they are "
+              + "for stick movement, and the view stops with her rather than passing through "
+              + "geometry. Right stick click puts your head back on her.");
+
+            RoomScaleMaxStep = Config.Bind(
+                "Room scale", "RoomScaleMaxStep", 0.5f,
+                "Largest physical step accepted in one frame, in metres. A tracking glitch can "
+              + "otherwise teleport the character across the level; anything larger is treated "
+              + "as a bad sample and absorbed rather than walked.");
 
             Log.LogInfo($"NobetaVR {Version} loading");
 
