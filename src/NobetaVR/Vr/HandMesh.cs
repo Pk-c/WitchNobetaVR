@@ -118,9 +118,9 @@ namespace NobetaVR.Vr
 
             if (totalTriangles == 0) return null;
 
-            var capped = 0;
-            if (Plugin.Instance.CapWristHole.Value)
-                capped = Cap(submeshTriangles, keptVertices, keptNormals, keptUv, keptWeights);
+            // Always capped. Without it the hand is an open shell and you see its inside,
+            // since the mesh has no back faces — nobody would choose that.
+            var capped = Cap(submeshTriangles, keptVertices, keptNormals, keptUv, keptWeights);
 
             var built = new Mesh { name = $"NobetaVR {side} hand" };
             built.SetVertices(ToVector3Array(keptVertices));

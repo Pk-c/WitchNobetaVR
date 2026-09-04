@@ -340,8 +340,6 @@ namespace NobetaVR.Vr
         /// </summary>
         private void PlaceHitbox(WizardGirlManage girl, Plugin cfg, bool free)
         {
-            if (!cfg.MeleeHitboxOnWand.Value) { Restore(); return; }
-
             var collision = girl.g_AttackCollision;
             if (collision == null) { Restore(); return; }
 

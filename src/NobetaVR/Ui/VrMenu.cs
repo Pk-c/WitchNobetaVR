@@ -309,12 +309,6 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
-                Label = "Hitbox on wand",
-                Value = () => cfg.MeleeHitboxOnWand.Value ? "On" : "Off",
-                Adjust = _ => cfg.MeleeHitboxOnWand.Value = !cfg.MeleeHitboxOnWand.Value,
-            });
-            _items.Add(new Item
-            {
                 Label = "Air reach",
                 Value = () => $"{cfg.MeleeHitboxReach.Value:F2} m",
                 Adjust = d => cfg.MeleeHitboxReach.Value =
@@ -367,7 +361,7 @@ namespace NobetaVR.Ui
                          cfg.ShowAimReticle, cfg.AimReticleSize, cfg.HideGameCrosshair,
                          cfg.Melee, cfg.MeleeSpeed, cfg.MeleeDistance,
                          cfg.MeleeReleaseSpeed, cfg.MeleeCooldown,
-                         cfg.MeleeHitboxOnWand, cfg.MeleeHitboxReach, cfg.MeleeShowHitbox,
+                         cfg.MeleeHitboxReach, cfg.MeleeShowHitbox,
                          cfg.MeleeFreeSwingOnGround, cfg.MeleeHitboxForward,
                          cfg.MeleeHitboxSize, cfg.MeleeTrailSeconds, cfg.MeleeSwingVoice,
                      })

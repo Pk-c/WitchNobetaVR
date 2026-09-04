@@ -13,6 +13,18 @@ namespace NobetaVR.Vr
     /// </summary>
     internal sealed class FirstPerson
     {
+        /// <summary>
+        /// Where the eyes sit relative to the head bone, in metres along the view.
+        ///
+        /// Model geometry rather than preference, which is why these are numbers here and
+        /// not settings: the bone is at the base of the skull on this rig, and how far in
+        /// front of and above it a pair of eyes goes is a fact about the mesh that every
+        /// player shares. What does vary is a player's own comfort offset, and that is
+        /// HeadOffsetX/Y/Z, added on top of these.
+        /// </summary>
+        private const float EyeForward = 0.10f;
+        private const float EyeUp = 0.05f;
+
         private PlayerCamera _playerCamera;
         private Transform _head;
 
@@ -166,9 +178,7 @@ namespace NobetaVR.Vr
             // looking up would pitch twice and the horizon would tilt with every camera shake.
             // Yaw alone keeps stick turning working while leaving the other two axes to the
             // only thing entitled to them.
-            var yaw = gameCameraRotation.eulerAngles.y + cfg.ViewYawOffset.Value;
-            rotation = cfg.YawFromGameCamera.Value ? Quaternion.Euler(0f, yaw, 0f)
-                                                   : Quaternion.identity;
+            rotation = Quaternion.Euler(0f, gameCameraRotation.eulerAngles.y, 0f);
 
             // The bone gives a position; the direction to nudge it in comes from the view.
             //
@@ -182,8 +192,8 @@ namespace NobetaVR.Vr
 
             position = anchor
                      + rotation * new Vector3(cfg.HeadOffsetX.Value,
-                                              cfg.EyeOffsetUp.Value + cfg.HeadOffsetY.Value,
-                                              cfg.EyeOffsetForward.Value + cfg.HeadOffsetZ.Value);
+                                              EyeUp + cfg.HeadOffsetY.Value,
+                                              EyeForward + cfg.HeadOffsetZ.Value);
 
             ReportFacing(gameCameraRotation, head);
             return true;

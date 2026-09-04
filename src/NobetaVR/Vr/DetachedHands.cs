@@ -29,6 +29,14 @@ namespace NobetaVR.Vr
     /// </summary>
     internal sealed class DetachedHands
     {
+        /// <summary>
+        /// How much of a vertex must belong to the hand bone for it to be cut out with the
+        /// hand. Half, which is what the cut was tuned at: lower takes more of the wrist and
+        /// leaves a ragged edge where the sleeve was, higher gives a clean cut and a hand
+        /// that stops short. A property of this rig's weighting, not a taste.
+        /// </summary>
+        private const float HandVertexWeight = 0.5f;
+
         private sealed class Hand
         {
             public Transform Root;   // carries the cut-out meshes, and is what we place
@@ -102,7 +110,8 @@ namespace NobetaVR.Vr
             _left = Build(leftHand, "left");
             _right = Build(rightHand, "right");
 
-            if (Plugin.Instance.CarryHandAttachments.Value)
+            // Always. The wand is parented to the hand bone and the real hand is collapsed
+            // into the shoulder, so leaving it behind means it never appears at all.
             {
                 CollectAttachments(_left, leftHand, "left");
                 CollectAttachments(_right, rightHand, "right");
@@ -180,7 +189,7 @@ namespace NobetaVR.Vr
                 if (source == null || source.sharedMesh == null) continue;
                 if (!Uses(source, wanted)) continue;
 
-                var cut = HandMesh.Build(source, handBone, side, Plugin.Instance.HandVertexWeight.Value);
+                var cut = HandMesh.Build(source, handBone, side, HandVertexWeight);
                 if (cut == null) continue;
 
                 // The cut mesh is skinned to the character's bones; the renderer is given our
@@ -226,8 +235,7 @@ namespace NobetaVR.Vr
             if (meshes.Count == 0)
             {
                 Plugin.Log.LogWarning($"no mesh under '{root.name}' holds any {side} hand geometry "
-                                    + $"at {Plugin.Instance.HandVertexWeight.Value:P0} weight. "
-                                    + "Lowering HandVertexWeight is the thing to try.");
+                                    + $"at {HandVertexWeight:P0} weight.");
                 Object.Destroy(holder);
                 return null;
             }

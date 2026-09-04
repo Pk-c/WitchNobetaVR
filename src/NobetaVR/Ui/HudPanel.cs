@@ -58,10 +58,9 @@ namespace NobetaVR.Ui
                 return false;
             }
 
-            var w = Mathf.Max(256, cfg.HudResolutionWidth.Value);
-            var h = Mathf.Max(256, cfg.HudResolutionHeight.Value);
-
-            _texture = new RenderTexture(w, h, 0, RenderTextureFormat.ARGB32) { name = "NobetaVR HUD" };
+            // 1080p. The capture camera draws the interface and nothing else, so this costs
+            // almost nothing to render and there is no other size anyone would want.
+            _texture = new RenderTexture(1920, 1080, 0, RenderTextureFormat.ARGB32) { name = "NobetaVR HUD" };
             _texture.Create();
             ClearToTransparent(_texture);
 
@@ -101,7 +100,7 @@ namespace NobetaVR.Ui
             _panel = quad.transform;
             _panel.gameObject.layer = 0;   // seen by the game's cameras, not by the capture one
 
-            Plugin.Log.LogInfo($"HUD panel built: {w}x{h}, shader '{shader.name}'");
+            Plugin.Log.LogInfo($"HUD panel built: {_texture.width}x{_texture.height}, shader '{shader.name}'");
             return true;
         }
 

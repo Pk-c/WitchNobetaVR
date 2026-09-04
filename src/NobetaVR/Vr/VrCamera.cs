@@ -210,8 +210,7 @@ namespace NobetaVR.Vr
 
             LogPose(headPos, headRot);
 
-            if (Plugin.Instance.ApplyHeadPose.Value)
-                Apply(headPos, headRot);
+            Apply(headPos, headRot);
         }
 
         /// <summary>
@@ -242,8 +241,7 @@ namespace NobetaVR.Vr
             // If the head bone is not loaded yet, first person declines and the boom pose
             // stands, so a stage opens in third person for a few frames rather than snapping
             // somewhere wrong.
-            if (Plugin.Instance.FirstPerson.Value
-                && _firstPerson.GetOrigin(_gameRot, out var fpPos, out var fpRot))
+            if (_firstPerson.GetOrigin(_gameRot, out var fpPos, out var fpRot))
             {
                 viewPos = fpPos;
                 viewRot = fpRot;
@@ -330,15 +328,12 @@ namespace NobetaVR.Vr
         /// </summary>
         private void LogPose(Vector3 pos, Quaternion rot)
         {
-            var bursting = Time.unscaledTime < _burstUntil;
-            var every = bursting ? 0.5f : Plugin.Instance.HeadPoseLogSeconds.Value;
-            if (every <= 0f || Time.unscaledTime < _nextPoseLog) return;
-            _nextPoseLog = Time.unscaledTime + every;
+            if (Time.unscaledTime >= _burstUntil || Time.unscaledTime < _nextPoseLog) return;
+            _nextPoseLog = Time.unscaledTime + 0.5f;
 
             var e = rot.eulerAngles;
             Plugin.Log.LogInfo($"head  pos ({pos.x:F3}, {pos.y:F3}, {pos.z:F3})  "
-                             + $"rot ({e.x:F1}, {e.y:F1}, {e.z:F1})"
-                             + (bursting ? "" : "  [config]"));
+                             + $"rot ({e.x:F1}, {e.y:F1}, {e.z:F1})");
         }
 
         private void Describe(string how, Transform target, Camera cam)

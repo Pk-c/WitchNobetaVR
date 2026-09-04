@@ -189,7 +189,6 @@ namespace NobetaVR.Vr
         /// </summary>
         private void SetFinalIkRestoring(Transform root, bool enabled)
         {
-            if (!Plugin.Instance.StopFinalIkFixTransforms.Value) return;
             if (_restoringDisabled == !enabled) return;
 
             if (_solvers == null)
@@ -240,8 +239,6 @@ namespace NobetaVR.Vr
         /// </summary>
         private void YieldTheArms(WizardGirlManage girl)
         {
-            if (!Plugin.Instance.DisableGameAimIk.Value) return;
-
             var skin = girl.skinController;
             var ik = skin != null ? skin.ik : null;
             if (ik == null) return;
