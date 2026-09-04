@@ -10,9 +10,13 @@ namespace NobetaVR.Ui
     ///
     /// The game routes every menu through <c>GameInputManager.uiController</c>, an
     /// <c>IUIController</c> with <c>Move</c>, <c>Submit</c>, <c>Cancel</c> and the two switch
-    /// calls. Whatever is on screen — pause menu, item wheel, dialogue — is behind that same
-    /// interface, so driving it reaches all of them at once, and nothing has to be found or
-    /// special-cased per screen.
+    /// calls. Whatever is on screen — pause menu, item wheel, the choice box a conversation
+    /// puts up — is behind that same interface, so driving it reaches all of them at once, and
+    /// nothing has to be found or special-cased per screen.
+    ///
+    /// Conversations themselves are the one exception, and it is a real one rather than an
+    /// oversight in the above: the line-by-line advance is <c>IStoryController</c> on its own
+    /// action map, not the UI controller. See <see cref="Dialogue"/>.
     ///
     /// Which controller is bound changes constantly as menus open and close, so the manager is
     /// asked for the current one every frame rather than one being held on to.
@@ -22,6 +26,8 @@ namespace NobetaVR.Ui
         private GameInputManager _manager;
 
         private bool _submitHeld, _cancelHeld, _leftHeld, _rightHeld;
+        private bool _nextHeld, _skipHeld;
+        private bool _storyReported;
 
         // Held directions repeat, as they do on a pad: one step, a pause, then a steady stream.
         private Direction2D _held = Direction2D.None;
@@ -48,12 +54,86 @@ namespace NobetaVR.Ui
             if (ui == null)
             {
                 _held = Direction2D.None;
+                Dialogue(input);
                 return false;
             }
+
+            // A menu owns the buttons while it is up — including the choice box a dialogue can
+            // put on screen, where A picks an answer rather than advancing the line.
+            SeedDialogueEdges(input);
 
             Navigate(ui, input);
             Buttons(ui, input);
             return true;
+        }
+
+        /// <summary>
+        /// Advancing and skipping a conversation.
+        ///
+        /// Dialogue does not come through <c>IUIController</c> like the menus do — it has its
+        /// own <c>IStoryController</c>, with <c>NextDialogue</c> for the line and
+        /// <c>SkipMenu</c> for the prompt that offers to skip the scene, and the game drives it
+        /// from a separate action map. Without this the conversation simply never advances in
+        /// the headset: nothing the mod was sending reached it.
+        ///
+        /// <para>
+        /// The input is not taken over the way a menu takes it, deliberately. The gate below is
+        /// a reading of the game's own state, and a gate that is wrong in the open direction
+        /// would leave the player unable to move with nothing on screen saying why. Firing
+        /// alongside the gameplay bindings cannot do that: during a conversation she is not
+        /// controllable, so the jump this shares its button with is already inert.
+        /// </para>
+        /// </summary>
+        private void Dialogue(VrInput input)
+        {
+            var story = Story();
+            if (story == null)
+            {
+                SeedDialogueEdges(input);
+                return;
+            }
+
+            if (!_storyReported)
+            {
+                _storyReported = true;
+                Plugin.Log.LogInfo("dialogue bound: A advances the line, B opens the skip menu");
+            }
+
+            Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary),
+                 ref _nextHeld, story.NextDialogue);
+            Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary),
+                 ref _skipHeld, story.SkipMenu);
+        }
+
+        /// <summary>
+        /// Holds the dialogue buttons at whatever they are actually doing while no conversation
+        /// is listening, so a button already down when one starts is not read as a fresh press
+        /// and does not eat the first line.
+        /// </summary>
+        private void SeedDialogueEdges(VrInput input)
+        {
+            _nextHeld = input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
+            _skipHeld = input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary);
+        }
+
+        /// <summary>
+        /// The story controller, but only while the game is actually listening to it.
+        ///
+        /// Bound is not the same as listening: the manager holds a story controller for as long
+        /// as the stage's UI exists, and what says a conversation is running is which action map
+        /// the game has switched to. So the enabled map is the gate and the reference is only
+        /// the target — reading the reference alone would advance a dialogue that is not there
+        /// every time the player jumped.
+        /// </summary>
+        private IStoryController Story()
+        {
+            var manager = Manager();
+            if (manager == null) return null;
+
+            var map = manager.storyActionMap;
+            if (map == null || !map.enabled) return null;
+
+            return manager.storyController;
         }
 
         /// <summary>

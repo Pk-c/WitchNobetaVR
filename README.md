@@ -30,7 +30,9 @@ are redistributed.
   the controllers, and the game's vibration setting still turns them off
 - **Comfort measures for the moments the game takes the camera** — cutscenes are framed
   behind black bars on all four sides, so a sweep or a cut moves inside a window instead of
-  moving your head for you; the camera's breathing sway and combat shake are switched off
+  moving your head for you; the camera's breathing sway and combat shake are switched off;
+  dying steps you back out of her head until you respawn; and the dodge is always the backward
+  hop, because the roll it would otherwise pick takes the camera over with her
 
 ## Installing
 
@@ -73,8 +75,8 @@ Touch-style controllers. Everything here is remappable from
 | Right stick | Turn — snap by default, 45° a step; smooth is a setting |
 | Left stick click | Run |
 | Right stick click, held | The magic wheel; point at an arcane with the same stick and let go |
-| A | Jump |
-| B | Dodge roll |
+| A | Jump; in a conversation, the next line |
+| B | Dodge — the backward hop, never the roll; in a conversation, the skip menu |
 | X | Use the selected item |
 | Y | Interact |
 | Y, held two seconds | The game's pause menu |

@@ -75,6 +75,13 @@ namespace NobetaVR.Input
 
         private bool _wheelOpen;
 
+        // The dodge holds the stick centred for as long as it lasts; see CentreForBackstep.
+        private bool _backstep;
+        private float _backstepUntil;
+
+        /// <summary>Longest a dodge is allowed to hold the stick, in seconds.</summary>
+        private const float BackstepTimeout = 1.5f;
+
         private void Awake() => Instance = this;
 
         private void Update()
@@ -127,6 +134,7 @@ namespace NobetaVR.Input
 
             _shootHeld = _runHeld = _aimHeld = _wheelOpen = _wasMoving = false;
             _snapArmed = true;
+            _backstep = false;
 
             _jumpHeld = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
             _dodgeHeld = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary);
@@ -293,9 +301,13 @@ namespace NobetaVR.Input
             if (jump && !_jumpHeld) InputController.Jump();
             _jumpHeld = jump;
 
-            // B — dodge roll
+            // B — dodge
             var dodge = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary);
-            if (dodge && !_dodgeHeld) InputController.Dodge();
+            if (dodge && !_dodgeHeld)
+            {
+                if (Plugin.Instance.DodgeAlwaysBackstep.Value) CentreForBackstep();
+                InputController.Dodge();
+            }
             _dodgeHeld = dodge;
 
             // X — use the selected item
@@ -329,6 +341,69 @@ namespace NobetaVR.Input
         }
 
         /// <summary>
+        /// Hands the game a centred stick, so the dodge it is about to start is the backward
+        /// hop rather than the roll.
+        ///
+        /// The game chooses between the two from the direction being held — that is the whole
+        /// of the difference, one `Dodge()` and one state either way — so the choice is made by
+        /// letting go of the stick for it rather than by overriding anything. On a monitor the
+        /// roll is the better dodge and its spin is a flourish; in a headset that spin is the
+        /// camera going over with her, on a button pressed under pressure.
+        ///
+        /// <c>Move</c> is the seam, and the two fields under it are set as well because the
+        /// game computes them from the input across a frame boundary: sending a centred stick
+        /// alone leaves this frame's already-computed direction in place, which is precisely
+        /// the one the dodge is about to read. They are set to the value that seam produces a
+        /// frame later, not to something of ours.
+        /// </summary>
+        private void CentreForBackstep()
+        {
+            InputController.Move(Vector2.zero);
+            _wasMoving = false;
+
+            var controller = InputController.controller;
+            var input = controller != null ? controller.inputData : null;
+            if (input != null)
+            {
+                input.inputMovement = Vector2.zero;
+                input.characterMovement = Vector3.zero;
+            }
+
+            _backstep = true;
+            _backstepUntil = Time.unscaledTime + BackstepTimeout;
+        }
+
+        /// <summary>
+        /// Whether the stick is still being held centred for a dodge in progress.
+        ///
+        /// Held for the length of the dodge rather than for the one call, because a direction
+        /// sampled a frame late would turn the hop back into a roll — and a hop is not steerable
+        /// anyway, so nothing is taken away. The game's own state says when it is over, and it
+        /// is only ever read from the frame after the press: this runs from `Move`, which comes
+        /// before `Actions` in the update, so `Dodge()` has always had a frame to take effect.
+        /// A dodge the game refused therefore releases the stick on the next frame rather than
+        /// holding it. The timeout is the backstop that matters: without it, a dodge that never
+        /// reached the state it should would leave the player unable to walk with nothing to
+        /// say why.
+        /// </summary>
+        private bool HoldingBackstep()
+        {
+            if (!_backstep) return false;
+
+            var controller = InputController != null ? InputController.controller : null;
+            var state = controller != null ? controller.state : NobetaState.Normal;
+            var dodging = state == NobetaState.Dodge || state == NobetaState.AirDodge;
+
+            if (!dodging || Time.unscaledTime >= _backstepUntil)
+            {
+                _backstep = false;
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// Feeds the left stick to the game every frame.
         ///
         /// The game's own binding is event-driven — Move is called when an input action
@@ -341,6 +416,11 @@ namespace NobetaVR.Input
         private void Move()
         {
             if (InputController == null) return;
+
+            // A dodge in progress owns the stick, and owns it as centred. Nothing is sent at
+            // all: the zero went out when the dodge started, and repeating it every frame
+            // would fight the keyboard for the rest of the session for no gain.
+            if (HoldingBackstep()) return;
 
             var stick = _input.LeftStick;
             var dead = Plugin.Instance.MoveDeadzone.Value;

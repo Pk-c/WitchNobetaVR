@@ -92,6 +92,8 @@ namespace NobetaVR
         internal ConfigEntry<float> HapticsMinAmplitude;
         internal ConfigEntry<float> HapticsMaxSeconds;
         internal ConfigEntry<float> HapticsFrequency;
+        internal ConfigEntry<bool> DodgeAlwaysBackstep;
+        internal ConfigEntry<bool> ThirdPersonOnDeath;
 
         public override void Load()
         {
@@ -591,6 +593,27 @@ namespace NobetaVR
               + "for a Touch-style controller. Lower reads as a heavier thud, higher as a "
               + "sharper tick. Zero hands the choice to the runtime, which is the specification's "
               + "own default and is worth trying if nothing is felt at all.");
+
+            DodgeAlwaysBackstep = Config.Bind(
+                "Comfort", "DodgeAlwaysBackstep", true,
+                "Makes the dodge always the backward hop, never the roll. The game picks "
+              + "between them from the direction you are holding, and on a monitor that is a "
+              + "good trade — the roll covers more ground and its spin is a flourish. In a "
+              + "headset the spin is the camera going over with her, which is the single most "
+              + "reliable way to make someone ill, and it happens on a button you press under "
+              + "pressure. The hop is the same dodge otherwise: the same invulnerability "
+              + "window, the same stamina, the same recovery. It is done by handing the game a "
+              + "centred stick for the length of the dodge, so nothing is overridden and the "
+              + "choice stays the game's own.");
+
+            ThirdPersonOnDeath = Config.Bind(
+                "Comfort", "ThirdPersonOnDeath", true,
+                "Steps back out of her head while she dies, and returns when you respawn. Death "
+              + "is the one moment the first-person view has nothing to offer: she falls, and "
+              + "the view falls with her from inside a body that is no longer yours. Pulling "
+              + "back to the game's own camera gives the death its framing back and gives you "
+              + "somewhere to be while it plays. The horizon is kept level and the head pose "
+              + "still moves the view, so it is a step back rather than the camera taking over.");
 
             Log.LogInfo($"NobetaVR {Version} loading");
 

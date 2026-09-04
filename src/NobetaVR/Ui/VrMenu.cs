@@ -214,6 +214,12 @@ namespace NobetaVR.Ui
                 Value = () => $"{cfg.SmoothTurnSpeed.Value:F0}°/s",
                 Adjust = d => cfg.SmoothTurnSpeed.Value = Mathf.Clamp(cfg.SmoothTurnSpeed.Value + d * 10f, 20f, 360f),
             });
+            _items.Add(new Item
+            {
+                Label = "Dodge",
+                Value = () => cfg.DodgeAlwaysBackstep.Value ? "Always hop" : "Game's choice",
+                Adjust = _ => cfg.DodgeAlwaysBackstep.Value = !cfg.DodgeAlwaysBackstep.Value,
+            });
 
             _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "HEAD", IsHeading = true });
@@ -239,6 +245,12 @@ namespace NobetaVR.Ui
             _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "COMFORT", IsHeading = true });
 
+            _items.Add(new Item
+            {
+                Label = "View on death",
+                Value = () => cfg.ThirdPersonOnDeath.Value ? "Third person" : "Stay in her head",
+                Adjust = _ => cfg.ThirdPersonOnDeath.Value = !cfg.ThirdPersonOnDeath.Value,
+            });
             _items.Add(new Item
             {
                 Label = "Cutscene frame",
@@ -505,6 +517,7 @@ namespace NobetaVR.Ui
                          cfg.MeleeHitboxSize, cfg.MeleeTrailSeconds, cfg.MeleeSwingVoice,
                          cfg.Haptics, cfg.HapticsHand, cfg.HapticsStrength,
                          cfg.HapticsMinAmplitude, cfg.HapticsMaxSeconds, cfg.HapticsFrequency,
+                         cfg.DodgeAlwaysBackstep, cfg.ThirdPersonOnDeath,
                      })
             {
                 entry.BoxedValue = entry.DefaultValue;

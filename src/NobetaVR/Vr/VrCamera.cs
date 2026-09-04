@@ -194,6 +194,21 @@ namespace NobetaVR.Vr
         /// </summary>
         internal static Vector3 ViewForwardFlat { get; private set; } = Vector3.forward;
 
+        /// <summary>
+        /// Whether the view should stand back from her while she dies.
+        ///
+        /// Respawning needs nothing of its own: dying reloads the stage, and even where it did
+        /// not, the mode returns to Normal and first person resumes on the next frame.
+        /// </summary>
+        private static bool DeathView()
+        {
+            if (!Plugin.Instance.ThirdPersonOnDeath.Value) return false;
+
+            var mode = BodyFacing.Mode;
+            return mode == PlayerCamera.CameraMode.Dead
+                || mode == PlayerCamera.CameraMode.FallDead;
+        }
+
         private void ApplyHeadPose()
         {
             HeadPose.Sample();
@@ -238,10 +253,24 @@ namespace NobetaVR.Vr
             var viewPos = _gamePos;
             var viewRot = _gameRot;
 
+            // Death steps back out of her head, and the boom pose already there is the step —
+            // the game frames her fall from the end of it, and being inside a body that is no
+            // longer yours while it goes down is the one thing first person has nothing to
+            // offer. Its rotation is flattened to yaw all the same, for the reason first person
+            // does it too: the game's pitch added to the headset's would pitch twice, and a
+            // horizon that rolls while you can only watch is the worst place to spend it.
+            //
+            // Nothing else has to be undone. The head comes back on its own, because it is
+            // hidden by distance rather than by a switch, and the hands, the body facing and
+            // room-scale all already stand down whenever the camera is not in Normal.
+            if (DeathView())
+            {
+                viewRot = Quaternion.Euler(0f, _gameRot.eulerAngles.y, 0f);
+            }
             // If the head bone is not loaded yet, first person declines and the boom pose
             // stands, so a stage opens in third person for a few frames rather than snapping
             // somewhere wrong.
-            if (_firstPerson.GetOrigin(_gameRot, out var fpPos, out var fpRot))
+            else if (_firstPerson.GetOrigin(_gameRot, out var fpPos, out var fpRot))
             {
                 viewPos = fpPos;
                 viewRot = fpRot;
