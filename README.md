@@ -32,11 +32,15 @@ are redistributed.
 - **The game's own rumble, in your hands** — the haptics were always there, they were just
   going to a gamepad nobody is holding; the same events at the same strengths now arrive in
   the controllers, and the game's vibration setting still turns them off
-- **Comfort measures for the moments the game takes the camera** — cutscenes are framed
-  behind black bars on all four sides, so a sweep or a cut moves inside a window instead of
-  moving your head for you; the camera's breathing sway and combat shake are switched off;
-  dying steps you back out of her head until she is yours to move again; and the dodge is always the backward
-  hop, because the roll it would otherwise pick takes the camera over with her
+- **Comfort measures for the moments the game takes the camera** — cutscenes step you back
+  out of her head to the game's own camera, so a sweep is a camera moving through a room
+  rather than your own head being turned for you, and the scene is framed as it was authored;
+  the camera's breathing sway and combat shake are switched off; dying does the same and
+  returns when she is yours again; and the dodge is always the backward hop, because the roll
+  it would otherwise pick takes the camera over with her
+- **Fades that actually fade** — the game hides its transitions behind a full-screen black
+  image, which in a headset is a black rectangle hanging in front of you with the level still
+  visible around it. The game's own timing drives a real fade of the whole view instead
 
 ## Installing
 
@@ -97,6 +101,15 @@ interact happens when you let go rather than when you press. The grips recentre 
 squeezed together — squeeze the second one later and it means what it says on its own, so
 you can reach for an item without losing your focus. And the right stick stops turning while
 the wheel is up, since that is the stick pointing around it.
+
+In the game's own menus the buttons mean what they mean on a pad: the left stick moves,
+**A** confirms, **B** goes back, and the grips page left and right. Two more are worth
+knowing, because neither has an equivalent on the gameplay side:
+
+| Input | In a menu |
+| --- | --- |
+| Right trigger, **held** | Spend souls — levelling up at a statue, and trading. The game counts them out for as long as you hold it |
+| Left trigger | The special action a screen offers, where one does |
 
 Walking physically moves Nobeta, through the game's own collision. She turns to face wherever
 you look, including when you turn on the spot.

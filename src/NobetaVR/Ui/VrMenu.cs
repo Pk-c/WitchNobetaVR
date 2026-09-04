@@ -253,32 +253,9 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
-                Label = "Cutscene frame",
-                Value = () => cfg.CutsceneVignette.Value ? "On" : "Off",
-                Adjust = _ => cfg.CutsceneVignette.Value = !cfg.CutsceneVignette.Value,
-            });
-            _items.Add(new Item
-            {
-                Label = "Frame width",
-                Value = () => $"{cfg.CutsceneVignetteWidth.Value:F0}°",
-                Adjust = d => cfg.CutsceneVignetteWidth.Value =
-                    Mathf.Clamp(cfg.CutsceneVignetteWidth.Value + d * 2f, 10f, 136f),
-            });
-            _items.Add(new Item
-            {
-                Label = "Frame height",
-                Value = () => $"{cfg.CutsceneVignetteHeight.Value:F0}°",
-                Adjust = d => cfg.CutsceneVignetteHeight.Value =
-                    Mathf.Clamp(cfg.CutsceneVignetteHeight.Value + d * 2f, 10f, 136f),
-            });
-            _items.Add(new Item
-            {
-                Label = "Frame edge",
-                Value = () => cfg.CutsceneVignetteSoftness.Value <= 0.001f
-                    ? "Hard"
-                    : $"{cfg.CutsceneVignetteSoftness.Value:F2}",
-                Adjust = d => cfg.CutsceneVignetteSoftness.Value =
-                    Mathf.Clamp(cfg.CutsceneVignetteSoftness.Value + d * 0.02f, 0f, 1f),
+                Label = "Cutscenes",
+                Value = () => cfg.ThirdPersonInCutscenes.Value ? "Third person" : "Stay in her head",
+                Adjust = _ => cfg.ThirdPersonInCutscenes.Value = !cfg.ThirdPersonInCutscenes.Value,
             });
 
             _items.Add(new Item { Label = "", IsHeading = true });
@@ -404,10 +381,9 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
-                Label = "Backdrop size",
-                Value = () => $"×{cfg.BackgroundScale.Value:F1}",
-                Adjust = d => cfg.BackgroundScale.Value =
-                    Mathf.Clamp(cfg.BackgroundScale.Value + d * 0.5f, 1f, 12f),
+                Label = "Fade to black",
+                Value = () => cfg.VrFade.Value ? "Whole view" : "On the panel",
+                Adjust = _ => cfg.VrFade.Value = !cfg.VrFade.Value,
             });
 
             _items.Add(new Item { Label = "", IsHeading = true });
@@ -599,9 +575,7 @@ namespace NobetaVR.Ui
                          cfg.SmoothTurn, cfg.SnapTurnDegrees, cfg.SmoothTurnSpeed,
                          cfg.HeadOffsetX, cfg.HeadOffsetY, cfg.HeadOffsetZ,
                          cfg.HeadBobbing, cfg.HeadHideDistance,
-                         cfg.CutsceneVignette, cfg.CutsceneVignetteWidth,
-                         cfg.CutsceneVignetteHeight, cfg.CutsceneVignetteSoftness,
-                         cfg.CutsceneVignetteFade, cfg.CutsceneVignetteDistance,
+                         cfg.ThirdPersonInCutscenes,
                          cfg.HandSteadiness,
                          cfg.HandRotationPitch, cfg.HandRotationYaw, cfg.HandRotationRoll,
                          cfg.HoldWandStill, cfg.WandFollowSpeed,
@@ -616,7 +590,7 @@ namespace NobetaVR.Ui
                          cfg.Haptics, cfg.HapticsHand, cfg.HapticsStrength,
                          cfg.HapticsMinAmplitude, cfg.HapticsMaxSeconds, cfg.HapticsFrequency,
                          cfg.DodgeAlwaysBackstep, cfg.ThirdPersonOnDeath,
-                         cfg.HudDrawOnTop, cfg.HudFadeSpeed, cfg.BackgroundScale,
+                         cfg.HudDrawOnTop, cfg.HudFadeSpeed, cfg.VrFade,
                          cfg.TidyGameHud, cfg.HideHealthBars, cfg.HideChargeBar,
                          cfg.HideSoulCounter, cfg.HideItemBar,
                          cfg.MoneyShowSeconds, cfg.ItemBarShowSeconds,

@@ -318,14 +318,36 @@ namespace NobetaVR.Vr
         private bool Bind(Transform root)
         {
             if (ReferenceEquals(root, _boundRoot) && _left.Valid && _right.Valid) return true;
+
+            // Anything that gets us here invalidates the cut-out hands, and only half of it was
+            // being caught. A *new body* is the obvious half. The other is the same body with a
+            // new skeleton under it: `girl.transform` outlives a skin change, so a costume swap
+            // — or the story skin a cutscene puts on and takes off again — leaves the root
+            // identical while every bone beneath it is replaced.
+            //
+            // That case fell straight through. The arm chain went null, so it was re-resolved
+            // against the new rig; the detached hands were not, so they went on holding the old
+            // one. `Place` then collapsed an upper arm that no longer existed, which is a no-op,
+            // so her real arms came back *and* the old cut-outs stayed on the controllers. That
+            // is the two pairs of hands after a cutscene, and it is the same fault the death
+            // path had before the root check was added — one level further down.
+            if (_detached.Attached)
+            {
+                Plugin.Log.LogInfo("the arm binding changed; rebuilding the detached hands");
+                _detached.Detach();
+            }
+
+            // The solvers belong to the skeleton that has just gone, and the latch below them
+            // is what stops the new ones ever being touched. Both are forgotten here for the
+            // same reason the hands are.
+            _solvers = null;
+            _solverFixTransforms = null;
+            _restoringDisabled = false;
+
             if (!ReferenceEquals(root, _boundRoot))
             {
-                // A new body: give the old one its bones back before forgetting it.
-                if (_detached.Attached) _detached.Detach();
-
                 _boundRoot = root;
                 _reported = false;
-                _solvers = null;
                 _weightReported = false;
             }
 
@@ -531,6 +553,11 @@ namespace NobetaVR.Vr
                                                 cfg.HandRotationRoll.Value);
 
             _detached.Place(left, world, handRotation);
+
+            // The wrist gauges are worn on this hand, so they are placed from this pose rather
+            // than from a second sample of the same controller — see WristGauges.Follow for why
+            // a second sample is not the same pose.
+            if (left) Ui.WristGauges.Follow(world, controllerWorld);
 
             // The wand is in the right hand, so that is the one aiming. The direction is taken
             // from the controller rather than from the hand bone: a Biped hand's axes have no

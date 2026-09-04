@@ -37,7 +37,6 @@ namespace NobetaVR.Ui
         private CanvasGroup _charge;   // the spell charge bar, top left
         private CanvasGroup _money;    // the soul counter
         private CanvasGroup _items;    // the item bar along the bottom
-        private RectTransform _background;
 
         private float _statsAlpha = 1f;
         private float _chargeAlpha = 1f;
@@ -59,7 +58,6 @@ namespace NobetaVR.Ui
             if (_ui == null) return;
 
             Fade();
-            Background();
         }
 
         // -- what the game tells us ------------------------------------------------------
@@ -116,14 +114,12 @@ namespace NobetaVR.Ui
             _charge = Group(ui.magicBar != null ? ui.magicBar.gameObject : null);
             _money = Group(ui.playersSubStats != null ? ui.playersSubStats.gameObject : null);
             _items = Group(ui.itemBar != null ? ui.itemBar.gameObject : null);
-            _background = ui.background != null ? ui.background.rectTransform : null;
 
             _statsAlpha = _chargeAlpha = _moneyAlpha = _itemsAlpha = 1f;
 
             Plugin.Log.LogInfo("game HUD bound: "
                              + $"stats {Seen(_stats)}, charge {Seen(_charge)}, "
-                             + $"souls {Seen(_money)}, items {Seen(_items)}, "
-                             + $"background {(_background != null ? "yes" : "no")}");
+                             + $"souls {Seen(_money)}, items {Seen(_items)}");
         }
 
         private static string Seen(CanvasGroup group) => group != null ? "yes" : "no";
@@ -177,28 +173,5 @@ namespace NobetaVR.Ui
             group.blocksRaycasts = current > 0.001f;
         }
 
-        // -- the backdrop ----------------------------------------------------------------
-
-        /// <summary>
-        /// Stretches the game's own backdrop image.
-        ///
-        /// It is sized for a flat screen, so on the capture it leaves the edges uncovered: a
-        /// fade to black comes out as a black rectangle with the game still showing around it.
-        /// Scaling it up costs nothing and covers the whole capture. The image is otherwise
-        /// left alone, so the game's fades, its colour and its timing all still drive it.
-        ///
-        /// Re-applied whenever it drifts rather than once, because this object is rebuilt with
-        /// the rest of the stage UI and the game animates its transform.
-        /// </summary>
-        private void Background()
-        {
-            if (_background == null) return;
-
-            var scale = Mathf.Max(1f, Plugin.Instance.BackgroundScale.Value);
-            var current = _background.localScale;
-            if (Mathf.Abs(current.x - scale) < 0.001f && Mathf.Abs(current.y - scale) < 0.001f) return;
-
-            _background.localScale = new Vector3(scale, scale, 1f);
-        }
     }
 }

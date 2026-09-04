@@ -26,8 +26,13 @@ namespace NobetaVR.Ui
         private GameInputManager _manager;
 
         private bool _submitHeld, _cancelHeld, _leftHeld, _rightHeld;
-        private bool _nextHeld, _skipHeld;
+        private bool _nextHeld, _skipHeld, _specialHeld;
         private bool _storyReported;
+
+        // The hold, and which screen was told about it. See Holding.
+        private System.IntPtr _holdTarget = System.IntPtr.Zero;
+        private bool _holdSent;
+        private bool _holdBlocked;
 
         // Held directions repeat, as they do on a pad: one step, a pause, then a steady stream.
         private Direction2D _held = Direction2D.None;
@@ -54,6 +59,12 @@ namespace NobetaVR.Ui
             if (ui == null)
             {
                 _held = Direction2D.None;
+
+                // Nothing to release the hold on any more; forgetting it is what stops the
+                // next menu inheriting a press that was never made on it.
+                _holdTarget = System.IntPtr.Zero;
+                _holdSent = false;
+
                 Dialogue(input);
                 return false;
             }
@@ -213,6 +224,45 @@ namespace NobetaVR.Ui
             Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary), ref _cancelHeld, ui.Cancel);
             Edge(input.Pressed(VrInput.Hand.Left, VrInput.Button.Grip), ref _leftHeld, ui.SwitchLeftward);
             Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Grip), ref _rightHeld, ui.SwitchRightward);
+            Edge(input.Pressed(VrInput.Hand.Left, VrInput.Button.Trigger), ref _specialHeld, ui.SpecialAction);
+
+            Holding(ui, input.Pressed(VrInput.Hand.Right, VrInput.Button.Trigger));
+        }
+
+        /// <summary>
+        /// Spending souls at a statue: the right trigger, held.
+        ///
+        /// This is the one control on <c>IUIController</c> that is a level rather than an
+        /// edge, and it had nothing sending it. Levelling up and trading are both a hold —
+        /// <c>UIUpgrade</c> and <c>UITrade</c> override <c>Hold</c>, and underneath it
+        /// <c>UIUpgradeHandler</c> is <c>StartUpgrade</c> / <c>KeepUpgrade</c> /
+        /// <c>CancelUpgrade</c> against a running cost — so with nothing bound, the whole
+        /// upgrade screen was reachable and inert: you could select a stat and there was no
+        /// way to buy it.
+        ///
+        /// Sent on change rather than every frame. The game counts souls out for as long as
+        /// it is holding, and it is the transitions it acts on.
+        /// </summary>
+        private void Holding(IUIController ui, bool down)
+        {
+            // Menus come and go constantly, and the new one has heard nothing. A trigger
+            // already down when one opens is not a press *on it* — without this, opening the
+            // upgrade screen with the trigger still held from whatever opened it would start
+            // spending immediately.
+            if (ui.Pointer != _holdTarget)
+            {
+                _holdTarget = ui.Pointer;
+                _holdSent = false;
+                _holdBlocked = down;
+            }
+
+            if (!down) _holdBlocked = false;
+
+            var wanted = down && !_holdBlocked;
+            if (wanted == _holdSent) return;
+
+            _holdSent = wanted;
+            ui.Hold(wanted);
         }
 
         private static void Edge(bool now, ref bool before, System.Action fire)

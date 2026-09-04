@@ -195,6 +195,49 @@ namespace NobetaVR.Vr
         internal static Vector3 ViewForwardFlat { get; private set; } = Vector3.forward;
 
         /// <summary>
+        /// Whether the view stands back from her rather than sitting in her head.
+        ///
+        /// Two cases, and they arrive from opposite directions. Death is a latch, because it
+        /// spans states the camera mode cannot describe — see <see cref="DeathView"/>. A
+        /// cutscene is not: the camera mode says so for exactly as long as it lasts.
+        ///
+        /// <para>
+        /// The cutscene case replaces the black frame that used to be drawn round the view
+        /// instead. The frame was treating the symptom. What makes a cutscene hard to sit
+        /// through in a headset is being *inside her head* while somebody else turns it: every
+        /// sweep is a movement of your own head that your neck did not make, and no amount of
+        /// letterboxing changes that it is your head. Standing back to the game's own boom
+        /// makes the camera a camera again — it moves through the room, and you watch it move,
+        /// the way you watch anything else move. The game's framing then works as authored
+        /// rather than being fought, which is the other half of what the frame cost.
+        /// </para>
+        ///
+        /// <c>PlayerFace</c> is excluded: the player asked for that one themselves with
+        /// <c>SwitchCameraMode</c>, and pulling the view out of her head because she chose to
+        /// look at herself would be the mod second-guessing them.
+        /// </summary>
+        private static bool ThirdPersonView()
+        {
+            if (Plugin.Instance.ThirdPersonInCutscenes.Value && GameIsFraming()) return true;
+            return DeathView();
+        }
+
+        /// <summary>
+        /// Whether the game, rather than the player, is placing the camera this frame.
+        ///
+        /// <c>Dead</c> and <c>FallDead</c> are left out and handled by the death latch below,
+        /// which covers the three beats after them that this cannot see.
+        /// </summary>
+        private static bool GameIsFraming()
+        {
+            var mode = BodyFacing.Mode;
+            return mode != PlayerCamera.CameraMode.Normal
+                && mode != PlayerCamera.CameraMode.PlayerFace
+                && mode != PlayerCamera.CameraMode.Dead
+                && mode != PlayerCamera.CameraMode.FallDead;
+        }
+
+        /// <summary>
         /// Whether the view should stand back from her, from the moment she dies to the moment
         /// she is yours again.
         ///
@@ -314,17 +357,19 @@ namespace NobetaVR.Vr
             var viewPos = _gamePos;
             var viewRot = _gameRot;
 
-            // Death steps back out of her head, and the boom pose already there is the step —
-            // the game frames her fall from the end of it, and being inside a body that is no
-            // longer yours while it goes down is the one thing first person has nothing to
-            // offer. Its rotation is flattened to yaw all the same, for the reason first person
-            // does it too: the game's pitch added to the headset's would pitch twice, and a
-            // horizon that rolls while you can only watch is the worst place to spend it.
+            // Death and cutscenes step back out of her head, and the boom pose already there is
+            // the step — the game frames both from the end of it, and being inside a body that
+            // is no longer yours while somebody else moves it is the one thing first person has
+            // nothing to offer. Its rotation is flattened to yaw all the same, for the reason
+            // first person does it too: the game's pitch added to the headset's would pitch
+            // twice, and a horizon that rolls while you can only watch is the worst place to
+            // spend it. So the game gets its framing and its travel; your neck keeps the two
+            // axes a neck is entitled to.
             //
             // Nothing else has to be undone. The head comes back on its own, because it is
             // hidden by distance rather than by a switch, and the hands, the body facing and
             // room-scale all already stand down whenever the camera is not in Normal.
-            if (DeathView())
+            if (ThirdPersonView())
             {
                 viewRot = Quaternion.Euler(0f, _gameRot.eulerAngles.y, 0f);
             }
@@ -356,9 +401,9 @@ namespace NobetaVR.Vr
             // Same reason: the aim line is the view's line, and the view is only final here.
             VrAim.Apply(_playerCamera, _target);
 
-            // And the same reason once more, in its strongest form: a frame locked to the view
-            // cannot be a frame late without swimming against it.
-            Vignette.Apply(_target);
+            // And the same reason once more, in its strongest form: a fade welded to the view
+            // cannot be a frame late without a seam opening at its edge.
+            ViewFade.Apply(_target);
         }
 
         private void AcquireFallbackCamera()

@@ -33,12 +33,7 @@ namespace NobetaVR
         internal ConfigEntry<string> HeadBoneName;
         internal ConfigEntry<bool> DisableRespiration;
         internal ConfigEntry<bool> DisableCameraShake;
-        internal ConfigEntry<bool> CutsceneVignette;
-        internal ConfigEntry<float> CutsceneVignetteWidth;
-        internal ConfigEntry<float> CutsceneVignetteHeight;
-        internal ConfigEntry<float> CutsceneVignetteSoftness;
-        internal ConfigEntry<float> CutsceneVignetteFade;
-        internal ConfigEntry<float> CutsceneVignetteDistance;
+        internal ConfigEntry<bool> ThirdPersonInCutscenes;
         internal ConfigEntry<float> MoveDeadzone;
         internal ConfigEntry<float> TurnDeadzone;
         internal ConfigEntry<float> SnapTurnDegrees;
@@ -75,7 +70,7 @@ namespace NobetaVR
         internal ConfigEntry<float> HudFollowSpeed;
         internal ConfigEntry<bool> HudDrawOnTop;
         internal ConfigEntry<float> HudFadeSpeed;
-        internal ConfigEntry<float> BackgroundScale;
+        internal ConfigEntry<bool> VrFade;
         internal ConfigEntry<bool> TidyGameHud;
         internal ConfigEntry<bool> HideHealthBars;
         internal ConfigEntry<bool> HideChargeBar;
@@ -303,60 +298,19 @@ namespace NobetaVR
                 "Comfort", "DisableCameraShake", true,
                 "Switches off combat camera shake, for the same reason.");
 
-            CutsceneVignette = Config.Bind(
-                "Comfort", "CutsceneVignette", true,
-                "Puts black bars down all four sides of your vision while the game is driving "
-              + "the camera, so a cutscene is watched through a rectangle rather than played "
-              + "out on your face. A cut, a sweep or a push-in is direction on a monitor; in a "
-              + "headset it is your head being turned by someone else, which is the sharpest "
-              + "vection there is because you cannot brace against a movement you did not "
-              + "start. A frame confines what moves and leaves something around it that does "
-              + "not, which is what the eye holds on to. It applies to every moment the game "
-              + "stages her — cutscenes, conversations, death — but not to the face-camera "
-              + "mode, which you asked for yourself.");
-
-            CutsceneVignetteWidth = Config.Bind(
-                "Comfort", "CutsceneVignetteWidth", 64f,
-                "How wide the opening is, in degrees of your own vision rather than as a "
-              + "fraction of a screen, so it means the same thing in every headset. Sixty-four "
-              + "is roughly what a cinema screen subtends from a good seat, and it leaves bars "
-              + "wide enough to be a reference without cropping the framing. Narrow it if "
-              + "cutscenes still move you; widen it until the bars disappear if they do not.");
-
-            CutsceneVignetteHeight = Config.Bind(
-                "Comfort", "CutsceneVignetteHeight", 38f,
-                "How tall the opening is, in degrees. Separate from the width rather than "
-              + "derived from it, because the two do different work: the bars at the sides are "
-              + "what steady a camera that sweeps, and the ones above and below are what steady "
-              + "one that rises or falls. Their ratio is the shape of the frame, and this "
-              + "default is about the 1.85:1 of a cinema.");
-
-            CutsceneVignetteSoftness = Config.Bind(
-                "Comfort", "CutsceneVignetteSoftness", 0.12f,
-                "How far the edge is graded, as a fraction of the opening's half-size. Zero is "
-              + "hard bars, which is the cleaner look and the more visible one, since a hard "
-              + "edge is itself something in the picture. Raising it trades that for a window "
-              + "you stop noticing; at one the bars have become a tunnel with no edge at all. "
-              + "The default is a hair of grading, enough to keep the edge from stepping and "
-              + "to hide the half-degree the two eyes disagree by.");
-
-            CutsceneVignetteFade = Config.Bind(
-                "Comfort", "CutsceneVignetteFade", 0.4f,
-                "How long the frame takes to come in and go out, in seconds. Not zero, because "
-              + "the mode flips on the same frame the camera cuts, and a black rectangle "
-              + "appearing on a cut is itself a jolt — a small one, but paid at exactly the "
-              + "moment the frame is there to make comfortable.");
-
-            CutsceneVignetteDistance = Config.Bind(
-                "Comfort", "CutsceneVignetteDistance", 6f,
-                "How far away the frame hangs, in metres. It does not change how big the "
-              + "opening looks — that is the two angles above — only how far the two eyes "
-              + "disagree about where its edges are, which is why it is metres away rather "
-              + "than in front of your face: a bar at arm's length is seen from two places and "
-              + "reads double. Set it to about 0.4 only if scenery is covering the bars, which "
-              + "would mean this build's shaders did not carry the depth-test override the "
-              + "frame is drawn with; the log says which shader it found.");
-
+            ThirdPersonInCutscenes = Config.Bind(
+                "Comfort", "ThirdPersonInCutscenes", true,
+                "Steps back out of her head whenever the game is placing the camera, and "
+              + "returns when she is yours again. A cut, a sweep or a push-in is direction on "
+              + "a monitor; from inside her head it is your own head being turned by someone "
+              + "else, which is the sharpest vection there is because you cannot brace against "
+              + "a movement you did not make. From the end of the game's own boom it is a "
+              + "camera moving through a room, which is a thing you watch rather than a thing "
+              + "done to you — and the framing the scene was authored with works as intended "
+              + "instead of being fought. The horizon is kept level and your head still moves "
+              + "the view, so it is a step back rather than the camera taking over. It applies "
+              + "to every moment the game stages her, but not to the face-camera mode, which "
+              + "you asked for yourself.");
 
             MoveDeadzone = Config.Bind(
                 "Controls", "MoveDeadzone", 0.15f,
@@ -484,12 +438,16 @@ namespace NobetaVR
               + "is a quarter of a second. Fades rather than switches because a widget that "
               + "appears instantly reads as a glitch in a headset, where nothing else does.");
 
-            BackgroundScale = Config.Bind(
-                "Interface", "BackgroundScale", 4f,
-                "Stretches the game's own backdrop image — the veil behind menus and the fades "
-              + "to black. It is sized for a flat screen, so on the captured panel it leaves "
-              + "the edges uncovered and a fade to black comes out as a black rectangle with "
-              + "the game still showing round it. 1 leaves it exactly as the game has it.");
+            VrFade = Config.Bind(
+                "Interface", "VrFade", true,
+                "Fades the whole view to black instead of a rectangle in front of it. The "
+              + "game hides its transitions behind a full-screen black image, which is right "
+              + "on a monitor and useless here: a screen-space image is captured onto the HUD "
+              + "panel like everything else, so a fade to black came out as a black rectangle "
+              + "hanging a metre away with the level still visible around it. This switches "
+              + "the game's own image off and reads its alpha instead, so the game keeps "
+              + "control of when a fade starts, how long it takes and what curve it follows — "
+              + "only the surface it lands on changes.");
 
             TidyGameHud = Config.Bind(
                 "Interface", "TidyGameHud", true,
@@ -538,7 +496,7 @@ namespace NobetaVR
 
             WristGaugeScale = Config.Bind(
                 "Interface", "WristGaugeScale", 1f,
-                "Size of the wrist gauges. 1 is a hundred millimetres across.");
+                "Size of the wrist gauges. 1 is sixty millimetres across, about a watch.");
 
             WristGaugeOpacity = Config.Bind(
                 "Interface", "WristGaugeOpacity", 0.9f,
@@ -552,28 +510,37 @@ namespace NobetaVR
 
             WristGaugeOffsetX = Config.Bind(
                 "Interface", "WristGaugeOffsetX", 0f,
-                "Sideways offset of the wrist gauges from the controller, in metres.");
+                "Offset of the wrist gauges across the controller, in metres. The three "
+              + "offsets are taken along the controller's own axes rather than the panel's, so "
+              + "they keep meaning the same thing however the angles below have been set.");
 
             WristGaugeOffsetY = Config.Bind(
-                "Interface", "WristGaugeOffsetY", 0.015f,
-                "Offset of the wrist gauges up the panel, in metres.");
+                "Interface", "WristGaugeOffsetY", 0.02f,
+                "Offset of the wrist gauges up out of the controller, in metres. This is what "
+              + "lifts them off the back of the hand and onto the wrist.");
 
             WristGaugeOffsetZ = Config.Bind(
-                "Interface", "WristGaugeOffsetZ", -0.06f,
-                "Offset of the wrist gauges back towards your elbow, in metres.");
+                "Interface", "WristGaugeOffsetZ", -0.07f,
+                "Offset of the wrist gauges along the forearm, in metres. Negative is back "
+              + "towards your elbow.");
 
             WristGaugePitch = Config.Bind(
-                "Interface", "WristGaugePitch", -70f,
-                "Tilt of the wrist gauges towards your face, in degrees. The default lays them "
-              + "along the back of the hand, so a turn of the wrist brings them up to be read.");
+                "Interface", "WristGaugePitch", -90f,
+                "Tilt of the wrist gauges, in degrees. -90 lays them flat across the back of "
+              + "the hand, square on the wrist with the palm down, so a turn of the wrist "
+              + "brings them up to be read. It is derived rather than dialled in: the mod aims "
+              + "the wand along the controller's own forward axis, so that axis is known, and "
+              + "a canvas faces its own forward — a quarter turn off it is face-up.");
 
             WristGaugeYaw = Config.Bind(
                 "Interface", "WristGaugeYaw", 0f,
                 "Turn of the wrist gauges about the controller's up axis, in degrees.");
 
             WristGaugeRoll = Config.Bind(
-                "Interface", "WristGaugeRoll", 0f,
-                "Roll of the wrist gauges about their own facing, in degrees.");
+                "Interface", "WristGaugeRoll", 180f,
+                "Roll of the wrist gauges about their own facing, in degrees. 180 is what puts "
+              + "the top of the readout towards your fingers rather than towards your elbow, "
+              + "which is the difference between reading it and reading it upside down.");
 
 
 
