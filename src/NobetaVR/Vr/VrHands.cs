@@ -71,6 +71,12 @@ namespace NobetaVR.Vr
         private bool _reported;
 
         /// <summary>
+        /// The wrist calibration per rig, kept for the session rather than per body. See
+        /// <see cref="TakeRest"/> — this is what stops the aim moving when you die.
+        /// </summary>
+        private static readonly System.Collections.Generic.Dictionary<string, Quaternion> RestByRig = new();
+
+        /// <summary>
         /// Whether she is the player's to move this frame.
         ///
         /// Read by anything that has to stand down with the hands — the aim reticle, so
@@ -306,14 +312,8 @@ namespace NobetaVR.Vr
             Resolve(_left, bones, "l hand", "lefthand", "l_hand", "l upperarm", "leftarm", "l_upperarm");
             Resolve(_right, bones, "r hand", "righthand", "r_hand", "r upperarm", "rightarm", "r_upperarm");
 
-            if (_left.Valid)
-            {
-                _left.RestRelativeToBody = Quaternion.Inverse(root.rotation) * _left.Hand.rotation;
-            }
-            if (_right.Valid)
-            {
-                _right.RestRelativeToBody = Quaternion.Inverse(root.rotation) * _right.Hand.rotation;
-            }
+            if (_left.Valid) TakeRest(_left, root);
+            if (_right.Valid) TakeRest(_right, root);
 
             if (!_reported)
             {
@@ -327,6 +327,61 @@ namespace NobetaVR.Vr
             }
 
             return _left.Valid && _right.Valid;
+        }
+
+        /// <summary>
+        /// The wrist calibration, taken once per rig and then held.
+        ///
+        /// It is read off the animated skeleton, which means it is read off whatever pose the
+        /// character happened to be in on the frame the mod bound to her. That was fine while
+        /// there was one body per session. Dying reloads the stage — the log goes
+        /// <c>Dead</c>, <c>Loader</c>, the act again — so a new <c>WizardGirl_Nonota(Clone)</c>
+        /// arrives, the bind runs a second time, and the second reading is taken from a
+        /// different pose than the first. Everything downstream of it moves: the hand mesh
+        /// turns on the controller, and the wand with it, so the shot still leaves along the
+        /// controller's forward while the wand it appears to leave from is pointing somewhere
+        /// else. From inside the headset that reads as the aim having drifted since you died.
+        ///
+        /// So the reading is kept, keyed on the bone it was taken from. The same rig gives the
+        /// same path every time, and the calibration a player tuned their offsets against
+        /// survives every death of the session. A genuinely different skeleton has a different
+        /// path and is measured afresh.
+        ///
+        /// What a second reading *would* have been is logged when there is one, because that
+        /// difference is the whole of the fault above and one line settles whether it is really
+        /// what moved.
+        /// </summary>
+        private static void TakeRest(Arm arm, Transform root)
+        {
+            var measured = Quaternion.Inverse(root.rotation) * arm.Hand.rotation;
+            var key = BonePath(arm.Hand);
+
+            if (!RestByRig.TryGetValue(key, out var held))
+            {
+                RestByRig[key] = measured;
+                arm.RestRelativeToBody = measured;
+                return;
+            }
+
+            arm.RestRelativeToBody = held;
+
+            var drift = Quaternion.Angle(held, measured);
+            if (drift > 0.5f)
+            {
+                Plugin.Log.LogInfo($"wrist calibration held for {arm.Hand.name}: this body would "
+                                 + $"have measured {drift:F1}° away from the first one.");
+            }
+        }
+
+        /// <summary>
+        /// A bone's path from the scene root, which is what makes "the same rig" a question with
+        /// an answer. Instance names carry the clone suffix and so are equal across reloads.
+        /// </summary>
+        private static string BonePath(Transform bone)
+        {
+            var path = bone.name;
+            for (var t = bone.parent; t != null; t = t.parent) path = t.name + "/" + path;
+            return path;
         }
 
         private static void Resolve(Arm arm, Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppArrayBase<Transform> bones,

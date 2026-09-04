@@ -237,6 +237,39 @@ namespace NobetaVR.Ui
             });
 
             _items.Add(new Item { Label = "", IsHeading = true });
+            _items.Add(new Item { Label = "COMFORT", IsHeading = true });
+
+            _items.Add(new Item
+            {
+                Label = "Cutscene frame",
+                Value = () => cfg.CutsceneVignette.Value ? "On" : "Off",
+                Adjust = _ => cfg.CutsceneVignette.Value = !cfg.CutsceneVignette.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Frame width",
+                Value = () => $"{cfg.CutsceneVignetteWidth.Value:F0}°",
+                Adjust = d => cfg.CutsceneVignetteWidth.Value =
+                    Mathf.Clamp(cfg.CutsceneVignetteWidth.Value + d * 2f, 10f, 136f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Frame height",
+                Value = () => $"{cfg.CutsceneVignetteHeight.Value:F0}°",
+                Adjust = d => cfg.CutsceneVignetteHeight.Value =
+                    Mathf.Clamp(cfg.CutsceneVignetteHeight.Value + d * 2f, 10f, 136f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Frame edge",
+                Value = () => cfg.CutsceneVignetteSoftness.Value <= 0.001f
+                    ? "Hard"
+                    : $"{cfg.CutsceneVignetteSoftness.Value:F2}",
+                Adjust = d => cfg.CutsceneVignetteSoftness.Value =
+                    Mathf.Clamp(cfg.CutsceneVignetteSoftness.Value + d * 0.02f, 0f, 1f),
+            });
+
+            _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "HANDS", IsHeading = true });
 
             _items.Add(new Item
@@ -361,6 +394,57 @@ namespace NobetaVR.Ui
             });
 
             _items.Add(new Item { Label = "", IsHeading = true });
+            _items.Add(new Item { Label = "HAPTICS", IsHeading = true });
+
+            _items.Add(new Item
+            {
+                Label = "Rumble",
+                Value = () => cfg.Haptics.Value ? "On" : "Off",
+                Adjust = _ => cfg.Haptics.Value = !cfg.Haptics.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Rumble hand",
+                Value = () => cfg.HapticsHand.Value switch
+                {
+                    Vr.HapticsHands.Motors => "Heavy left",
+                    Vr.HapticsHands.Left => "Left",
+                    Vr.HapticsHands.Right => "Right",
+                    _ => "Both",
+                },
+                Adjust = d => cfg.HapticsHand.Value = Cycle(cfg.HapticsHand.Value, d),
+            });
+            _items.Add(new Item
+            {
+                Label = "Rumble strength",
+                Value = () => $"×{cfg.HapticsStrength.Value:F2}",
+                Adjust = d => cfg.HapticsStrength.Value =
+                    Mathf.Clamp(cfg.HapticsStrength.Value + d * 0.05f, 0f, 2f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Weakest rumble",
+                Value = () => $"{cfg.HapticsMinAmplitude.Value:F2}",
+                Adjust = d => cfg.HapticsMinAmplitude.Value =
+                    Mathf.Clamp(cfg.HapticsMinAmplitude.Value + d * 0.01f, 0f, 0.5f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Rumble pitch",
+                Value = () => cfg.HapticsFrequency.Value <= 0f
+                    ? "Runtime"
+                    : $"{cfg.HapticsFrequency.Value:F0} Hz",
+                Adjust = d => cfg.HapticsFrequency.Value =
+                    Mathf.Clamp(cfg.HapticsFrequency.Value + d * 10f, 0f, 320f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Test rumble",
+                Value = () => "(A)",
+                Activate = Vr.VrHaptics.Test,
+            });
+
+            _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item
             {
                 Label = "Reset to default",
@@ -378,6 +462,18 @@ namespace NobetaVR.Ui
             Adjust = d => entry().Value = Mathf.Clamp(entry().Value + d * 5f, -180f, 180f),
         };
 
+        /// <summary>
+        /// Steps through an enum setting and wraps, so a row of choices reads the same way as a
+        /// number does: left goes back, right goes on, and neither ever dead-ends.
+        /// </summary>
+        private static T Cycle<T>(T value, int direction) where T : struct, Enum
+        {
+            var values = (T[])Enum.GetValues(typeof(T));
+            var next = (Array.IndexOf(values, value) + direction) % values.Length;
+            if (next < 0) next += values.Length;
+            return values[next];
+        }
+
         private static Item Axis(string label, Func<BepInEx.Configuration.ConfigEntry<float>> entry) => new()
         {
             Label = label,
@@ -393,6 +489,9 @@ namespace NobetaVR.Ui
                          cfg.SmoothTurn, cfg.SnapTurnDegrees, cfg.SmoothTurnSpeed,
                          cfg.HeadOffsetX, cfg.HeadOffsetY, cfg.HeadOffsetZ,
                          cfg.HeadBobbing, cfg.HeadHideDistance,
+                         cfg.CutsceneVignette, cfg.CutsceneVignetteWidth,
+                         cfg.CutsceneVignetteHeight, cfg.CutsceneVignetteSoftness,
+                         cfg.CutsceneVignetteFade, cfg.CutsceneVignetteDistance,
                          cfg.HandSteadiness,
                          cfg.HandRotationPitch, cfg.HandRotationYaw, cfg.HandRotationRoll,
                          cfg.HoldWandStill, cfg.WandFollowSpeed,
@@ -404,6 +503,8 @@ namespace NobetaVR.Ui
                          cfg.MeleeHitboxReach, cfg.MeleeShowHitbox,
                          cfg.MeleeFreeSwingOnGround,
                          cfg.MeleeHitboxSize, cfg.MeleeTrailSeconds, cfg.MeleeSwingVoice,
+                         cfg.Haptics, cfg.HapticsHand, cfg.HapticsStrength,
+                         cfg.HapticsMinAmplitude, cfg.HapticsMaxSeconds, cfg.HapticsFrequency,
                      })
             {
                 entry.BoxedValue = entry.DefaultValue;

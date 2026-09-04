@@ -214,6 +214,32 @@ namespace NobetaVR.Xr
         [return: MarshalAs(UnmanagedType.U1)]
         public static extern bool AttachActionSets();
 
+        // -- haptics --------------------------------------------------------------------
+        //
+        // The output half of the same action set. An OpenXR haptic is not a device feature you
+        // write to, it is an action you apply feedback through, so the provider addresses it by
+        // action id -- and the id is looked up from the device by control name rather than
+        // handed back by CreateAction, because the package's own path there goes through an
+        // Input System control this mod does not have.
+        //
+        // Copied from OpenXRInput.cs in the same package version as everything above; the entry
+        // point name for the lookup really is ...ByControl while the others are not.
+        //
+        // These are the fallback. VrHaptics tries the XR input subsystem first, which is the
+        // half of the engine every control here is already read through.
+
+        [DllImport(Lib, EntryPoint = "OpenXRInputProvider_GetActionIdByControl")]
+        public static extern ulong GetActionIdByControl(uint deviceId, string name);
+
+        [DllImport(Lib, EntryPoint = "OpenXRInputProvider_SendHapticImpulse",
+                   CallingConvention = CallingConvention.Cdecl)]
+        public static extern void SendHapticImpulse(
+            uint deviceId, ulong actionId, float amplitude, float frequency, float duration);
+
+        [DllImport(Lib, EntryPoint = "OpenXRInputProvider_StopHaptics",
+                   CallingConvention = CallingConvention.Cdecl)]
+        public static extern void StopHaptics(uint deviceId, ulong actionId);
+
         // -- diagnostics ---------------------------------------------------------------
         //
         // The provider keeps its own structured report of everything OpenXR told it: which

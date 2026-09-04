@@ -83,6 +83,11 @@ namespace NobetaVR.Ui
 
             _material = new Material(shader) { mainTexture = _texture };
 
+            // Drawn after the cutscene frame, which is an overlay of its own at 3900. The bars
+            // are there to frame what the game is showing you, and eating the subtitles while
+            // doing it would be the one way they could make a cutscene worse.
+            _material.renderQueue = 3950;
+
             var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
             quad.name = "NobetaVR HUD Panel";
             UnityEngine.Object.DontDestroyOnLoad(quad);

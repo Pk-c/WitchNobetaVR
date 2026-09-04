@@ -40,6 +40,20 @@ namespace NobetaVR.Xr
         private const uint Left = 1 << 8;
         private const uint Right = 1 << 9;
 
+        /// <summary>
+        /// The ids the provider gave the two controllers when they were registered.
+        ///
+        /// Kept because the provider addresses its own devices by these, and they are not the
+        /// same numbers the XR input subsystem hands out for the same controllers — the package
+        /// asks an Input System device for its "internal device id" precisely because the two
+        /// namespaces differ. Nothing in this mod goes through the Input System, so the id is
+        /// kept from the one moment it is handed over. <see cref="Vr.VrHaptics"/> is what needs
+        /// it: haptic output is applied to a device, and applying it to a device the provider
+        /// does not recognise fails without saying so.
+        /// </summary>
+        internal static ulong LeftDeviceId { get; private set; }
+        internal static ulong RightDeviceId { get; private set; }
+
         private readonly struct Action
         {
             public readonly string Name;
@@ -83,10 +97,14 @@ namespace NobetaVR.Xr
             // runtime on the right, so binding it would be refused.
             new("menu",              Native.ActionType.Binary, "MenuButton",      "/input/menu/click", null),
 
-            // Not read yet. Declared now because motion-controlled hands will need them, and
-            // adding an action later means rebuilding the whole set.
+            // The poses are not read yet. Declared now because motion-controlled hands will
+            // need them, and adding an action later means rebuilding the whole set.
             new("devicePose",        Native.ActionType.Pose,    "Device",  "/input/grip/pose"),
             new("pointerPose",       Native.ActionType.Pose,    "Pointer", "/input/aim/pose"),
+
+            // The output. This one is used: it is what the game's own rumble is played through
+            // once VrHaptics has translated it. Its usage doubles as the name the provider's
+            // action lookup answers to — see VrHaptics.HapticAction.
             new("haptic",            Native.ActionType.Vibrate, "Haptic",  "/output/haptic"),
         };
 
@@ -125,12 +143,14 @@ namespace NobetaVR.Xr
         {
             var log = Plugin.Log;
 
-            if (Native.RegisterDeviceDefinition(LeftHand, TouchProfile,
-                    HeldInHand | TrackedDevice | Controller | Left,
-                    "Oculus Touch Controller OpenXR", "Oculus", "") == 0
-             || Native.RegisterDeviceDefinition(RightHand, TouchProfile,
-                    HeldInHand | TrackedDevice | Controller | Right,
-                    "Oculus Touch Controller OpenXR", "Oculus", "") == 0)
+            LeftDeviceId = Native.RegisterDeviceDefinition(LeftHand, TouchProfile,
+                HeldInHand | TrackedDevice | Controller | Left,
+                "Oculus Touch Controller OpenXR", "Oculus", "");
+            RightDeviceId = Native.RegisterDeviceDefinition(RightHand, TouchProfile,
+                HeldInHand | TrackedDevice | Controller | Right,
+                "Oculus Touch Controller OpenXR", "Oculus", "");
+
+            if (LeftDeviceId == 0 || RightDeviceId == 0)
             {
                 log.LogError($"Could not register the controller devices. {Native.LastError()}");
                 return false;
@@ -189,7 +209,8 @@ namespace NobetaVR.Xr
             // latter and read as a success while seven of twelve actions had been refused.
             if (created < Actions.Length)
                 log.LogWarning($"{Actions.Length - created} of {Actions.Length} actions were refused.");
-            log.LogInfo($"controller actions attached: {created} actions, {bindings.Count} bindings");
+            log.LogInfo($"controller actions attached: {created} actions, {bindings.Count} bindings; "
+                      + $"provider device ids left={LeftDeviceId} right={RightDeviceId}");
             return true;
         }
     }

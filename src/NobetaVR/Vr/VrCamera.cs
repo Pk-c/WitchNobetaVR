@@ -265,6 +265,10 @@ namespace NobetaVR.Vr
 
             // Same reason: the aim line is the view's line, and the view is only final here.
             VrAim.Apply(_playerCamera, _target);
+
+            // And the same reason once more, in its strongest form: a frame locked to the view
+            // cannot be a frame late without swimming against it.
+            Vignette.Apply(_target);
         }
 
         private void AcquireFallbackCamera()

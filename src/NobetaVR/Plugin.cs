@@ -33,6 +33,12 @@ namespace NobetaVR
         internal ConfigEntry<string> HeadBoneName;
         internal ConfigEntry<bool> DisableRespiration;
         internal ConfigEntry<bool> DisableCameraShake;
+        internal ConfigEntry<bool> CutsceneVignette;
+        internal ConfigEntry<float> CutsceneVignetteWidth;
+        internal ConfigEntry<float> CutsceneVignetteHeight;
+        internal ConfigEntry<float> CutsceneVignetteSoftness;
+        internal ConfigEntry<float> CutsceneVignetteFade;
+        internal ConfigEntry<float> CutsceneVignetteDistance;
         internal ConfigEntry<float> MoveDeadzone;
         internal ConfigEntry<float> TurnDeadzone;
         internal ConfigEntry<float> SnapTurnDegrees;
@@ -80,6 +86,12 @@ namespace NobetaVR
         internal ConfigEntry<float> MeleeTrailSeconds;
         internal ConfigEntry<bool> MeleeSwingVoice;
         internal ConfigEntry<string> MeleeRangeName;
+        internal ConfigEntry<bool> Haptics;
+        internal ConfigEntry<NobetaVR.Vr.HapticsHands> HapticsHand;
+        internal ConfigEntry<float> HapticsStrength;
+        internal ConfigEntry<float> HapticsMinAmplitude;
+        internal ConfigEntry<float> HapticsMaxSeconds;
+        internal ConfigEntry<float> HapticsFrequency;
 
         public override void Load()
         {
@@ -268,6 +280,60 @@ namespace NobetaVR
             DisableCameraShake = Config.Bind(
                 "Comfort", "DisableCameraShake", true,
                 "Switches off combat camera shake, for the same reason.");
+
+            CutsceneVignette = Config.Bind(
+                "Comfort", "CutsceneVignette", true,
+                "Puts black bars down all four sides of your vision while the game is driving "
+              + "the camera, so a cutscene is watched through a rectangle rather than played "
+              + "out on your face. A cut, a sweep or a push-in is direction on a monitor; in a "
+              + "headset it is your head being turned by someone else, which is the sharpest "
+              + "vection there is because you cannot brace against a movement you did not "
+              + "start. A frame confines what moves and leaves something around it that does "
+              + "not, which is what the eye holds on to. It applies to every moment the game "
+              + "stages her — cutscenes, conversations, death — but not to the face-camera "
+              + "mode, which you asked for yourself.");
+
+            CutsceneVignetteWidth = Config.Bind(
+                "Comfort", "CutsceneVignetteWidth", 64f,
+                "How wide the opening is, in degrees of your own vision rather than as a "
+              + "fraction of a screen, so it means the same thing in every headset. Sixty-four "
+              + "is roughly what a cinema screen subtends from a good seat, and it leaves bars "
+              + "wide enough to be a reference without cropping the framing. Narrow it if "
+              + "cutscenes still move you; widen it until the bars disappear if they do not.");
+
+            CutsceneVignetteHeight = Config.Bind(
+                "Comfort", "CutsceneVignetteHeight", 38f,
+                "How tall the opening is, in degrees. Separate from the width rather than "
+              + "derived from it, because the two do different work: the bars at the sides are "
+              + "what steady a camera that sweeps, and the ones above and below are what steady "
+              + "one that rises or falls. Their ratio is the shape of the frame, and this "
+              + "default is about the 1.85:1 of a cinema.");
+
+            CutsceneVignetteSoftness = Config.Bind(
+                "Comfort", "CutsceneVignetteSoftness", 0.12f,
+                "How far the edge is graded, as a fraction of the opening's half-size. Zero is "
+              + "hard bars, which is the cleaner look and the more visible one, since a hard "
+              + "edge is itself something in the picture. Raising it trades that for a window "
+              + "you stop noticing; at one the bars have become a tunnel with no edge at all. "
+              + "The default is a hair of grading, enough to keep the edge from stepping and "
+              + "to hide the half-degree the two eyes disagree by.");
+
+            CutsceneVignetteFade = Config.Bind(
+                "Comfort", "CutsceneVignetteFade", 0.4f,
+                "How long the frame takes to come in and go out, in seconds. Not zero, because "
+              + "the mode flips on the same frame the camera cuts, and a black rectangle "
+              + "appearing on a cut is itself a jolt — a small one, but paid at exactly the "
+              + "moment the frame is there to make comfortable.");
+
+            CutsceneVignetteDistance = Config.Bind(
+                "Comfort", "CutsceneVignetteDistance", 6f,
+                "How far away the frame hangs, in metres. It does not change how big the "
+              + "opening looks — that is the two angles above — only how far the two eyes "
+              + "disagree about where its edges are, which is why it is metres away rather "
+              + "than in front of your face: a bar at arm's length is seen from two places and "
+              + "reads double. Set it to about 0.4 only if scenery is covering the bars, which "
+              + "would mean this build's shaders did not carry the depth-test override the "
+              + "frame is drawn with; the log says which shader it found.");
 
 
             MoveDeadzone = Config.Bind(
@@ -475,6 +541,56 @@ namespace NobetaVR
               + "listed there with its strength and knockback, and since those are authored on "
               + "the range rather than on the animation, this is the choice of how hard a swing "
               + "hits as much as of where it reaches.");
+
+            Haptics = Config.Bind(
+                "Haptics", "Haptics", true,
+                "Plays the game's own rumble on the controllers. The game has haptics already "
+              + "and they are not lost in a headset so much as sent nowhere: every one of them "
+              + "ends at a gamepad's two motors, and a headset session usually has no gamepad. "
+              + "Nothing is invented here — the events, their strengths and their durations are "
+              + "the game's, and its own vibration setting still switches them off. The pad "
+              + "keeps its rumble either way, for anyone playing with one.");
+
+            HapticsHand = Config.Bind(
+                "Haptics", "HapticsHand", NobetaVR.Vr.HapticsHands.Both,
+                "Which hand a rumble is felt in. Both is the safe answer and the default: the "
+              + "game's rumble is a whole-pad event with nothing in it to say which side of her "
+              + "it happened on, so putting it in one hand only would be a guess. Motors is the "
+              + "interesting one — a pad's heavy motor goes to the left hand and its light one "
+              + "to the right, which is what those two motors are, and it costs nothing when "
+              + "the game drives both; when it drives only one, one hand goes quiet. Left and "
+              + "Right put everything in one hand.");
+
+            HapticsStrength = Config.Bind(
+                "Haptics", "HapticsStrength", 1f,
+                "Multiplier on every rumble. One plays the game's own levels as they are. Zero "
+              + "is silence, and means it whatever the floor below is set to.");
+
+            HapticsMinAmplitude = Config.Bind(
+                "Haptics", "HapticsMinAmplitude", 0.15f,
+                "The weakest rumble the controllers are asked for, from 0 to 1, applied to "
+              + "events the game did ask for and not to silence. A pad motor is an eccentric "
+              + "mass with real inertia and a Touch controller holds a linear actuator, so the "
+              + "bottom of the pad's range does not exist in the hand: the level that hums "
+              + "audibly on a pad arrives as nothing at all. Set it to 0 to take the game's "
+              + "levels literally and lose its lightest taps; raise it if a footstep or a menu "
+              + "tick is still not felt.");
+
+            HapticsMaxSeconds = Config.Bind(
+                "Haptics", "HapticsMaxSeconds", 2f,
+                "Longest single rumble, in seconds. A safety rail rather than a taste setting: "
+              + "an impulse is handed to the runtime with its whole duration at once, so a "
+              + "length the game means as a fade would otherwise be felt as a controller stuck "
+              + "on.");
+
+            HapticsFrequency = Config.Bind(
+                "Haptics", "HapticsFrequency", 160f,
+                "Vibration frequency in hertz. A pad has no such setting — its motors run at "
+              + "whatever speed the level implies — but an OpenXR impulse carries one, and a "
+              + "controller's actuator has a band it is loud in: 160 is around the middle of it "
+              + "for a Touch-style controller. Lower reads as a heavier thud, higher as a "
+              + "sharper tick. Zero hands the choice to the runtime, which is the specification's "
+              + "own default and is worth trying if nothing is felt at all.");
 
             Log.LogInfo($"NobetaVR {Version} loading");
 

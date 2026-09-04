@@ -25,6 +25,12 @@ are redistributed.
 - **A VR settings page** that applies live and is adjusted from inside the headset
 - **The interface readable in VR**, locked in front of you, hideable, with a reticle in
   the world that marks where the shot will actually land
+- **The game's own rumble, in your hands** — the haptics were always there, they were just
+  going to a gamepad nobody is holding; the same events at the same strengths now arrive in
+  the controllers, and the game's vibration setting still turns them off
+- **Comfort measures for the moments the game takes the camera** — cutscenes are framed
+  behind black bars on all four sides, so a sweep or a cut moves inside a window instead of
+  moving your head for you; the camera's breathing sway and combat shake are switched off
 
 ## Installing
 
