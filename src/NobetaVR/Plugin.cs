@@ -76,6 +76,7 @@ namespace NobetaVR
         internal ConfigEntry<bool> HideChargeBar;
         internal ConfigEntry<bool> HideSoulCounter;
         internal ConfigEntry<bool> HideItemBar;
+        internal ConfigEntry<bool> HideCutsceneBars;
         internal ConfigEntry<float> MoneyShowSeconds;
         internal ConfigEntry<float> ItemBarShowSeconds;
         internal ConfigEntry<bool> WristGauges;
@@ -109,6 +110,7 @@ namespace NobetaVR
         internal ConfigEntry<float> HapticsFrequency;
         internal ConfigEntry<bool> DodgeAlwaysBackstep;
         internal ConfigEntry<bool> ThirdPersonOnDeath;
+        internal ConfigEntry<float> DeathViewRise;
 
         public override void Load()
         {
@@ -478,6 +480,14 @@ namespace NobetaVR
               + "telling you what you just selected, and that is a question you ask for a "
               + "second at a time.");
 
+            HideCutsceneBars = Config.Bind(
+                "Interface", "HideCutsceneBars", true,
+                "Hides the black bars the game puts across the top and bottom of the screen "
+              + "during a cutscene. They are letterboxing — a way of saying 'this is a film "
+              + "now' on a screen that has edges — and the view in a headset has none, so they "
+              + "arrive as two black planes hanging across the middle distance, cropping the "
+              + "scene they were meant to frame.");
+
             MoneyShowSeconds = Config.Bind(
                 "Interface", "MoneyShowSeconds", 3f,
                 "How long the soul counter stays up after the count changes, in seconds.");
@@ -510,37 +520,33 @@ namespace NobetaVR
 
             WristGaugeOffsetX = Config.Bind(
                 "Interface", "WristGaugeOffsetX", 0f,
-                "Offset of the wrist gauges across the controller, in metres. The three "
-              + "offsets are taken along the controller's own axes rather than the panel's, so "
-              + "they keep meaning the same thing however the angles below have been set.");
+                "Offset of the wrist gauges across the panel, in metres. The three offsets are "
+              + "taken in the panel's resting frame rather than after the angles below, so a "
+              + "nudge of the pitch turns the panel without also moving it.");
 
             WristGaugeOffsetY = Config.Bind(
-                "Interface", "WristGaugeOffsetY", 0.02f,
-                "Offset of the wrist gauges up out of the controller, in metres. This is what "
-              + "lifts them off the back of the hand and onto the wrist.");
+                "Interface", "WristGaugeOffsetY", 0f,
+                "Offset of the wrist gauges up the panel, in metres.");
 
             WristGaugeOffsetZ = Config.Bind(
-                "Interface", "WristGaugeOffsetZ", -0.07f,
-                "Offset of the wrist gauges along the forearm, in metres. Negative is back "
-              + "towards your elbow.");
+                "Interface", "WristGaugeOffsetZ", 0f,
+                "Offset of the wrist gauges out of their own face, in metres. Positive lifts "
+              + "them off your wrist and towards you.");
 
             WristGaugePitch = Config.Bind(
-                "Interface", "WristGaugePitch", -90f,
-                "Tilt of the wrist gauges, in degrees. -90 lays them flat across the back of "
-              + "the hand, square on the wrist with the palm down, so a turn of the wrist "
-              + "brings them up to be read. It is derived rather than dialled in: the mod aims "
-              + "the wand along the controller's own forward axis, so that axis is known, and "
-              + "a canvas faces its own forward — a quarter turn off it is face-up.");
+                "Interface", "WristGaugePitch", 0f,
+                "Tilt of the wrist gauges, in degrees, from how they sit by default. Zero is "
+              + "upright on the wrist: the resting pose is measured on a real controller and "
+              + "baked in, so all three angles here are small corrections rather than the thing "
+              + "carrying the whole orientation.");
 
             WristGaugeYaw = Config.Bind(
                 "Interface", "WristGaugeYaw", 0f,
-                "Turn of the wrist gauges about the controller's up axis, in degrees.");
+                "Turn of the wrist gauges about their own up axis, in degrees.");
 
             WristGaugeRoll = Config.Bind(
-                "Interface", "WristGaugeRoll", 180f,
-                "Roll of the wrist gauges about their own facing, in degrees. 180 is what puts "
-              + "the top of the readout towards your fingers rather than towards your elbow, "
-              + "which is the difference between reading it and reading it upside down.");
+                "Interface", "WristGaugeRoll", 0f,
+                "Roll of the wrist gauges about their own facing, in degrees.");
 
 
 
@@ -697,6 +703,15 @@ namespace NobetaVR
               + "window, the same stamina, the same recovery. It is done by handing the game a "
               + "centred stick for the length of the dodge, so nothing is overridden and the "
               + "choice stays the game's own.");
+
+            DeathViewRise = Config.Bind(
+                "Comfort", "DeathViewRise", 2f,
+                "How far the view lifts while she dies, in metres, eased in over the first "
+              + "second and a half. The game's death camera sinks towards the floor with her, "
+              + "which is a shot on a monitor and is your own head going down to the ground in "
+              + "a headset — the one direction a view you have no control over should never "
+              + "travel. Rising instead reads as leaving rather than falling, and it keeps her "
+              + "in frame while it does. Zero leaves the game's camera exactly as it is.");
 
             ThirdPersonOnDeath = Config.Bind(
                 "Comfort", "ThirdPersonOnDeath", true,

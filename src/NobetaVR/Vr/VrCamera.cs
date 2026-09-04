@@ -218,8 +218,13 @@ namespace NobetaVR.Vr
         /// </summary>
         private static bool ThirdPersonView()
         {
-            if (Plugin.Instance.ThirdPersonInCutscenes.Value && GameIsFraming()) return true;
-            return DeathView();
+            // Asked first and unconditionally. DeathView owns a latch, and a latch that is only
+            // consulted on the frames some other condition happens to be false on is a latch
+            // that opens late, closes late, or does not close at all — a cutscene during the
+            // respawn would have held it open to its timeout.
+            var dying = DeathView();
+
+            return dying || (Plugin.Instance.ThirdPersonInCutscenes.Value && GameIsFraming());
         }
 
         /// <summary>
@@ -307,6 +312,35 @@ namespace NobetaVR.Vr
             return false;
         }
 
+        /// <summary>
+        /// How far the view is lifted while she dies, this frame.
+        ///
+        /// The game's death camera sinks towards the floor with her. On a monitor that is a
+        /// shot; in a headset it is your own head travelling to the ground, which is the one
+        /// direction a view you have no control over should never take — you cannot brace
+        /// against it, you cannot look away from it, and it lasts as long as the death does.
+        /// Going the other way costs nothing, keeps her in frame, and reads as leaving rather
+        /// than as falling.
+        ///
+        /// Added to the game's position rather than replacing its height, so the lift survives
+        /// the stage reload in the middle of the death: the latch stays open across it and an
+        /// absolute height captured before it would belong to a camera that no longer exists.
+        ///
+        /// Eased in from the moment the latch opened, over a second and a half: arriving
+        /// instantly would be its own jolt, on the frame that is already the worst one to
+        /// spend one. Cutscenes get none of it — the game is placing that camera deliberately
+        /// and it is not falling to the floor, so there is nothing to answer.
+        /// </summary>
+        private static float DeathRise()
+        {
+            var rise = Plugin.Instance.DeathViewRise.Value;
+            if (rise <= 0.001f || !_deathLatch) return 0f;
+
+            const float ease = 1.5f;
+            var t = Mathf.Clamp01((Time.unscaledTime - _latchedAt) / ease);
+            return rise * t * t * (3f - 2f * t);
+        }
+
         private static bool _deathLatch;
         private static float _latchedAt;
 
@@ -372,6 +406,7 @@ namespace NobetaVR.Vr
             if (ThirdPersonView())
             {
                 viewRot = Quaternion.Euler(0f, _gameRot.eulerAngles.y, 0f);
+                viewPos += Vector3.up * DeathRise();
             }
             // If the head bone is not loaded yet, first person declines and the boom pose
             // stands, so a stage opens in third person for a few frames rather than snapping

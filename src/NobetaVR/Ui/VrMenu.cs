@@ -253,6 +253,15 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
+                Label = "Death view rise",
+                Value = () => cfg.DeathViewRise.Value <= 0.001f
+                    ? "Off"
+                    : $"{cfg.DeathViewRise.Value:F1} m",
+                Adjust = d => cfg.DeathViewRise.Value =
+                    Mathf.Clamp(cfg.DeathViewRise.Value + d * 0.25f, 0f, 8f),
+            });
+            _items.Add(new Item
+            {
                 Label = "Cutscenes",
                 Value = () => cfg.ThirdPersonInCutscenes.Value ? "Third person" : "Stay in her head",
                 Adjust = _ => cfg.ThirdPersonInCutscenes.Value = !cfg.ThirdPersonInCutscenes.Value,
@@ -378,6 +387,12 @@ namespace NobetaVR.Ui
                 Value = () => $"{cfg.HudFadeSpeed.Value:F1}/s",
                 Adjust = d => cfg.HudFadeSpeed.Value =
                     Mathf.Clamp(cfg.HudFadeSpeed.Value + d * 0.5f, 0.5f, 20f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Cutscene bars",
+                Value = () => cfg.HideCutsceneBars.Value ? "Hidden" : "Shown",
+                Adjust = _ => cfg.HideCutsceneBars.Value = !cfg.HideCutsceneBars.Value,
             });
             _items.Add(new Item
             {
@@ -590,9 +605,10 @@ namespace NobetaVR.Ui
                          cfg.Haptics, cfg.HapticsHand, cfg.HapticsStrength,
                          cfg.HapticsMinAmplitude, cfg.HapticsMaxSeconds, cfg.HapticsFrequency,
                          cfg.DodgeAlwaysBackstep, cfg.ThirdPersonOnDeath,
+                         cfg.DeathViewRise,
                          cfg.HudDrawOnTop, cfg.HudFadeSpeed, cfg.VrFade,
                          cfg.TidyGameHud, cfg.HideHealthBars, cfg.HideChargeBar,
-                         cfg.HideSoulCounter, cfg.HideItemBar,
+                         cfg.HideSoulCounter, cfg.HideItemBar, cfg.HideCutsceneBars,
                          cfg.MoneyShowSeconds, cfg.ItemBarShowSeconds,
                          cfg.WristGauges, cfg.WristGaugeScale, cfg.WristGaugeOpacity,
                          cfg.WristGaugeFillSpeed,

@@ -37,11 +37,13 @@ namespace NobetaVR.Ui
         private CanvasGroup _charge;   // the spell charge bar, top left
         private CanvasGroup _money;    // the soul counter
         private CanvasGroup _items;    // the item bar along the bottom
+        private CanvasGroup _bars;     // the cutscene letterbox, top and bottom
 
         private float _statsAlpha = 1f;
         private float _chargeAlpha = 1f;
         private float _moneyAlpha = 1f;
         private float _itemsAlpha = 1f;
+        private float _barsAlpha = 1f;
 
         /// <summary>Unscaled time at which each timed widget goes away again.</summary>
         private float _moneyUntil;
@@ -115,11 +117,19 @@ namespace NobetaVR.Ui
             _money = Group(ui.playersSubStats != null ? ui.playersSubStats.gameObject : null);
             _items = Group(ui.itemBar != null ? ui.itemBar.gameObject : null);
 
-            _statsAlpha = _chargeAlpha = _moneyAlpha = _itemsAlpha = 1f;
+            // The letterbox lives on the cutscene UI rather than with the rest of the HUD, and
+            // it is taken by its own root so only the two bars go — the dialogue box and the
+            // cutscene's black screen are siblings on that same object.
+            var script = ui.scriptMode;
+            var edges = script != null ? script.blackEdgeRoot : null;
+            _bars = Group(edges != null ? edges.gameObject : null);
+
+            _statsAlpha = _chargeAlpha = _moneyAlpha = _itemsAlpha = _barsAlpha = 1f;
 
             Plugin.Log.LogInfo("game HUD bound: "
                              + $"stats {Seen(_stats)}, charge {Seen(_charge)}, "
-                             + $"souls {Seen(_money)}, items {Seen(_items)}");
+                             + $"souls {Seen(_money)}, items {Seen(_items)}, "
+                             + $"cutscene bars {Seen(_bars)}");
         }
 
         private static string Seen(CanvasGroup group) => group != null ? "yes" : "no";
@@ -158,6 +168,12 @@ namespace NobetaVR.Ui
                   !on || !cfg.HideSoulCounter.Value || _praying || now < _moneyUntil ? 1f : 0f, step);
             Apply(ref _itemsAlpha, _items,
                   !on || !cfg.HideItemBar.Value || now < _itemsUntil ? 1f : 0f, step);
+
+            // Not gated on TidyGameHud: that switch is about how much of the HUD is on screen
+            // during play, and the letterbox is not part of that argument. It is wrong in a
+            // headset for a reason of its own — see HideCutsceneBars — and someone who wants
+            // the full HUD back does not thereby want two black planes across a cutscene.
+            Apply(ref _barsAlpha, _bars, cfg.HideCutsceneBars.Value ? 0f : 1f, step);
         }
 
         private static void Apply(ref float current, CanvasGroup group, float target, float step)

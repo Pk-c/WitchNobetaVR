@@ -51,6 +51,28 @@ namespace NobetaVR.Ui
         private const float WarnBelow = 0.25f;
 
         /// <summary>
+        /// How the panel sits on the wrist before any adjustment is made to it.
+        ///
+        /// Measured, not derived. The first version worked the angles out from the controller's
+        /// own axes — the mod aims the wand along the device's +Z, so +Z is the pointing
+        /// direction, so a quarter turn off it lays a canvas face-up — and the reasoning was
+        /// sound and the result was not: it put the panel flat on the back of the hand, which
+        /// reads at the wrong angle for how a controller is actually gripped. A rest pose is a
+        /// fact about holding a thing, and there is no substitute for holding it.
+        ///
+        /// Baking it here rather than leaving it in the three settings is what makes those
+        /// settings useful. They were carrying the whole orientation, so nothing could be
+        /// nudged without re-deriving the rest of it, and zero meant a pose nobody wanted. Now
+        /// zero is upright on the wrist and each one is a small correction from there.
+        ///
+        /// The offsets are taken in this frame too, so they mean what the panel looks like it
+        /// does: X across it, Y up it, Z out of its face away from your wrist. Taking them
+        /// after the adjustment angles instead would make every nudge of the pitch move the
+        /// panel as well as turn it.
+        /// </summary>
+        private static readonly Quaternion Rest = Quaternion.Euler(0f, -45f, 30f);
+
+        /// <summary>
         /// The palette, in one place, because it only works as one.
         ///
         /// <para><b>Red, amber, blue rather than red, green, blue.</b> Health beside stamina was
@@ -244,19 +266,8 @@ namespace NobetaVR.Ui
         /// into the world by the view's yaw. Nothing in between, so it is exactly where your
         /// hand is.
         ///
-        /// <para>
-        /// The default angles lay it flat across the back of the hand, reading away from you,
-        /// so it is square on the wrist with the palm down and a turn of the wrist brings it
-        /// up. They are derived rather than dialled in: the mod already aims the wand along
-        /// the controller's own +Z — that is what <c>AimDirection</c> is — so +Z is the
-        /// pointing direction and +Y is up out of the controller. A canvas faces its own +Z,
-        /// so a pitch of -90° lays it face-up, and the roll of 180° is what puts the top of
-        /// the readout towards the fingers instead of towards the elbow.
-        /// </para>
-        ///
-        /// The offset is taken along the *controller's* axes rather than the panel's, so the
-        /// three sliders keep meaning the same thing however it has been angled: Z is along
-        /// the forearm, Y is up out of the controller, X is across it.
+        /// How it sits on the wrist is <see cref="Rest"/>; the settings are corrections from
+        /// there, and all three are zero by default.
         ///
         /// Takes the wrist pose rather than reading it, so that when the hands are being drawn
         /// this is the very pose the hand went to. See <see cref="Follow"/>.
@@ -265,12 +276,17 @@ namespace NobetaVR.Ui
         {
             var cfg = Plugin.Instance;
 
-            _root.transform.position = wrist + controller * new Vector3(cfg.WristGaugeOffsetX.Value,
-                                                                        cfg.WristGaugeOffsetY.Value,
-                                                                        cfg.WristGaugeOffsetZ.Value);
-            _root.transform.rotation = controller * Quaternion.Euler(cfg.WristGaugePitch.Value,
-                                                                     cfg.WristGaugeYaw.Value,
-                                                                     cfg.WristGaugeRoll.Value);
+            // The rest pose is the frame everything else is expressed in: the offsets move the
+            // panel about in it, and the three angles turn the panel within it without moving
+            // it. See Rest.
+            var worn = controller * Rest;
+
+            _root.transform.position = wrist + worn * new Vector3(cfg.WristGaugeOffsetX.Value,
+                                                                  cfg.WristGaugeOffsetY.Value,
+                                                                  cfg.WristGaugeOffsetZ.Value);
+            _root.transform.rotation = worn * Quaternion.Euler(cfg.WristGaugePitch.Value,
+                                                               cfg.WristGaugeYaw.Value,
+                                                               cfg.WristGaugeRoll.Value);
             _root.transform.localScale =
                 Vector3.one * (MillimetresPerUnit * Mathf.Max(0.1f, cfg.WristGaugeScale.Value));
         }
