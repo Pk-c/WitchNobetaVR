@@ -30,13 +30,24 @@ namespace NobetaVR.Vr
 
         public static void Reset() => _spent = Vector3.zero;
 
-        public static void Apply(WizardGirlManage girl, Quaternion viewYaw)
+        /// <summary>
+        /// Hands this frame's physical movement to the character — or writes it off, when she
+        /// is not the player's to move.
+        ///
+        /// <para>
+        /// <b>Standing down means absorbing, not skipping.</b> The room offset goes on growing
+        /// whether or not anything is being done with it, so a frame that declines to apply a
+        /// delta has to spend it anyway. Skipping instead banks it: every step taken during a
+        /// cutscene, a conversation or a menu is saved up and paid out as one lurch on the
+        /// frame she becomes the player's again. That is the same fault as moving her during
+        /// the scene, only concentrated — which is why the caller passes <paramref name="allowed"/>
+        /// rather than simply not calling.
+        /// </para>
+        /// </summary>
+        public static void Apply(WizardGirlManage girl, Quaternion viewYaw, bool allowed)
         {
             if (!Plugin.Instance.RoomScale.Value) return;
             if (girl == null) return;
-
-            var controller = girl.characterController;
-            if (controller == null || !controller.enabled) return;
 
             // The neck pivot, not the eyes -- see HeadPose.Neck. Walking the eyes led the
             // character around a small circle every time the player turned on the spot.
@@ -48,6 +59,12 @@ namespace NobetaVR.Vr
             room.y = 0f;
 
             var want = viewYaw * room;
+
+            if (!allowed) { _spent = want; return; }
+
+            var controller = girl.characterController;
+            if (controller == null || !controller.enabled) { _spent = want; return; }
+
             var delta = want - _spent;
 
             var step = delta.magnitude;

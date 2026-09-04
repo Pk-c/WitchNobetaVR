@@ -411,15 +411,21 @@ namespace NobetaVR.Ui
             Color.Lerp(colour, new Color(PlatePaint.r, PlatePaint.g, PlatePaint.b, 1f), 0.70f);
 
         /// <summary>
-        /// The highlight along the top of the fill. A lighter version of the bar's own colour
-        /// rather than white: white over a saturated fill is white being mixed into it, and it
-        /// took the top half of every bar back towards grey — the palette looked washed out and
-        /// the cause was here rather than in the colours themselves.
+        /// The highlight along the top of the fill, and the one thing here that can stop a
+        /// chosen colour reading as itself.
+        ///
+        /// It is a lighter version of the bar's own colour rather than white — white over a
+        /// saturated fill is white being mixed into it, which took the top half of every bar
+        /// towards grey. It is also kept faint. At 0.30 it was covering nearly half the bar's
+        /// height with something noticeably paler than the colour that was asked for, and on a
+        /// deep one like #A31621 that is the difference between the colour and a colour near
+        /// it. A sixth is enough to round the surface and little enough to leave the swatch
+        /// alone.
         /// </summary>
         private static Color Gloss(Color colour)
         {
             var lit = Color.Lerp(colour, Color.white, 0.55f);
-            return new Color(lit.r, lit.g, lit.b, 0.30f);
+            return new Color(lit.r, lit.g, lit.b, 0.16f);
         }
 
         /// <summary>The hot end of the warning pulse: the same colour, driven up.</summary>

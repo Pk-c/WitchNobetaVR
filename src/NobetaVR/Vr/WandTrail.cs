@@ -174,7 +174,7 @@ namespace NobetaVR.Vr
         private bool Bind(Transform root)
         {
             if (root == null) return false;
-            if (ReferenceEquals(root, _boundRoot)) return _trails != null && _trails.Length > 0;
+            if (ReferenceEquals(root, _boundRoot) && Live()) return true;
 
             Release();
             _boundRoot = root;
@@ -197,6 +197,32 @@ namespace NobetaVR.Vr
                                     + "trail will stay wherever the rig puts it.");
 
             return _trails.Length > 0;
+        }
+
+        /// <summary>
+        /// Whether the trails we are holding still exist.
+        ///
+        /// The root alone is not enough to answer that. <c>girl.transform</c> outlives a skin
+        /// change, so a costume swap — or the story skin a cutscene puts on and takes off
+        /// again — leaves the root identical while the effect objects beneath it, trails
+        /// included, are destroyed and rebuilt. The cached array then holds nothing but
+        /// destroyed components, and every loop over it skips every entry: <c>Release</c> put
+        /// nothing back, the retarget put nothing anywhere, and <c>_retargeted</c> stayed true
+        /// so it never tried again. The new trails were left on the rig's own points, drawing
+        /// a ribbon along a collapsed arm — the trail in the wrong place after a cutscene.
+        ///
+        /// The same hole the detached hands had, one object over, and the same fix: notice
+        /// that what was bound is gone rather than trusting that the thing it hung off is the
+        /// same object.
+        /// </summary>
+        private bool Live()
+        {
+            if (_trails == null || _trails.Length == 0) return false;
+
+            foreach (var trail in _trails)
+                if (trail == null) return false;
+
+            return true;
         }
 
         /// <summary>

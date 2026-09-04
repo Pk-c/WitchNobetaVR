@@ -109,7 +109,15 @@ namespace NobetaVR.Input
             Move();
             if (!wheel) Turn();
             Actions();
-            Vr.RoomScale.Apply(Camera != null ? Camera.wizardGirl : null, Vr.VrCamera.ViewYaw);
+            // Room-scale only while she is plainly the player's. A cutscene places her on a
+            // mark and then acts around it, so a physical step slides her off it and the scene
+            // plays out with her in the wrong place — and nothing in the scene will put her
+            // back. The camera mode catches the staged moments and `controllable` catches the
+            // rest of them: conversations, doors, pickups. Standing down still calls through,
+            // because the offset has to be absorbed rather than banked; see RoomScale.Apply.
+            Vr.RoomScale.Apply(Camera != null ? Camera.wizardGirl : null, Vr.VrCamera.ViewYaw,
+                               Vr.BodyFacing.Mode == PlayerCamera.CameraMode.Normal
+                            && Vr.PlayerStatus.Controllable);
         }
 
         /// <summary>
@@ -123,6 +131,11 @@ namespace NobetaVR.Input
         /// </summary>
         private void StandDown()
         {
+            // Physical movement is written off for as long as the controllers are handed back,
+            // for the reason in RoomScale.Apply: what is not applied has to be spent, or a menu
+            // becomes a way to store up a step and cash it in on the way out.
+            Vr.RoomScale.Apply(Camera != null ? Camera.wizardGirl : null, Vr.VrCamera.ViewYaw, false);
+
             if (InputController != null)
             {
                 if (_shootHeld) InputController.Shoot(false);

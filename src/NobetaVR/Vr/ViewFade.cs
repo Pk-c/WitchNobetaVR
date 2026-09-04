@@ -22,11 +22,15 @@ namespace NobetaVR.Vr
     /// tween running on its own object. Only the surface it lands on changes. Nothing is taken
     /// over until that alpha has been seen to move; see <c>Fader</c> for why.
     ///
-    /// Two sources, because the game has two. <c>GameUIManager.blackScreen</c> is the one that
-    /// covers scene transitions and outlives any single stage; <c>StageUIManager.background</c>
-    /// is the per-stage veil, used both for in-level fades and as the dimming behind a menu.
-    /// The larger of the two wins, so a menu opening dims the room and a transition blacks it
-    /// out, which is what each was asking for in the first place.
+    /// Three sources, because the game has three, one per lifetime.
+    /// <c>GameUIManager.blackScreen</c> covers scene transitions and outlives any single stage;
+    /// <c>StageUIManager.background</c> is the per-stage veil, used for in-level fades and as
+    /// the dimming behind a menu; <c>UIScriptMode.blackScreen</c> is the cutscene's own, which
+    /// is what a scene fades through on its way in and out. They are separate objects with
+    /// separate fields and separate coroutines, so finding one says nothing about the others —
+    /// the cutscene's was the one still landing on the panel as a black rectangle after the
+    /// other two had been dealt with. The largest wins, so a menu dims the room and a
+    /// transition blacks it out, which is what each was asking for in the first place.
     ///
     /// <para>
     /// Driven from <see cref="VrCamera"/>'s own update rather than from a LateUpdate of its
@@ -74,19 +78,25 @@ namespace NobetaVR.Vr
 
         private static readonly Fader Screen = new("GameUIManager.blackScreen");
         private static readonly Fader Veil = new("StageUIManager.background");
+        private static readonly Fader Script = new("UIScriptMode.blackScreen");
 
         private static float Read()
         {
             Rescan();
 
-            return Mathf.Max(Screen.Read(_ui != null ? _ui.blackScreen : null),
-                             Veil.Read(_stage != null ? _stage.background : null));
+            var scriptMode = _stage != null ? _stage.scriptMode : null;
+
+            var amount = Screen.Read(_ui != null ? _ui.blackScreen : null);
+            amount = Mathf.Max(amount, Veil.Read(_stage != null ? _stage.background : null));
+            amount = Mathf.Max(amount, Script.Read(scriptMode != null ? scriptMode.blackScreen : null));
+            return amount;
         }
 
         private static void Restore()
         {
             Screen.Release();
             Veil.Release();
+            Script.Release();
         }
 
         /// <summary>
@@ -221,14 +231,15 @@ namespace NobetaVR.Vr
 
             _material = new Material(shader);
 
-            // In front of everything, including the interface. A transition fade that the HUD
-            // panel showed through would be a fade with the health bar still on it, so this is
-            // pushed past the panel's own 3950 as well as past the world's transparent queue,
-            // and the depth test goes with it — the quad hangs a metre away and most of what it
-            // has to cover is nearer than that.
+            // In front of the world and behind the interface. The depth test is off because the
+            // quad hangs a metre away and everything it has to cover is nearer than that, so
+            // the draw order is the only thing deciding what wins — which makes the queue the
+            // whole of the answer. 3940 puts it past the world's transparent queue and just
+            // under the HUD panel's own 3950: the room goes black, and the subtitles, prompts
+            // and menus that a transition is there to be read through stay on top of it.
             _material.SetInt("unity_GUIZTestMode", (int)UnityEngine.Rendering.CompareFunction.Always);
             _material.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
-            _material.renderQueue = 4000;
+            _material.renderQueue = 3940;
 
             var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
             quad.name = "NobetaVR View Fade";
