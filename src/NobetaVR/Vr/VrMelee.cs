@@ -39,14 +39,15 @@ namespace NobetaVR.Vr
     /// code, and the swing sound, the voice and the wand trail are the game's own calls, made
     /// here instead of by an animation event. See <see cref="FreeSwing"/>.
     ///
-    /// **Where the blow lands.** The game's melee hitboxes are ordinary transforms parented
-    /// under the character — <c>AnimAttackCollision.attackRangeRoot</c> — that the attack
-    /// animations switch on and off. On a monitor they sit where the animation puts the wand,
-    /// which is the right answer there and the wrong one here. In the air, where the animation
-    /// is still playing, they ride the wand line — the same line the shot goes down. On the
-    /// ground, where there is no animation to follow, they sit well out in front of her and are
-    /// grown generously: a free swing has no choreography to line the target up for it, so the
-    /// hitbox has to be forgiving or nothing connects. See <see cref="PlaceHitbox"/>.
+    /// **Where the blow lands.** On the wand, always. The game's melee hitboxes are ordinary
+    /// transforms parented under the character — <c>AnimAttackCollision.attackRangeRoot</c> —
+    /// that the attack animations switch on and off, and the measured rig says what they are: no
+    /// colliders, all twenty-seven at one point, so a range is a position and the blow is a
+    /// sphere of <c>g_fCollisionSize</c> about it. That sphere is put on the wand line, the same
+    /// origin and direction the shot goes down, so what you hit and what you fire at are one
+    /// line and the wand pitch and yaw offsets aim both at once. <c>MeleeHitboxSize</c> is its
+    /// radius, and being the only dimension the hitbox has, it is the whole of how forgiving a
+    /// swing is. See <see cref="PlaceHitbox"/>.
     ///
     /// They are moved every frame rather than only while a range is open. A hitbox that is
     /// teleported the instant it switches on has, for that one frame, travelled from wherever
@@ -69,6 +70,7 @@ namespace NobetaVR.Vr
         private bool _swinging;
         private bool _fired;
         private float _travelled;
+        private Vector3 _heading;
         private float _lastAttackAt = float.NegativeInfinity;
         private int _voice;
 
@@ -79,11 +81,15 @@ namespace NobetaVR.Vr
         private Quaternion[] _rangeLocalRotations;
         private Vector3[] _rangeLocalScales;
         private string _defaultRangeName;
+        private AnimAttackCollisionData _data;
         private float _originalCollisionSize;
         private bool _haveOriginalSize;
+        private bool _sizeWarned;
         private AnimAttackCollision _collision;
         private IntPtr _boundCollision;
         private bool _displaced;
+
+        private readonly MeleeGizmo _gizmo = new();
 
         private void LateUpdate()
         {
@@ -111,7 +117,7 @@ namespace NobetaVR.Vr
             // other on a frame where she leaves the ground between the two.
             var free = UseFreeSwing(girl, cfg);
 
-            PlaceHitbox(girl, cfg, free);
+            PlaceHitbox(girl, cfg);
             DetectSwing(controls, girl, cfg, free);
         }
 
@@ -124,6 +130,7 @@ namespace NobetaVR.Vr
         /// whatever this setting says, because what is wanted there is not the blow but the
         /// state it puts her in.
         /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private static bool UseFreeSwing(WizardGirlManage girl, Plugin cfg)
             => cfg.MeleeFreeSwingOnGround.Value && Grounded(girl);
 
@@ -155,6 +162,7 @@ namespace NobetaVR.Vr
         /// </summary>
         private void StandDown()
         {
+            _gizmo.Hide();
             Restore();
             _havePrevious = false;
             _swinging = false;
@@ -164,6 +172,7 @@ namespace NobetaVR.Vr
 
         // -- the swing -----------------------------------------------------------------
 
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private void DetectSwing(VrControls controls, WizardGirlManage girl, Plugin cfg, bool free)
         {
             var device = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
@@ -188,11 +197,27 @@ namespace NobetaVR.Vr
             // Unscaled: your arm keeps moving at its own speed through a hit-stop, and a swing
             // that begins in one is not a slower swing.
             var dt = Time.unscaledDeltaTime;
-            var step = (sample - _previous).magnitude;
+            var delta = sample - _previous;
+            var step = delta.magnitude;
             _previous = sample;
             if (dt <= 0f) return;
 
             var speed = step / dt;
+            var direction = step > 1e-5f ? delta / step : Vector3.zero;
+
+            // A swing also ends when the hand turns round, not only when it stops.
+            //
+            // This is what was eating hits. Swinging back and forth at an enemy, the hand never
+            // slows to the release speed between passes — it is fast at the end of one stroke
+            // and fast at the start of the next, with a reversal and no pause in between — so
+            // the whole flurry counted as one swing that had already fired, and every stroke
+            // after the first landed on nothing. A reversal is the honest end of a stroke, and
+            // it is the signal a player is actually giving.
+            if (_swinging && direction != Vector3.zero
+             && Vector3.Dot(direction, _heading) < ReversalDot)
+            {
+                EndSwing();
+            }
 
             if (speed >= cfg.MeleeSpeed.Value)
             {
@@ -201,20 +226,25 @@ namespace NobetaVR.Vr
                     _swinging = true;
                     _fired = false;
                     _travelled = 0f;
+                    _heading = direction;
                 }
             }
             else if (speed <= cfg.MeleeReleaseSpeed.Value)
             {
-                // Only a hand that has genuinely stopped re-arms. The gap between the two
-                // speeds is what keeps a single sweep from being chopped into several: a real
-                // swing dips below the trigger speed at both ends of its arc.
-                _swinging = false;
-                _fired = false;
-                _travelled = 0f;
+                // The other way a swing ends: a hand that has genuinely stopped. The gap
+                // between the two speeds is what keeps a single sweep from being chopped into
+                // several, since a real stroke slows at both ends of its arc without pausing.
+                EndSwing();
                 return;
             }
 
             if (!_swinging) return;
+
+            // The heading follows the arc rather than being fixed at the stroke's first frame,
+            // so a wide sweep — which can turn through more than a right angle on its own — is
+            // not mistaken for a reversal, while a genuine turn-back still beats it outright.
+            if (direction != Vector3.zero)
+                _heading = Vector3.Normalize(_heading * (1f - HeadingBlend) + direction * HeadingBlend);
 
             _travelled += step;
             if (_fired || _travelled < cfg.MeleeDistance.Value) return;
@@ -226,6 +256,20 @@ namespace NobetaVR.Vr
             Fire(controls, girl, cfg, free);
         }
 
+        /// <summary>How far the hand must turn back for the stroke to count as over: past a
+        /// right angle against the heading it has been travelling on.</summary>
+        private const float ReversalDot = -0.2f;
+
+        /// <summary>How fast the heading follows the arc, per frame.</summary>
+        private const float HeadingBlend = 0.3f;
+
+        private void EndSwing()
+        {
+            _swinging = false;
+            _fired = false;
+            _travelled = 0f;
+        }
+
         /// <summary>
         /// One swing, landed the way this frame's footing calls for.
         ///
@@ -234,6 +278,7 @@ namespace NobetaVR.Vr
         /// second, so the front door is the only way in. On the ground it is the first job
         /// alone that is wanted, and the animation that comes with it is in the way.
         /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private void Fire(VrControls controls, WizardGirlManage girl, Plugin cfg, bool free)
         {
             if (free && FreeSwing(girl, cfg)) return;
@@ -258,11 +303,20 @@ namespace NobetaVR.Vr
         /// Returns false if there is no range to open, so the caller can fall back to the
         /// game's attack rather than swinging at nothing.
         /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private bool FreeSwing(WizardGirlManage girl, Plugin cfg)
         {
             var range = RangeName(cfg);
             if (string.IsNullOrEmpty(range)) return false;
 
+            // Closed before it is opened, which is the game's own sequence and the second thing
+            // that was eating hits. An open collision keeps a list of what it has already
+            // touched, so one blow cannot hit the same enemy twice — and that list is cleared
+            // when the collision closes, by an animation event, which is precisely what a free
+            // swing has not got. Left to itself the window would run on from the previous
+            // stroke with the enemy you are hitting already on its list, and the swing would
+            // land on nothing for reasons nothing on screen could explain.
+            girl.CancelAttackCollision();
             girl.OpenAttackCollision(range);
 
             var trail = cfg.MeleeTrailSeconds.Value;
@@ -295,6 +349,7 @@ namespace NobetaVR.Vr
         /// <c>AttackData</c>, so it is also the choice of how hard the blow hits and what it
         /// knocks back.
         /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private string RangeName(Plugin cfg)
         {
             var configured = cfg.MeleeRangeName.Value;
@@ -322,47 +377,31 @@ namespace NobetaVR.Vr
         // -- the hitbox ----------------------------------------------------------------
 
         /// <summary>
-        /// Puts the game's melee ranges where this frame's swing would land, and keeps them
-        /// there.
+        /// Puts the game's melee ranges on the wand, and keeps them there.
         ///
-        /// The two answers are different because the two swings are. In the air the animation is
-        /// still playing and the wand is still being pointed, so the hitbox rides the wand line
-        /// — the same origin and direction the shot uses, which means what you hit and what you
-        /// fire at are one line and the wand pitch and yaw offsets aim both at once.
+        /// One answer for both footings. The wand line is the same origin and direction the shot
+        /// uses, so what you hit and what you fire at are one line rather than two aimed
+        /// separately, and the wand pitch and yaw offsets under Aim point both at once. There is
+        /// no second source of truth for where the wand is.
         ///
-        /// On the ground there is no animation, and a free swing has nothing lining the target
-        /// up for it: no step in, no turn to face, no wind-up during which the game quietly
-        /// brings the enemy into the arc. So the hitbox goes out in front of her along the view
-        /// and is grown by <c>MeleeHitboxSize</c>, and both are deliberate. A hitbox pinned to
-        /// the wand tip of a free swing misses for reasons the player cannot see: the tip is
-        /// travelling several metres a second, and between two frames it is simply somewhere
-        /// else.
+        /// <c>MeleeHitboxSize</c> multiplies the sphere's radius. Since the measured rig gives a
+        /// range no collider and no offset of its own, that radius is the only dimension the
+        /// hitbox has — it is not a refinement of how forgiving a swing is, it is the whole of
+        /// it. The per-range scale applied below can do nothing on this character and is kept
+        /// only for one whose ranges do have colliders, the boss-rush swaps included.
         /// </summary>
-        private void PlaceHitbox(WizardGirlManage girl, Plugin cfg, bool free)
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
+        private void PlaceHitbox(WizardGirlManage girl, Plugin cfg)
         {
             var collision = girl.g_AttackCollision;
-            if (collision == null) { Restore(); return; }
+            if (collision == null) { _gizmo.Hide(); Restore(); return; }
 
-            if (!Bind(collision)) return;
+            if (!Bind(collision)) { _gizmo.Hide(); return; }
 
-            collision.g_bShowRange = cfg.MeleeShowHitbox.Value;
+            if (!VrHands.AimOrigin.HasValue) { _gizmo.Hide(); Restore(); return; }
 
-            Vector3 centre;
-            Vector3 forward;
-
-            if (free)
-            {
-                // Out in front of her, at her own centre height, along the direction she is
-                // facing — which is the view, since the body follows it.
-                forward = VrCamera.ViewYaw * Vector3.forward;
-                centre = girl.GetCenter() + forward * cfg.MeleeHitboxForward.Value;
-            }
-            else
-            {
-                if (!VrHands.AimOrigin.HasValue) { Restore(); return; }
-                forward = VrHands.AimDirection;
-                centre = VrHands.AimOrigin.Value + forward * cfg.MeleeHitboxReach.Value;
-            }
+            var forward = VrHands.AimDirection;
+            var centre = VrHands.AimOrigin.Value + forward * cfg.MeleeHitboxReach.Value;
 
             HitCentre = centre;
 
@@ -370,15 +409,16 @@ namespace NobetaVR.Vr
                 ? Quaternion.LookRotation(forward.normalized, Vector3.up)
                 : Quaternion.identity;
 
-            // Generous only for the free swing. The air attack still has its animation to place
-            // the blow, and enlarging that one would be widening a hitbox that is not missing.
-            var scale = free ? Mathf.Max(0.01f, cfg.MeleeHitboxSize.Value) : 1f;
+            var scale = Mathf.Max(0.01f, cfg.MeleeHitboxSize.Value);
 
-            if (_haveOriginalSize)
-            {
-                var data = collision.g_ACD;
-                if (data != null) data.g_fCollisionSize = _originalCollisionSize * scale;
-            }
+            var data = ResolveData(girl, collision);
+            var radius = _haveOriginalSize ? _originalCollisionSize * scale : UnknownRadius;
+            if (data != null) data.g_fCollisionSize = _originalCollisionSize * scale;
+
+            if (cfg.MeleeShowHitbox.Value)
+                _gizmo.Show(centre, radius, collision.g_bCollisionEnable);
+            else
+                _gizmo.Hide();
 
             for (var i = 0; i < _ranges.Length; i++)
             {
@@ -390,6 +430,54 @@ namespace NobetaVR.Vr
             }
 
             _displaced = true;
+        }
+
+        /// <summary>
+        /// What the gizmo draws when the collision data was never found, in metres. A stated
+        /// placeholder rather than a guess dressed as a measurement: it says where the blow
+        /// will be, and the log says the radius is not known.
+        /// </summary>
+        private const float UnknownRadius = 0.5f;
+
+        /// <summary>
+        /// Finds the character's collision data, which carries the one number that says how big
+        /// a blow is.
+        ///
+        /// Resolved every frame until it is found rather than once when the character binds.
+        /// <c>AnimAttackCollision.g_ACD</c> is empty at bind time — the collision object is
+        /// built before the game fills that reference in — so a single read at bind gets null
+        /// and keeps it, and the size knob silently does nothing for the rest of the session.
+        /// That is exactly what happened. The component itself is in the character's hierarchy
+        /// from the start, so it is also looked for there.
+        /// </summary>
+        private AnimAttackCollisionData ResolveData(WizardGirlManage girl, AnimAttackCollision collision)
+        {
+            if (_data != null) return _data;
+
+            _data = collision.g_ACD;
+            if (_data == null && girl != null)
+                _data = girl.GetComponentInChildren<AnimAttackCollisionData>(true);
+
+            if (_data != null)
+            {
+                _haveOriginalSize = true;
+                _originalCollisionSize = _data.g_fCollisionSize;
+                Plugin.Log.LogInfo($"melee: collision data on '{_data.name}' — "
+                                 + $"size {_originalCollisionSize:F3}, "
+                                 + $"time {_data.g_fCollisionTime:F3}s, "
+                                 + $"interval {_data.g_fCollisionInterval:F3}s");
+                return _data;
+            }
+
+            if (!_sizeWarned)
+            {
+                _sizeWarned = true;
+                Plugin.Log.LogWarning("melee: no AnimAttackCollisionData on this character, so "
+                                    + "the hitbox size cannot be read or widened. MeleeHitboxSize "
+                                    + $"does nothing and the gizmo draws a placeholder {UnknownRadius:F2} m.");
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -448,9 +536,10 @@ namespace NobetaVR.Vr
                 _rangeLocalScales[i] = _ranges[i].localScale;
             }
 
-            var data = collision.g_ACD;
-            _haveOriginalSize = data != null;
-            _originalCollisionSize = _haveOriginalSize ? data.g_fCollisionSize : 0f;
+            // Deliberately not read here: it is still null this early. ResolveData keeps asking.
+            _data = null;
+            _haveOriginalSize = false;
+            _sizeWarned = false;
 
             _defaultRangeName = PickRange();
 
@@ -501,11 +590,8 @@ namespace NobetaVR.Vr
                 range.localScale = _rangeLocalScales[i];
             }
 
-            if (_haveOriginalSize && _collision != null)
-            {
-                var data = _collision.g_ACD;
-                if (data != null) data.g_fCollisionSize = _originalCollisionSize;
-            }
+            if (_haveOriginalSize && _data != null)
+                _data.g_fCollisionSize = _originalCollisionSize;
 
             _displaced = false;
         }
@@ -538,14 +624,6 @@ namespace NobetaVR.Vr
                 Plugin.Log.LogInfo($"melee: range '{range.name}' local {range.localPosition.ToString("F3")} "
                                  + $"scale {range.localScale.ToString("F2")} — {shape}, {damage}, "
                                  + $"{(range.gameObject.activeSelf ? "active" : "inactive")}");
-            }
-
-            var data = collision.g_ACD;
-            if (data != null)
-            {
-                Plugin.Log.LogInfo($"melee: collision time {data.g_fCollisionTime:F3}s, "
-                                 + $"interval {data.g_fCollisionInterval:F3}s, "
-                                 + $"size {data.g_fCollisionSize:F3}");
             }
 
             if (_ranges.Length == 0)

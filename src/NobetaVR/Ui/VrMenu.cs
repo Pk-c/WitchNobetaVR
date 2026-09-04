@@ -335,14 +335,7 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
-                Label = "Ground reach",
-                Value = () => $"{cfg.MeleeHitboxForward.Value:F2} m",
-                Adjust = d => cfg.MeleeHitboxForward.Value =
-                    Mathf.Clamp(cfg.MeleeHitboxForward.Value + d * 0.05f, 0.2f, 4f),
-            });
-            _items.Add(new Item
-            {
-                Label = "Ground hitbox size",
+                Label = "Hitbox size",
                 Value = () => $"×{cfg.MeleeHitboxSize.Value:F1}",
                 Adjust = d => cfg.MeleeHitboxSize.Value =
                     Mathf.Clamp(cfg.MeleeHitboxSize.Value + d * 0.25f, 0.5f, 8f),
@@ -355,10 +348,10 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
-                Label = "Air reach",
+                Label = "Hitbox reach",
                 Value = () => $"{cfg.MeleeHitboxReach.Value:F2} m",
                 Adjust = d => cfg.MeleeHitboxReach.Value =
-                    Mathf.Clamp(cfg.MeleeHitboxReach.Value + d * 0.02f, 0f, 1.5f),
+                    Mathf.Clamp(cfg.MeleeHitboxReach.Value + d * 0.02f, 0f, 2f),
             });
             _items.Add(new Item
             {
@@ -409,7 +402,7 @@ namespace NobetaVR.Ui
                          cfg.Melee, cfg.MeleeSpeed, cfg.MeleeDistance,
                          cfg.MeleeReleaseSpeed, cfg.MeleeCooldown,
                          cfg.MeleeHitboxReach, cfg.MeleeShowHitbox,
-                         cfg.MeleeFreeSwingOnGround, cfg.MeleeHitboxForward,
+                         cfg.MeleeFreeSwingOnGround,
                          cfg.MeleeHitboxSize, cfg.MeleeTrailSeconds, cfg.MeleeSwingVoice,
                      })
             {

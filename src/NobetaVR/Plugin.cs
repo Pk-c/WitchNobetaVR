@@ -76,7 +76,6 @@ namespace NobetaVR
         internal ConfigEntry<float> MeleeHitboxReach;
         internal ConfigEntry<bool> MeleeShowHitbox;
         internal ConfigEntry<bool> MeleeFreeSwingOnGround;
-        internal ConfigEntry<float> MeleeHitboxForward;
         internal ConfigEntry<float> MeleeHitboxSize;
         internal ConfigEntry<float> MeleeTrailSeconds;
         internal ConfigEntry<bool> MeleeSwingVoice;
@@ -414,24 +413,30 @@ namespace NobetaVR
               + "trigger speed would chop a single sweep into three or four attacks.");
 
             MeleeCooldown = Config.Bind(
-                "Melee", "MeleeCooldown", 0.3f,
-                "Shortest gap between two swings, in seconds. The game runs its own combo "
-              + "timing underneath this; the limit here is only so that a shake of the arm "
-              + "cannot send it more attacks in a second than a player ever could.");
+                "Melee", "MeleeCooldown", 0.15f,
+                "Shortest gap between two swings, in seconds. Short, because on the ground "
+              + "there is no animation and no stamina underneath it — the only thing pacing a "
+              + "flurry is your arm, and a limit longer than a stroke reads as hits that did "
+              + "not register. It is kept above zero so a shake cannot open the collision every "
+              + "other frame; set it to 0 to be held back by nothing at all, at the cost of a "
+              + "melee rather stronger than the game was balanced for.");
 
 
             MeleeHitboxReach = Config.Bind(
                 "Melee", "MeleeHitboxReach", 0.45f,
                 "How far along the wand the hitbox sits, in metres from your hand. It rides the "
               + "same line the shot goes down, so the wand pitch and yaw offsets under Aim point "
-              + "both at once; this is only how far up that line the business end is.");
+              + "both at once; this is only how far up that line the business end is. With "
+              + "MeleeHitboxSize it is the whole geometry of a blow.");
 
             MeleeShowHitbox = Config.Bind(
                 "Melee", "MeleeShowHitbox", false,
-                "Turns on the game's own drawing of its attack ranges, so you can see where the "
-              + "hitbox actually is. For tuning MeleeHitboxReach, and for answering the one "
-              + "question a miss cannot: whether the box was in the wrong place or the swing "
-              + "was never detected.");
+                "Draws the hitbox: a sphere where the blow will be, at the size it will be, "
+              + "turning orange for as long as it is actually open. The game has a switch of "
+              + "its own for this and it cannot work in a shipped build — range drawing goes "
+              + "through OnDrawGizmos, which is editor-only — so this is drawn rather than "
+              + "asked for. It answers the one question a miss cannot: whether the sphere was "
+              + "somewhere else, or never opened at all.");
 
             MeleeFreeSwingOnGround = Config.Bind(
                 "Melee", "MeleeFreeSwingOnGround", true,
@@ -444,22 +449,13 @@ namespace NobetaVR
               + "sound, the voice and the wand trail are its own calls made from here. In the "
               + "air she always keeps the game's attack whatever this says — see below.");
 
-            MeleeHitboxForward = Config.Bind(
-                "Melee", "MeleeHitboxForward", 1.2f,
-                "How far out in front of her the ground hitbox sits, in metres from her centre, "
-              + "along the way you are looking. Out in front rather than on the wand tip because "
-              + "a free swing has nothing lining the target up for it — no step in, no turn to "
-              + "face, no wind-up during which the game quietly brings the enemy into the arc — "
-              + "and a hitbox pinned to a tip travelling several metres a second is simply "
-              + "somewhere else between two frames.");
-
             MeleeHitboxSize = Config.Bind(
                 "Melee", "MeleeHitboxSize", 2.25f,
-                "How much bigger the ground hitbox is than the game's own, as a multiplier. A "
-              + "multiplier rather than a size so that it means the same thing whatever units "
-              + "the game keeps its ranges in. Applies to the free swing only: the air attack "
-              + "still has its animation to place the blow, and widening that one would be "
-              + "widening a hitbox that was not missing.");
+                "How big the sphere on the wand is, as a multiplier on the game's own radius. "
+              + "Her attack ranges carry no collider and all share one point, so a blow is a "
+              + "sphere about wherever that point was put: this is not a refinement of how "
+              + "forgiving a swing is, it is the whole of it. Turn on MeleeShowHitbox to see "
+              + "what you are setting.");
 
             MeleeTrailSeconds = Config.Bind(
                 "Melee", "MeleeTrailSeconds", 0.35f,

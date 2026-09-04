@@ -96,9 +96,13 @@ so walking and turning do not count as swings.
 What that swing does depends on your feet. **In the air** it is the game's own attack,
 animation and all, because attacking in mid-air is also how you hang there and that hang is
 only available through the game's own call. **On the ground** the animation would plant your
-feet and swing the wand for you, so it is skipped: the hitbox opens on its own, out in front of
-you and generously sized, and the swing sound, the voice, the wand trail, the impact effect and
-the damage are all still the game's. `MeleeShowHitbox` draws the box while you tune the reach.
+feet and swing the wand for you, so it is skipped: the hitbox opens on its own and the swing
+sound, the voice, the wand trail, the impact effect and the damage are all still the game's.
+
+The hitbox is a sphere on the wand either way, on the same line the shot goes down.
+`MeleeHitboxReach` is how far up the wand it sits and `MeleeHitboxSize` is how big it is — that
+sphere is the whole geometry of a blow, so those two settings are the whole of how forgiving
+melee feels. `MeleeShowHitbox` draws it while you tune them, orange for as long as it is open.
 
 ## When the headset stays black
 
