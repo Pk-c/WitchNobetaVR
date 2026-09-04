@@ -19,6 +19,9 @@ namespace NobetaVR.Ui
     /// The whole page is one text block with the selected line marked, rather than a widget per
     /// setting. It reads the same, it cannot be mislaid by a layout group, and it means the menu
     /// needs exactly two objects on screen instead of one per row.
+    ///
+    /// The list is longer than a panel you can read without moving your head, so only a window
+    /// of it is drawn, and the panel is sized to what was drawn. See <see cref="Redraw"/>.
     /// </summary>
     public sealed class VrMenu : MonoBehaviour
     {
@@ -35,6 +38,19 @@ namespace NobetaVR.Ui
 
         private readonly List<Item> _items = new();
         private int _selected;
+
+        /// <summary>Index of the first row drawn; see <see cref="EnsureVisible"/>.</summary>
+        private int _scroll;
+
+        /// <summary>The page as last drawn, so an unchanged one costs nothing to redraw.</summary>
+        private string _drawn;
+
+        // How much of the list is on the panel at once, and the panel width it is drawn into.
+        // The row count is what a comfortable panel holds at this font size; the height that
+        // follows from it is measured rather than assumed.
+        private const int VisibleRows = 16;
+        private const float PanelWidth = 900f;
+        private const float Padding = 40f;
 
         private GameObject _root;
         private Text _text;
@@ -146,8 +162,29 @@ namespace NobetaVR.Ui
             for (var i = 0; i < _items.Count; i++)
             {
                 _selected = (_selected + delta + _items.Count) % _items.Count;
-                if (!_items[_selected].IsHeading) return;   // headings are never selectable
+                if (!_items[_selected].IsHeading) break;   // headings are never selectable
             }
+
+            EnsureVisible();
+        }
+
+        /// <summary>
+        /// Scrolls the window so the selection is inside it, keeping a couple of rows of context
+        /// beyond it: the next setting is on the panel before you arrive at it, so the list reads
+        /// as one page moving under a cursor rather than a cursor that shunts the page a screen
+        /// at a time whenever it reaches an edge. The clamp is what stops it scrolling past the
+        /// last row into empty panel.
+        /// </summary>
+        private void EnsureVisible()
+        {
+            const int margin = 2;
+
+            if (_selected < _scroll + margin)
+                _scroll = _selected - margin;
+            else if (_selected >= _scroll + VisibleRows - margin)
+                _scroll = _selected - VisibleRows + 1 + margin;
+
+            _scroll = Mathf.Clamp(_scroll, 0, Mathf.Max(0, _items.Count - VisibleRows));
         }
 
         // -- content -------------------------------------------------------------------
@@ -373,15 +410,32 @@ namespace NobetaVR.Ui
 
         // -- drawing -------------------------------------------------------------------
 
+        /// <summary>
+        /// Draws a header, a window onto the settings, and the key legend.
+        ///
+        /// Only the rows around the selection are drawn. The list had outgrown the panel, and
+        /// the overflow showed as text spilling off the bottom of the background: the background
+        /// is stretched to the canvas, so it could only ever be as tall as the canvas had been
+        /// told to be, and nothing was telling it. Drawing a window settles both halves at once —
+        /// what is drawn always fits, and the panel is then measured from what was drawn, so the
+        /// background follows the content by construction instead of being kept in step by hand.
+        ///
+        /// A window rather than a mask over a taller block, because the page is a single text
+        /// object: there is nothing behind a viewport to scroll, and a mask would buy a second
+        /// Graphic and a shader dependency to do what choosing the lines already does.
+        /// </summary>
         private void Redraw()
         {
             if (_text == null) return;
 
+            var first = Mathf.Clamp(_scroll, 0, Mathf.Max(0, _items.Count - 1));
+            var last = Mathf.Min(_items.Count, first + VisibleRows);
+
             var sb = new StringBuilder();
             sb.AppendLine("<b>NobetaVR</b>  <size=18>by Pk_c@ChromaticMod</size>");
-            sb.AppendLine();
+            sb.AppendLine(Edge(first > 0, "▲"));
 
-            for (var i = 0; i < _items.Count; i++)
+            for (var i = first; i < last; i++)
             {
                 var item = _items[i];
                 if (item.IsHeading)
@@ -395,10 +449,42 @@ namespace NobetaVR.Ui
                 sb.AppendLine($"{marker}{item.Label,-22}{item.Value?.Invoke()}{close}");
             }
 
-            sb.AppendLine();
+            sb.AppendLine(Edge(last < _items.Count, "▼"));
             sb.AppendLine("<size=18>Left stick: move and change   A: activate   Both sticks: close</size>");
 
-            _text.text = sb.ToString();
+            // Redrawn every frame the menu is up, and almost none of those frames change
+            // anything. Comparing first keeps the text generation — and the measuring below
+            // it — to the frames that actually moved something.
+            var page = sb.ToString();
+            if (page == _drawn) return;
+
+            _drawn = page;
+            _text.text = page;
+            FitPanel();
+        }
+
+        /// <summary>
+        /// The marker for one end of the window: an arrow when the list carries on that way, and
+        /// a blank line of the same height when it does not, so the panel does not grow and
+        /// shrink by a row as you pass the first and last settings.
+        /// </summary>
+        private static string Edge(bool more, string arrow) =>
+            more ? $"<size=18><color=#7F8C9B>{arrow}</color></size>" : "<size=18> </size>";
+
+        /// <summary>
+        /// Sizes the panel to the text that was just drawn.
+        ///
+        /// The background is stretched to the canvas rather than fitted to the text, so this is
+        /// the one thing holding the two together. Only the height is measured: the width is
+        /// fixed, because the values change as you adjust them and a panel that breathed a few
+        /// pixels wider on every step would read worse than one that is simply wide enough.
+        /// </summary>
+        private void FitPanel()
+        {
+            var rect = _root != null ? _root.GetComponent<RectTransform>() : null;
+            if (rect == null) return;
+
+            rect.sizeDelta = new Vector2(PanelWidth, _text.preferredHeight + Padding * 2f);
         }
 
         /// <summary>Sits where the HUD does, so both are read in the same place.</summary>
@@ -435,8 +521,9 @@ namespace NobetaVR.Ui
 
             var canvas = _root.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.WorldSpace;
+            // A starting size only: the first draw measures the page and sets the real height.
             var rect = canvas.GetComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(900f, 760f);
+            rect.sizeDelta = new Vector2(PanelWidth, 760f);
 
             // One millimetre per canvas unit: the page is authored at a comfortable pixel size
             // and then scaled down to metres, which keeps the text crisp in the headset.
@@ -465,8 +552,8 @@ namespace NobetaVR.Ui
             var textRect = _text.GetComponent<RectTransform>();
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = new Vector2(40f, 40f);
-            textRect.offsetMax = new Vector2(-40f, -40f);
+            textRect.offsetMin = new Vector2(Padding, Padding);
+            textRect.offsetMax = new Vector2(-Padding, -Padding);
 
             _root.SetActive(false);
             Plugin.Log.LogInfo($"VR menu built with font '{font.name}'");
