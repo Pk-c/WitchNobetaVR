@@ -27,6 +27,8 @@ namespace NobetaVR.Vr
     {
         public VrHands(IntPtr ptr) : base(ptr) { }
 
+        private void Awake() => Instance = this;
+
         private sealed class Arm
         {
             public Transform Upper, Fore, Hand;
@@ -66,6 +68,20 @@ namespace NobetaVR.Vr
         /// </summary>
         internal static Vector3? AimOrigin { get; private set; }
         internal static Vector3 AimDirection { get; private set; } = Vector3.forward;
+
+        /// <summary>
+        /// The props riding on the wand hand, or null when the hands are not out. Published for
+        /// <see cref="WandTrail"/>, which has to measure the wand that is actually in her hand
+        /// rather than the one the rig left behind.
+        /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
+        internal static Transform[] WandProps =>
+            Instance != null && Instance._detached.Attached
+                ? Instance._detached.RightAttachments
+                : null;
+
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
+        internal static VrHands Instance { get; private set; }
 
         private Transform _boundRoot;
         private bool _reported;
@@ -174,6 +190,12 @@ namespace NobetaVR.Vr
         {
             if (BodyFacing.Mode != PlayerCamera.CameraMode.Normal) return false;
             if (controls.GameMenuOpen) return false;
+
+            // A fourth: the states the game drives her through while still calling her
+            // controllable — dying, waking at a save point, getting back to her feet. The flag
+            // below does not catch those, and hands on a body that is sitting slumped against a
+            // statue are hands the player is waving through a scene they are not in.
+            if (PlayerStatus.DownOrGettingUp) return false;
 
             var player = girl.playerController;
             if (player == null) return false;

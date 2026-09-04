@@ -343,6 +343,104 @@ namespace NobetaVR.Ui
             });
 
             _items.Add(new Item { Label = "", IsHeading = true });
+            _items.Add(new Item { Label = "INTERFACE", IsHeading = true });
+
+            _items.Add(new Item
+            {
+                Label = "Panel over the world",
+                Value = () => cfg.HudDrawOnTop.Value ? "On" : "Off",
+                Adjust = _ => cfg.HudDrawOnTop.Value = !cfg.HudDrawOnTop.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Tidy the game HUD",
+                Value = () => cfg.TidyGameHud.Value ? "On" : "Off",
+                Adjust = _ => cfg.TidyGameHud.Value = !cfg.TidyGameHud.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Top bars",
+                Value = () => cfg.HideHealthBars.Value ? "Hidden" : "Shown",
+                Adjust = _ => cfg.HideHealthBars.Value = !cfg.HideHealthBars.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Charge bar",
+                Value = () => cfg.HideChargeBar.Value ? "Hidden" : "Shown",
+                Adjust = _ => cfg.HideChargeBar.Value = !cfg.HideChargeBar.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Soul counter",
+                Value = () => cfg.HideSoulCounter.Value ? "On change" : "Always",
+                Adjust = _ => cfg.HideSoulCounter.Value = !cfg.HideSoulCounter.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Soul counter time",
+                Value = () => $"{cfg.MoneyShowSeconds.Value:F1} s",
+                Adjust = d => cfg.MoneyShowSeconds.Value =
+                    Mathf.Clamp(cfg.MoneyShowSeconds.Value + d * 0.5f, 0.5f, 20f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Item bar",
+                Value = () => cfg.HideItemBar.Value ? "On change" : "Always",
+                Adjust = _ => cfg.HideItemBar.Value = !cfg.HideItemBar.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Item bar time",
+                Value = () => $"{cfg.ItemBarShowSeconds.Value:F1} s",
+                Adjust = d => cfg.ItemBarShowSeconds.Value =
+                    Mathf.Clamp(cfg.ItemBarShowSeconds.Value + d * 0.5f, 0.5f, 20f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Fade speed",
+                Value = () => $"{cfg.HudFadeSpeed.Value:F1}/s",
+                Adjust = d => cfg.HudFadeSpeed.Value =
+                    Mathf.Clamp(cfg.HudFadeSpeed.Value + d * 0.5f, 0.5f, 20f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Backdrop size",
+                Value = () => $"×{cfg.BackgroundScale.Value:F1}",
+                Adjust = d => cfg.BackgroundScale.Value =
+                    Mathf.Clamp(cfg.BackgroundScale.Value + d * 0.5f, 1f, 12f),
+            });
+
+            _items.Add(new Item { Label = "", IsHeading = true });
+            _items.Add(new Item { Label = "WRIST GAUGES", IsHeading = true });
+
+            _items.Add(new Item
+            {
+                Label = "Wrist gauges",
+                Value = () => cfg.WristGauges.Value ? "On" : "Off",
+                Adjust = _ => cfg.WristGauges.Value = !cfg.WristGauges.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Gauge size",
+                Value = () => $"×{cfg.WristGaugeScale.Value:F2}",
+                Adjust = d => cfg.WristGaugeScale.Value =
+                    Mathf.Clamp(cfg.WristGaugeScale.Value + d * 0.05f, 0.2f, 4f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Gauge opacity",
+                Value = () => $"{cfg.WristGaugeOpacity.Value:F2}",
+                Adjust = d => cfg.WristGaugeOpacity.Value =
+                    Mathf.Clamp(cfg.WristGaugeOpacity.Value + d * 0.05f, 0.1f, 1f),
+            });
+            _items.Add(Axis("Gauge offset X", () => cfg.WristGaugeOffsetX));
+            _items.Add(Axis("Gauge offset Y", () => cfg.WristGaugeOffsetY));
+            _items.Add(Axis("Gauge offset Z", () => cfg.WristGaugeOffsetZ));
+            _items.Add(Degrees("Gauge pitch", () => cfg.WristGaugePitch));
+            _items.Add(Degrees("Gauge yaw", () => cfg.WristGaugeYaw));
+            _items.Add(Degrees("Gauge roll", () => cfg.WristGaugeRoll));
+
+            _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "MELEE", IsHeading = true });
 
             _items.Add(new Item
@@ -518,6 +616,14 @@ namespace NobetaVR.Ui
                          cfg.Haptics, cfg.HapticsHand, cfg.HapticsStrength,
                          cfg.HapticsMinAmplitude, cfg.HapticsMaxSeconds, cfg.HapticsFrequency,
                          cfg.DodgeAlwaysBackstep, cfg.ThirdPersonOnDeath,
+                         cfg.HudDrawOnTop, cfg.HudFadeSpeed, cfg.BackgroundScale,
+                         cfg.TidyGameHud, cfg.HideHealthBars, cfg.HideChargeBar,
+                         cfg.HideSoulCounter, cfg.HideItemBar,
+                         cfg.MoneyShowSeconds, cfg.ItemBarShowSeconds,
+                         cfg.WristGauges, cfg.WristGaugeScale, cfg.WristGaugeOpacity,
+                         cfg.WristGaugeFillSpeed,
+                         cfg.WristGaugeOffsetX, cfg.WristGaugeOffsetY, cfg.WristGaugeOffsetZ,
+                         cfg.WristGaugePitch, cfg.WristGaugeYaw, cfg.WristGaugeRoll,
                      })
             {
                 entry.BoxedValue = entry.DefaultValue;

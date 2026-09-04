@@ -23,15 +23,19 @@ are redistributed.
 - **Motion-controlled hands**, the character's own hands on your controllers, shown while
   she is yours to move and handed back to the game for cutscenes and menus
 - **A VR settings page** that applies live and is adjusted from inside the headset
-- **The interface readable in VR**, locked in front of you, hideable, with a reticle in
-  the world that marks where the shot will actually land
+- **The interface readable in VR**, locked in front of you and drawn over the world rather
+  than behind it, with a reticle in the world that marks where the shot will actually land
+- **An interface thinned to what a headset wants** — health, stamina and mana worn on your
+  left wrist instead of framed across the top of the view; the spell charge bar gone, since
+  the wand already tells you; the soul count and the item bar fading in only when they have
+  something to say. All of it reversible from the VR settings page, live
 - **The game's own rumble, in your hands** — the haptics were always there, they were just
   going to a gamepad nobody is holding; the same events at the same strengths now arrive in
   the controllers, and the game's vibration setting still turns them off
 - **Comfort measures for the moments the game takes the camera** — cutscenes are framed
   behind black bars on all four sides, so a sweep or a cut moves inside a window instead of
   moving your head for you; the camera's breathing sway and combat shake are switched off;
-  dying steps you back out of her head until you respawn; and the dodge is always the backward
+  dying steps you back out of her head until she is yours to move again; and the dodge is always the backward
   hop, because the roll it would otherwise pick takes the camera over with her
 
 ## Installing

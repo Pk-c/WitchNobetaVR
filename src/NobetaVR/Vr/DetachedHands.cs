@@ -82,6 +82,13 @@ namespace NobetaVR.Vr
         private bool _attached;
         public bool Attached => _attached;
 
+        /// <summary>
+        /// The props riding on the right hand — the wand, on this character. Exposed because
+        /// anything that has to know how long the wand is has to measure the object that is
+        /// actually being held, not the one the rig left behind; see <see cref="WandTrail"/>.
+        /// </summary>
+        public Transform[] RightAttachments => _right != null ? _right.Attachments : null;
+
         private bool _shown = true;
 
         public void Attach(Transform leftUpper, Transform leftHand,

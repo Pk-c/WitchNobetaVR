@@ -33,6 +33,9 @@ namespace NobetaVR.Ui
         private bool _failed;
         private Vector3 _direction;
 
+        /// <summary>Depth-test state as last written to the material; see <see cref="DepthTest"/>.</summary>
+        private bool? _onTop;
+
         private void LateUpdate()
         {
             if (_failed || !Plugin.Instance.HudEnabled.Value) return;
@@ -41,6 +44,40 @@ namespace NobetaVR.Ui
 
             Rescan();
             Follow();
+            DepthTest();
+        }
+
+        /// <summary>
+        /// Puts the panel in front of the world rather than in it.
+        ///
+        /// A quad hung at a fixed distance is geometry like any other, so a wall, a crate or an
+        /// enemy closer than that distance occludes it — and the interface disappearing behind
+        /// scenery is a bug from the player's side however correct it is from the renderer's.
+        /// Turning the depth test off leaves the panel drawn over everything, which is what a
+        /// screen-space overlay did on the flat game and what the interface is expected to do.
+        ///
+        /// Written as a material property because that is how uGUI's own shaders take it:
+        /// <c>UI/Default</c> declares <c>ZTest [unity_GUIZTestMode]</c> precisely so a canvas
+        /// can set it. <c>_ZTest</c> is set alongside it for the other candidates in
+        /// <see cref="TransparentShader"/>, and a property a shader does not declare is
+        /// ignored rather than an error.
+        ///
+        /// Tracked rather than set every frame: this is a live setting, and re-uploading it on
+        /// frames where nothing changed would be a material touch per eye for nothing.
+        /// </summary>
+        private void DepthTest()
+        {
+            var wanted = Plugin.Instance.HudDrawOnTop.Value;
+            if (_material == null || _onTop == wanted) return;
+
+            _onTop = wanted;
+
+            var mode = (int)(wanted
+                ? UnityEngine.Rendering.CompareFunction.Always
+                : UnityEngine.Rendering.CompareFunction.LessEqual);
+
+            _material.SetInt("unity_GUIZTestMode", mode);
+            _material.SetInt("_ZTest", mode);
         }
 
         // -- construction --------------------------------------------------------------

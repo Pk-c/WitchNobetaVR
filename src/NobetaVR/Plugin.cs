@@ -73,6 +73,26 @@ namespace NobetaVR
         internal ConfigEntry<float> HudSize;
         internal ConfigEntry<float> HudHeightOffset;
         internal ConfigEntry<float> HudFollowSpeed;
+        internal ConfigEntry<bool> HudDrawOnTop;
+        internal ConfigEntry<float> HudFadeSpeed;
+        internal ConfigEntry<float> BackgroundScale;
+        internal ConfigEntry<bool> TidyGameHud;
+        internal ConfigEntry<bool> HideHealthBars;
+        internal ConfigEntry<bool> HideChargeBar;
+        internal ConfigEntry<bool> HideSoulCounter;
+        internal ConfigEntry<bool> HideItemBar;
+        internal ConfigEntry<float> MoneyShowSeconds;
+        internal ConfigEntry<float> ItemBarShowSeconds;
+        internal ConfigEntry<bool> WristGauges;
+        internal ConfigEntry<float> WristGaugeScale;
+        internal ConfigEntry<float> WristGaugeOpacity;
+        internal ConfigEntry<float> WristGaugeFillSpeed;
+        internal ConfigEntry<float> WristGaugeOffsetX;
+        internal ConfigEntry<float> WristGaugeOffsetY;
+        internal ConfigEntry<float> WristGaugeOffsetZ;
+        internal ConfigEntry<float> WristGaugePitch;
+        internal ConfigEntry<float> WristGaugeYaw;
+        internal ConfigEntry<float> WristGaugeRoll;
         internal ConfigEntry<bool> AlignViewToBodyOnSpawn;
         internal ConfigEntry<bool> Melee;
         internal ConfigEntry<float> MeleeSpeed;
@@ -450,6 +470,111 @@ namespace NobetaVR
               + "welded to the head is hard to read and makes the world feel strapped to your "
               + "face. Higher is tighter; very high is uncomfortable.");
 
+            HudDrawOnTop = Config.Bind(
+                "Interface", "HudDrawOnTop", true,
+                "Draws the panel in front of the world rather than in it. The panel is geometry "
+              + "hanging at a fixed distance, so without this a wall, a crate or an enemy "
+              + "closer than that distance hides the interface behind it — correct of the "
+              + "renderer and a bug from where you are sitting. On the flat game a screen-space "
+              + "overlay drew over everything, and this is that behaviour back.");
+
+            HudFadeSpeed = Config.Bind(
+                "Interface", "HudFadeSpeed", 4f,
+                "How quickly a piece of the interface fades in and out, in alpha per second. 4 "
+              + "is a quarter of a second. Fades rather than switches because a widget that "
+              + "appears instantly reads as a glitch in a headset, where nothing else does.");
+
+            BackgroundScale = Config.Bind(
+                "Interface", "BackgroundScale", 4f,
+                "Stretches the game's own backdrop image — the veil behind menus and the fades "
+              + "to black. It is sized for a flat screen, so on the captured panel it leaves "
+              + "the edges uncovered and a fade to black comes out as a black rectangle with "
+              + "the game still showing round it. 1 leaves it exactly as the game has it.");
+
+            TidyGameHud = Config.Bind(
+                "Interface", "TidyGameHud", true,
+                "Master switch for the four settings below. Off gives the game its interface "
+              + "back as it ships it, with everything on screen all the time.");
+
+            HideHealthBars = Config.Bind(
+                "Interface", "HideHealthBars", true,
+                "Hides the health, stamina and mana bars along the top. They are the three "
+              + "readings you take constantly, and the top of the view is the worst place in a "
+              + "headset to take them from — see WristGauges, which is where they go instead.");
+
+            HideChargeBar = Config.Bind(
+                "Interface", "HideChargeBar", true,
+                "Hides the spell charge bar. What it tells you the wand already tells you: the "
+              + "charge has its own sound, its own light and its own release.");
+
+            HideSoulCounter = Config.Bind(
+                "Interface", "HideSoulCounter", true,
+                "Hides the soul counter until it has something to say — it comes back for "
+              + "MoneyShowSeconds whenever the count changes, and stays up for the whole of a "
+              + "save statue, which is the one place you are reading the number rather than "
+              + "glancing at it.");
+
+            HideItemBar = Config.Bind(
+                "Interface", "HideItemBar", true,
+                "Hides the item bar along the bottom until you change item. What it is for is "
+              + "telling you what you just selected, and that is a question you ask for a "
+              + "second at a time.");
+
+            MoneyShowSeconds = Config.Bind(
+                "Interface", "MoneyShowSeconds", 3f,
+                "How long the soul counter stays up after the count changes, in seconds.");
+
+            ItemBarShowSeconds = Config.Bind(
+                "Interface", "ItemBarShowSeconds", 3f,
+                "How long the item bar stays up after you change item, in seconds.");
+
+            WristGauges = Config.Bind(
+                "Interface", "WristGauges", true,
+                "Wears health, stamina and mana on your left wrist. Three short bars on the "
+              + "back of your hand cost nothing while you are not looking at them and are read "
+              + "by turning your wrist, which is a movement you make anyway. They are placed "
+              + "from the controller rather than from her hand, so they are still there during "
+              + "cutscenes and conversations, when the game has her body back.");
+
+            WristGaugeScale = Config.Bind(
+                "Interface", "WristGaugeScale", 1f,
+                "Size of the wrist gauges. 1 is a hundred millimetres across.");
+
+            WristGaugeOpacity = Config.Bind(
+                "Interface", "WristGaugeOpacity", 0.9f,
+                "How solid the wrist gauges are, from 0 to 1.");
+
+            WristGaugeFillSpeed = Config.Bind(
+                "Interface", "WristGaugeFillSpeed", 1.5f,
+                "How fast a wrist gauge catches up when it is refilling, in bar lengths per "
+              + "second. Damage is never smoothed: a hit should land on the bar as a hit, and "
+              + "only the way back up reads better as a bar filling.");
+
+            WristGaugeOffsetX = Config.Bind(
+                "Interface", "WristGaugeOffsetX", 0f,
+                "Sideways offset of the wrist gauges from the controller, in metres.");
+
+            WristGaugeOffsetY = Config.Bind(
+                "Interface", "WristGaugeOffsetY", 0.015f,
+                "Offset of the wrist gauges up the panel, in metres.");
+
+            WristGaugeOffsetZ = Config.Bind(
+                "Interface", "WristGaugeOffsetZ", -0.06f,
+                "Offset of the wrist gauges back towards your elbow, in metres.");
+
+            WristGaugePitch = Config.Bind(
+                "Interface", "WristGaugePitch", -70f,
+                "Tilt of the wrist gauges towards your face, in degrees. The default lays them "
+              + "along the back of the hand, so a turn of the wrist brings them up to be read.");
+
+            WristGaugeYaw = Config.Bind(
+                "Interface", "WristGaugeYaw", 0f,
+                "Turn of the wrist gauges about the controller's up axis, in degrees.");
+
+            WristGaugeRoll = Config.Bind(
+                "Interface", "WristGaugeRoll", 0f,
+                "Roll of the wrist gauges about their own facing, in degrees.");
+
 
 
             Melee = Config.Bind(
@@ -629,6 +754,8 @@ namespace NobetaVR
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Vr.VrCamera>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Input.VrControls>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.HudPanel>();
+            ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.GameHud>();
+            ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.WristGauges>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.VrMenu>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.AimReticle>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Vr.VrHands>();
@@ -654,6 +781,8 @@ namespace NobetaVR
             host.AddComponent<VrRuntime>();
             host.AddComponent<NobetaVR.Input.VrControls>();
             host.AddComponent<NobetaVR.Ui.HudPanel>();
+            host.AddComponent<NobetaVR.Ui.GameHud>();
+            host.AddComponent<NobetaVR.Ui.WristGauges>();
             host.AddComponent<NobetaVR.Ui.VrMenu>();
             host.AddComponent<NobetaVR.Ui.AimReticle>();
             host.AddComponent<NobetaVR.Vr.VrHands>();

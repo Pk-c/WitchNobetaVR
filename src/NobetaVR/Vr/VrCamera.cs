@@ -195,19 +195,80 @@ namespace NobetaVR.Vr
         internal static Vector3 ViewForwardFlat { get; private set; } = Vector3.forward;
 
         /// <summary>
-        /// Whether the view should stand back from her while she dies.
+        /// Whether the view should stand back from her, from the moment she dies to the moment
+        /// she is yours again.
         ///
-        /// Respawning needs nothing of its own: dying reloads the stage, and even where it did
-        /// not, the mode returns to Normal and first person resumes on the next frame.
+        /// The camera mode opens this and does not close it. Dying is not one beat but four —
+        /// the fall, the stage reloading, her sitting slumped against the save statue, and her
+        /// standing up out of it — and only the first of them is `Dead`. The rest are `Normal`
+        /// with the game still holding her, so a gate on the mode alone would put the view back
+        /// inside her head to watch her own body get up from behind her eyes, which is both the
+        /// strangest part of it and the longest.
+        ///
+        /// What closes it is the game saying she is controllable again, which is the same flag
+        /// the hands stand down on and means exactly "she is yours now". It fails open: if
+        /// there is no character to ask — a menu, the title screen, a stage that never finished
+        /// loading — the latch is dropped rather than held, because being stuck in third person
+        /// is a worse fault than a frame of it too few.
         /// </summary>
         private static bool DeathView()
         {
-            if (!Plugin.Instance.ThirdPersonOnDeath.Value) return false;
+            if (!Plugin.Instance.ThirdPersonOnDeath.Value)
+            {
+                _deathLatch = false;
+                return false;
+            }
 
             var mode = BodyFacing.Mode;
-            return mode == PlayerCamera.CameraMode.Dead
-                || mode == PlayerCamera.CameraMode.FallDead;
+
+            // Opened by the death itself, and by nothing else. A knockdown in a fight goes
+            // through some of the same states on its way back up, and pulling the view out of
+            // her head mid-combat because she was floored would be its own kind of unpleasant.
+            if (mode == PlayerCamera.CameraMode.Dead
+             || mode == PlayerCamera.CameraMode.FallDead
+             || PlayerStatus.Dead)
+            {
+                if (!_deathLatch)
+                {
+                    _deathLatch = true;
+                    _latchedAt = Time.unscaledTime;
+                    Plugin.Log.LogInfo("death: the view steps back out of her head");
+                }
+                return true;
+            }
+
+            if (!_deathLatch) return false;
+
+            // Closed by her being plainly the player's again: an ordinary state, an ordinary
+            // camera mode, and the game's own controllable flag. All three, because each of
+            // them is true on its own somewhere in the middle of this — she reads controllable
+            // while sitting against the save statue, and the camera is back to Normal long
+            // before she is on her feet.
+            if (!PlayerStatus.DownOrGettingUp
+             && PlayerStatus.Controllable
+             && mode == PlayerCamera.CameraMode.Normal)
+            {
+                _deathLatch = false;
+                Plugin.Log.LogInfo("death: she is yours again; the view goes back on her head");
+                return false;
+            }
+
+            // The backstop, and the reason the rest of it can afford to be cautious. Held
+            // through a level load there is nothing to ask during, so the release has to be
+            // able to give up: stuck in third person is a fault a player cannot get out of.
+            if (Time.unscaledTime - _latchedAt < LatchTimeout) return true;
+
+            _deathLatch = false;
+            Plugin.Log.LogWarning($"death: nothing said she was hers again within "
+                                + $"{LatchTimeout:F0}s; putting the view back anyway.");
+            return false;
         }
+
+        private static bool _deathLatch;
+        private static float _latchedAt;
+
+        /// <summary>Longest the view will stay back waiting to be told she is hers, in seconds.</summary>
+        private const float LatchTimeout = 45f;
 
         private void ApplyHeadPose()
         {

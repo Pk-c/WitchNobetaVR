@@ -90,6 +90,7 @@ namespace NobetaVR.Vr
         private bool _displaced;
 
         private readonly MeleeGizmo _gizmo = new();
+        private readonly WandTrail _trail = new();
 
         private void LateUpdate()
         {
@@ -394,14 +395,22 @@ namespace NobetaVR.Vr
         private void PlaceHitbox(WizardGirlManage girl, Plugin cfg)
         {
             var collision = girl.g_AttackCollision;
-            if (collision == null) { _gizmo.Hide(); Restore(); return; }
+            if (collision == null) { _gizmo.Hide(); Restore(); _trail.Release(); return; }
 
             if (!Bind(collision)) { _gizmo.Hide(); return; }
 
-            if (!VrHands.AimOrigin.HasValue) { _gizmo.Hide(); Restore(); return; }
+            if (!VrHands.AimOrigin.HasValue) { _gizmo.Hide(); Restore(); _trail.Release(); return; }
 
             var forward = VrHands.AimDirection;
             var centre = VrHands.AimOrigin.Value + forward * cfg.MeleeHitboxReach.Value;
+
+            // The swing trail rides the same line, for the same reason the hitbox does: there
+            // is one wand, and everything that claims to be on it has to come from one place.
+            if (cfg.MeleeTrailSeconds.Value > 0f)
+                _trail.Follow(girl.transform, VrHands.AimOrigin.Value, forward,
+                              cfg.MeleeHitboxReach.Value);
+            else
+                _trail.Release();
 
             HitCentre = centre;
 

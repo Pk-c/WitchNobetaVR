@@ -98,6 +98,13 @@ namespace NobetaVR.Input
 
             if (!wheel && _gameUi.Update(_input)) { StandDown(); return; }
 
+            // Dying, waking at a save point and getting back to her feet are the game's to
+            // drive, and it does not stop reporting her controllable through them — it holds
+            // her with the state machine instead. Without this the player can spin the world
+            // and wave her hands about while she is still sitting slumped against the statue,
+            // which is the game and the player driving one body at once.
+            if (Vr.PlayerStatus.DownOrGettingUp) { StandDown(); return; }
+
             Grips();
             Move();
             if (!wheel) Turn();
