@@ -20,11 +20,50 @@ namespace NobetaVR.Vr
     /// </summary>
     internal static class BodyFacing
     {
+        private static PlayerCamera.CameraMode _logged = PlayerCamera.CameraMode.Normal;
+
         /// <summary>
-        /// The camera mode the game is in, tracked so this stays out of the way when the game
-        /// has taken the camera for its own purposes.
+        /// The camera mode the game is in, read from the live camera every time it is asked
+        /// for, so that this stays out of the way when the game has taken the camera for its
+        /// own purposes.
+        ///
+        /// This used to be a cached value written from a postfix on <c>SetMode</c>, and that
+        /// is a trap. <c>PlayerCamera</c> is built fresh for each stage, and a new one is
+        /// never told to be `Normal` — `Normal` is what it already is, so nothing calls
+        /// <c>SetMode</c> on the way in. The cache therefore kept whatever the *previous*
+        /// stage last set, across a load that had thrown that camera away. A cutscene ending
+        /// in a stage change left it on `Dead`, and everything that reads this — the hands,
+        /// the melee swing, the reticle, the facing below — stood down for the rest of the
+        /// session, with nothing in the log after the last transition to say why.
+        ///
+        /// The mode is a field on the camera and it is there to be read, so read it: a value
+        /// that is never stored cannot go stale. Missing is `Normal` rather than a nullable
+        /// answer every caller would have to spell out — no camera means a menu or a loading
+        /// screen, where nothing here applies and the callers have their own reasons to stand
+        /// down anyway.
         /// </summary>
-        internal static PlayerCamera.CameraMode Mode { get; set; } = PlayerCamera.CameraMode.Normal;
+        internal static PlayerCamera.CameraMode Mode
+        {
+            get
+            {
+                var controls = Input.VrControls.Instance;
+                var camera = controls != null ? controls.Camera : null;
+                if (camera == null) return PlayerCamera.CameraMode.Normal;
+
+                var mode = camera.cameraMode;
+
+                // Logged from the read rather than from `SetMode`, because the read is what
+                // the mod acts on: a mode that changes because the camera itself was replaced
+                // is exactly the event the old logging could not see.
+                if (mode != _logged)
+                {
+                    _logged = mode;
+                    Plugin.Log.LogInfo($"camera mode -> {mode}");
+                }
+
+                return mode;
+            }
+        }
 
         public static void Apply(PlayerController controller)
         {
@@ -57,17 +96,28 @@ namespace NobetaVR.Vr
     }
 
     /// <summary>
-    /// Follows the camera mode. There is no property to read it back from, so it is taken as it
-    /// is set.
+    /// Checks that <c>cameraMode</c> really is the field <c>SetMode</c> writes.
+    ///
+    /// <see cref="BodyFacing.Mode"/> reads that field instead of following the calls, which is
+    /// only correct if the two agree. It cannot be checked by reading the code — an IL2CPP
+    /// interop assembly carries signatures and no method bodies — so it is checked against the
+    /// running game instead, and only a disagreement says anything. Should this ever fire, the
+    /// mode gate is watching the wrong field, and the symptom would be hands that come and go
+    /// for reasons nothing else in the log explains.
     /// </summary>
     [HarmonyPatch(typeof(PlayerCamera), nameof(PlayerCamera.SetMode))]
     internal static class PlayerCameraSetModePatch
     {
-        private static void Postfix(PlayerCamera.CameraMode camMode)
+        private static bool _warned;
+
+        private static void Postfix(PlayerCamera __instance, PlayerCamera.CameraMode camMode)
         {
-            if (BodyFacing.Mode == camMode) return;
-            BodyFacing.Mode = camMode;
-            Plugin.Log.LogInfo($"camera mode -> {camMode}");
+            if (_warned || __instance == null || __instance.cameraMode == camMode) return;
+
+            _warned = true;
+            Plugin.Log.LogWarning($"SetMode({camMode}) left cameraMode at {__instance.cameraMode}: "
+                                + "BodyFacing.Mode is reading the wrong field, so every control "
+                                + "gated on the camera mode is now guessing.");
         }
     }
 }
