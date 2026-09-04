@@ -252,6 +252,82 @@ namespace NobetaVR.Ui
             });
 
             _items.Add(new Item { Label = "", IsHeading = true });
+            _items.Add(new Item { Label = "MELEE", IsHeading = true });
+
+            _items.Add(new Item
+            {
+                Label = "Swing to hit",
+                Value = () => cfg.Melee.Value ? "On" : "Off",
+                Adjust = _ => cfg.Melee.Value = !cfg.Melee.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Swing speed",
+                Value = () => $"{cfg.MeleeSpeed.Value:F2} m/s",
+                Adjust = d => cfg.MeleeSpeed.Value =
+                    Mathf.Clamp(cfg.MeleeSpeed.Value + d * 0.1f, 0.2f, 6f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Swing distance",
+                Value = () => $"{cfg.MeleeDistance.Value:F2} m",
+                Adjust = d => cfg.MeleeDistance.Value =
+                    Mathf.Clamp(cfg.MeleeDistance.Value + d * 0.02f, 0.05f, 1f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Swing release",
+                Value = () => $"{cfg.MeleeReleaseSpeed.Value:F2} m/s",
+                Adjust = d => cfg.MeleeReleaseSpeed.Value =
+                    Mathf.Clamp(cfg.MeleeReleaseSpeed.Value + d * 0.1f, 0.05f, 4f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Ground swing",
+                Value = () => cfg.MeleeFreeSwingOnGround.Value ? "Free" : "Animated",
+                Adjust = _ => cfg.MeleeFreeSwingOnGround.Value = !cfg.MeleeFreeSwingOnGround.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Ground reach",
+                Value = () => $"{cfg.MeleeHitboxForward.Value:F2} m",
+                Adjust = d => cfg.MeleeHitboxForward.Value =
+                    Mathf.Clamp(cfg.MeleeHitboxForward.Value + d * 0.05f, 0.2f, 4f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Ground hitbox size",
+                Value = () => $"×{cfg.MeleeHitboxSize.Value:F1}",
+                Adjust = d => cfg.MeleeHitboxSize.Value =
+                    Mathf.Clamp(cfg.MeleeHitboxSize.Value + d * 0.25f, 0.5f, 8f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Swing voice",
+                Value = () => cfg.MeleeSwingVoice.Value ? "On" : "Off",
+                Adjust = _ => cfg.MeleeSwingVoice.Value = !cfg.MeleeSwingVoice.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Hitbox on wand",
+                Value = () => cfg.MeleeHitboxOnWand.Value ? "On" : "Off",
+                Adjust = _ => cfg.MeleeHitboxOnWand.Value = !cfg.MeleeHitboxOnWand.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Air reach",
+                Value = () => $"{cfg.MeleeHitboxReach.Value:F2} m",
+                Adjust = d => cfg.MeleeHitboxReach.Value =
+                    Mathf.Clamp(cfg.MeleeHitboxReach.Value + d * 0.02f, 0f, 1.5f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Show hitbox",
+                Value = () => cfg.MeleeShowHitbox.Value ? "On" : "Off",
+                Adjust = _ => cfg.MeleeShowHitbox.Value = !cfg.MeleeShowHitbox.Value,
+            });
+
+            _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item
             {
                 Label = "Reset to default",
@@ -289,6 +365,11 @@ namespace NobetaVR.Ui
                          cfg.AimFromHand,
                          cfg.AimPitchOffset, cfg.AimYawOffset, cfg.AimRollOffset,
                          cfg.ShowAimReticle, cfg.AimReticleSize, cfg.HideGameCrosshair,
+                         cfg.Melee, cfg.MeleeSpeed, cfg.MeleeDistance,
+                         cfg.MeleeReleaseSpeed, cfg.MeleeCooldown,
+                         cfg.MeleeHitboxOnWand, cfg.MeleeHitboxReach, cfg.MeleeShowHitbox,
+                         cfg.MeleeFreeSwingOnGround, cfg.MeleeHitboxForward,
+                         cfg.MeleeHitboxSize, cfg.MeleeTrailSeconds, cfg.MeleeSwingVoice,
                      })
             {
                 entry.BoxedValue = entry.DefaultValue;

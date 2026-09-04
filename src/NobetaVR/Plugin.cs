@@ -23,11 +23,6 @@ namespace NobetaVR
         internal ConfigEntry<bool> Enabled;
         internal ConfigEntry<bool> VerboseStartupReport;
         internal ConfigEntry<string> OpenXrRuntimeJson;
-        internal ConfigEntry<bool> ApplyHeadPose;
-        internal ConfigEntry<float> HeadPoseLogSeconds;
-        internal ConfigEntry<bool> FirstPerson;
-        internal ConfigEntry<float> EyeOffsetForward;
-        internal ConfigEntry<float> EyeOffsetUp;
         internal ConfigEntry<float> HeadHideDistance;
         internal ConfigEntry<bool> HeadBobbing;
         internal ConfigEntry<float> HeadOffsetX;
@@ -36,10 +31,8 @@ namespace NobetaVR
         internal ConfigEntry<float> MenuDistance;
         internal ConfigEntry<float> MenuDeadzone;
         internal ConfigEntry<string> HeadBoneName;
-        internal ConfigEntry<bool> YawFromGameCamera;
         internal ConfigEntry<bool> DisableRespiration;
         internal ConfigEntry<bool> DisableCameraShake;
-        internal ConfigEntry<float> ViewYawOffset;
         internal ConfigEntry<float> MoveDeadzone;
         internal ConfigEntry<float> TurnDeadzone;
         internal ConfigEntry<float> SnapTurnDegrees;
@@ -53,16 +46,11 @@ namespace NobetaVR
         internal ConfigEntry<float> NeckModelDown;
         internal ConfigEntry<float> NeckModelBack;
         internal ConfigEntry<bool> BodyFollowsView;
-        internal ConfigEntry<float> HandVertexWeight;
-        internal ConfigEntry<bool> CapWristHole;
-        internal ConfigEntry<bool> CarryHandAttachments;
         internal ConfigEntry<bool> HoldWandStill;
         internal ConfigEntry<float> WandFollowSpeed;
         internal ConfigEntry<float> HandRotationPitch;
         internal ConfigEntry<float> HandRotationYaw;
         internal ConfigEntry<float> HandRotationRoll;
-        internal ConfigEntry<bool> DisableGameAimIk;
-        internal ConfigEntry<bool> StopFinalIkFixTransforms;
         internal ConfigEntry<bool> AimFromView;
         internal ConfigEntry<bool> AimFromHand;
         internal ConfigEntry<float> AimPitchOffset;
@@ -77,9 +65,20 @@ namespace NobetaVR
         internal ConfigEntry<float> HudSize;
         internal ConfigEntry<float> HudHeightOffset;
         internal ConfigEntry<float> HudFollowSpeed;
-        internal ConfigEntry<int> HudResolutionWidth;
-        internal ConfigEntry<int> HudResolutionHeight;
         internal ConfigEntry<bool> AlignViewToBodyOnSpawn;
+        internal ConfigEntry<bool> Melee;
+        internal ConfigEntry<float> MeleeSpeed;
+        internal ConfigEntry<float> MeleeDistance;
+        internal ConfigEntry<float> MeleeReleaseSpeed;
+        internal ConfigEntry<float> MeleeCooldown;
+        internal ConfigEntry<float> MeleeHitboxReach;
+        internal ConfigEntry<bool> MeleeShowHitbox;
+        internal ConfigEntry<bool> MeleeFreeSwingOnGround;
+        internal ConfigEntry<float> MeleeHitboxForward;
+        internal ConfigEntry<float> MeleeHitboxSize;
+        internal ConfigEntry<float> MeleeTrailSeconds;
+        internal ConfigEntry<bool> MeleeSwingVoice;
+        internal ConfigEntry<string> MeleeRangeName;
 
         public override void Load()
         {
@@ -107,55 +106,13 @@ namespace NobetaVR
               + "steamapps\\common\\SteamVR\\steamxr_win64.json. This applies to this game only; "
               + "the machine-wide setting is never modified.");
 
-            ApplyHeadPose = Config.Bind(
-                "Camera", "ApplyHeadPose", true,
-                "Moves the game's camera with your head. Starting XR gets stereo into the headset "
-              + "but nothing tracks the head: this game shipped without XR and so without a "
-              + "TrackedPoseDriver, which is what would normally do it. Turn this off to see the "
-              + "game's own camera framing untouched, in stereo, with the world locked to your head.");
 
-            HeadPoseLogSeconds = Config.Bind(
-                "Diagnostics", "HeadPoseLogSeconds", 0f,
-                "Writes the head pose to the log this often, in seconds. Zero turns it off. "
-              + "Set it to 1 when the view is not following your head and you need to know "
-              + "whether the pose is arriving at all or arriving and being ignored.");
 
-            FirstPerson = Config.Bind(
-                "Camera", "FirstPerson", true,
-                "Puts the view on Nobeta's head bone instead of at the end of the game's camera "
-              + "boom. The game's camera keeps running either way — its yaw is still your look "
-              + "direction, and cutscenes, aiming and lock-on are untouched.");
 
-            EyeOffsetForward = Config.Bind(
-                "Camera", "EyeOffsetForward", 0.10f,
-                "How far in front of the head bone the eyes sit, in metres. The bone is at the "
-              + "base of the skull on most rigs, so this moves the view forward to roughly where "
-              + "eyes are. Raise it if you can see the inside of her face, lower it if the view "
-              + "feels detached from the body.");
 
-            EyeOffsetUp = Config.Bind(
-                "Camera", "EyeOffsetUp", 0.05f,
-                "How far above the head bone the eyes sit, in metres. Together with "
-              + "EyeOffsetForward this is the one thing worth tuning by eye — it is model "
-              + "geometry, not preference.");
 
-            CapWristHole = Config.Bind("Hands", "CapWristHole", true,
-                "Closes the opening the cut leaves at the wrist. Without it the hand is an "
-              + "open shell and you can see its inside, since the mesh has no back faces. "
-              + "The rim is found from the geometry — after a cut, an edge belonging to only "
-              + "one triangle is by definition on the boundary — and filled with a fan.");
 
-            HandVertexWeight = Config.Bind("Hands", "HandVertexWeight", 0.5f,
-                "How much of a vertex must belong to the hand bone for it to be cut out with the "
-              + "hand, from 0 to 1. Lower takes more of the wrist and risks a ragged edge where "
-              + "the sleeve was; higher gives a cleaner cut and a shorter hand.");
 
-            CarryHandAttachments = Config.Bind("Hands", "CarryHandAttachments", true,
-                "Moves what is parented to the hand — the wand — onto the detached hand, so it "
-              + "goes where your hand goes. Without it the wand stays on the real hand, which is "
-              + "collapsed into the shoulder, so it never appears at all. Only things that draw "
-              + "something are moved: finger bones live there too, and taking those out of the "
-              + "skeleton deforms the character's own hand.");
 
             HoldWandStill = Config.Bind("Hands", "HoldWandStill", true,
                 "Steadies the wand in her hand. It is a bone of the rig rather than a prop "
@@ -183,21 +140,7 @@ namespace NobetaVR
               + "itself, so an identity controller rotation reproduces the pose the animator "
               + "authored. These three are for taste, not for correcting the rig.");
 
-            StopFinalIkFixTransforms = Config.Bind("Hands", "StopFinalIkFixTransforms", true,
-                "Stops FinalIK restoring the animated pose over the mod's arm solve. Its solvers "
-              + "rewind every bone they manage at the start of their own update — restoration, "
-              + "not solving, so it happens even at weight zero — and they update in LateUpdate "
-              + "exactly as this mod does, in an order Unity does not define. The arm was "
-              + "therefore erased on some frames and not others, which is the flicker, and a limb "
-              + "snapping between two poses is what shook the cape.");
 
-            DisableGameAimIk = Config.Bind("Hands", "DisableGameAimIk", true,
-                "Stands the game's own aim IK down while hand tracking is driving the arms. That "
-              + "solver swings the upper body to point the wand, its chain runs through the "
-              + "spine, and it updates in LateUpdate exactly as this mod does — with no ordering "
-              + "guarantee between them, so the arm flicked between the two poses frame by frame "
-              + "and the cape was dragged along by the spine. Aiming is not lost: it comes from "
-              + "the view instead.");
 
             AimFromView = Config.Bind("Aim", "AimFromView", true,
                 "Puts the game's aim target on the line you are looking down. On a monitor that "
@@ -213,12 +156,12 @@ namespace NobetaVR
               + "are not being drawn — menus, cutscenes, and any moment she is not "
               + "yours to move.");
 
-            AimPitchOffset = Config.Bind("Aim", "AimPitchOffset", 25f,
+            AimPitchOffset = Config.Bind("Aim", "AimPitchOffset", 10f,
                 "Angle between the controller and where the wand points, in degrees. A Touch "
               + "controller is gripped at an angle rather than in line with what it is aiming, so "
               + "its own forward points somewhat below the wand.");
 
-            AimYawOffset = Config.Bind("Aim", "AimYawOffset", 0f,
+            AimYawOffset = Config.Bind("Aim", "AimYawOffset", 15f,
                 "Sideways angle between the controller and where the wand points, in "
               + "degrees. Zero unless a grip is habitually turned in or out; with the pitch "
               + "above it covers every direction the wand can be sent, which is why the roll "
@@ -260,7 +203,7 @@ namespace NobetaVR
 
             HandRotationYaw = Config.Bind("Hands", "HandRotationYaw", 0f,
                 "Wrist yaw adjustment, in degrees.");
-            HandRotationRoll = Config.Bind("Hands", "HandRotationRoll", -50f,
+            HandRotationRoll = Config.Bind("Hands", "HandRotationRoll", -25f,
                 "Wrist roll adjustment, in degrees. Not zero, because the rest orientation "
               + "taken from the rig only accounts for how the hand bone sits on the body — "
               + "not for how a Touch controller is gripped, which is turned about its own "
@@ -300,11 +243,6 @@ namespace NobetaVR
               + "or a game update names things differently; the candidates it found are listed "
               + "in the log.");
 
-            YawFromGameCamera = Config.Bind(
-                "Camera", "YawFromGameCamera", true,
-                "Takes the look direction's yaw from the game's camera, leaving pitch and roll "
-              + "to your neck. Turning this off pins the view to world north and makes stick "
-              + "turning do nothing, which is only useful for diagnosis.");
 
             DisableRespiration = Config.Bind(
                 "Comfort", "DisableRespiration", true,
@@ -315,12 +253,6 @@ namespace NobetaVR
                 "Comfort", "DisableCameraShake", true,
                 "Switches off combat camera shake, for the same reason.");
 
-            ViewYawOffset = Config.Bind(
-                "Camera", "ViewYawOffset", 0f,
-                "Degrees added to the view's yaw. Set it to 180 if you find yourself looking "
-              + "back at Nobeta rather than out through her eyes. It exists because which way a "
-              + "rig's bones and camera point is a fact about this game's assets, not something "
-              + "that can be derived.");
 
             MoveDeadzone = Config.Bind(
                 "Controls", "MoveDeadzone", 0.15f,
@@ -434,13 +366,102 @@ namespace NobetaVR
               + "welded to the head is hard to read and makes the world feel strapped to your "
               + "face. Higher is tighter; very high is uncomfortable.");
 
-            HudResolutionWidth = Config.Bind(
-                "Interface", "HudResolutionWidth", 1920,
-                "Width of the texture the interface is captured into.");
 
-            HudResolutionHeight = Config.Bind(
-                "Interface", "HudResolutionHeight", 1080,
-                "Height of the texture the interface is captured into.");
+
+            Melee = Config.Bind(
+                "Melee", "Melee", true,
+                "Swing the wand to hit with it. The right controller is watched for a movement "
+              + "that is both fast enough and long enough to be a swing rather than a reach, and "
+              + "her own attack is triggered from it — the same one the pad's melee button "
+              + "fires, so the combo, the animation and the damage are all the game's.");
+
+            MeleeSpeed = Config.Bind(
+                "Melee", "MeleeSpeed", 3f,
+                "How fast your hand must be moving to begin a swing, in metres per second, "
+              + "measured relative to your own head. Speed alone is not enough to fire — see "
+              + "MeleeDistance — which is why this can sit low enough to catch a flick of the "
+              + "wrist without every reach for a door counting as an attack.");
+
+            MeleeDistance = Config.Bind(
+                "Melee", "MeleeDistance", 0.27f,
+                "How far your hand must travel, in metres, while above MeleeSpeed, before the "
+              + "swing lands. This is the half that tells a swing from a twitch: a hand can "
+              + "cross any speed you like for a single frame, and only a deliberate movement "
+              + "keeps going for a quarter of a metre.");
+
+            MeleeReleaseSpeed = Config.Bind(
+                "Melee", "MeleeReleaseSpeed", 0.7f,
+                "How slowly your hand must be moving, in metres per second, before the next "
+              + "swing can begin. Below MeleeSpeed on purpose: a real swing slows at both ends "
+              + "of its arc without ever stopping, and one release speed set equal to the "
+              + "trigger speed would chop a single sweep into three or four attacks.");
+
+            MeleeCooldown = Config.Bind(
+                "Melee", "MeleeCooldown", 0.3f,
+                "Shortest gap between two swings, in seconds. The game runs its own combo "
+              + "timing underneath this; the limit here is only so that a shake of the arm "
+              + "cannot send it more attacks in a second than a player ever could.");
+
+
+            MeleeHitboxReach = Config.Bind(
+                "Melee", "MeleeHitboxReach", 0.45f,
+                "How far along the wand the hitbox sits, in metres from your hand. It rides the "
+              + "same line the shot goes down, so the wand pitch and yaw offsets under Aim point "
+              + "both at once; this is only how far up that line the business end is.");
+
+            MeleeShowHitbox = Config.Bind(
+                "Melee", "MeleeShowHitbox", false,
+                "Turns on the game's own drawing of its attack ranges, so you can see where the "
+              + "hitbox actually is. For tuning MeleeHitboxReach, and for answering the one "
+              + "question a miss cannot: whether the box was in the wrong place or the swing "
+              + "was never detected.");
+
+            MeleeFreeSwingOnGround = Config.Bind(
+                "Melee", "MeleeFreeSwingOnGround", true,
+                "On the ground, opens the hitbox without playing the attack animation. That "
+              + "animation plants her feet and swings the wand for her, which on a monitor is "
+              + "the attack itself and in a headset is the game taking your arm away in the "
+              + "middle of your own swing. Nothing else is given up: the damage, the element "
+              + "and the knockback are authored on the hitbox rather than on the animation, the "
+              + "impact effect and hit sound come from the game's collision code, and the swing "
+              + "sound, the voice and the wand trail are its own calls made from here. In the "
+              + "air she always keeps the game's attack whatever this says — see below.");
+
+            MeleeHitboxForward = Config.Bind(
+                "Melee", "MeleeHitboxForward", 1.2f,
+                "How far out in front of her the ground hitbox sits, in metres from her centre, "
+              + "along the way you are looking. Out in front rather than on the wand tip because "
+              + "a free swing has nothing lining the target up for it — no step in, no turn to "
+              + "face, no wind-up during which the game quietly brings the enemy into the arc — "
+              + "and a hitbox pinned to a tip travelling several metres a second is simply "
+              + "somewhere else between two frames.");
+
+            MeleeHitboxSize = Config.Bind(
+                "Melee", "MeleeHitboxSize", 2.25f,
+                "How much bigger the ground hitbox is than the game's own, as a multiplier. A "
+              + "multiplier rather than a size so that it means the same thing whatever units "
+              + "the game keeps its ranges in. Applies to the free swing only: the air attack "
+              + "still has its animation to place the blow, and widening that one would be "
+              + "widening a hitbox that was not missing.");
+
+            MeleeTrailSeconds = Config.Bind(
+                "Melee", "MeleeTrailSeconds", 0.35f,
+                "How long the wand trail is drawn for on a ground swing, in seconds. Zero turns "
+              + "it off. The animation would normally start this; with no animation there is "
+              + "nothing to say a swing happened at all when it misses.");
+
+            MeleeSwingVoice = Config.Bind(
+                "Melee", "MeleeSwingVoice", true,
+                "Lets her call out on a ground swing, cycling the four attack voices the way the "
+              + "combo does. Another animation event with no animation left to fire it.");
+
+            MeleeRangeName = Config.Bind(
+                "Melee", "MeleeRangeName", "",
+                "Which of the character's attack ranges a ground swing opens. Empty picks the "
+              + "first combo step. Worth setting once you have read the log: every range is "
+              + "listed there with its strength and knockback, and since those are authored on "
+              + "the range rather than on the animation, this is the choice of how hard a swing "
+              + "hits as much as of where it reaches.");
 
             Log.LogInfo($"NobetaVR {Version} loading");
 
@@ -459,6 +480,7 @@ namespace NobetaVR
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.VrMenu>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.AimReticle>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Vr.VrHands>();
+            ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Vr.VrMelee>();
             // Reported rather than assumed: a patch that silently fails to apply would look
             // exactly like the bug it was written to fix.
             try
@@ -483,6 +505,7 @@ namespace NobetaVR
             host.AddComponent<NobetaVR.Ui.VrMenu>();
             host.AddComponent<NobetaVR.Ui.AimReticle>();
             host.AddComponent<NobetaVR.Vr.VrHands>();
+            host.AddComponent<NobetaVR.Vr.VrMelee>();
         }
     }
 }

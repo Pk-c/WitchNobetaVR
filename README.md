@@ -78,6 +78,7 @@ Touch-style controllers. Everything here is remappable from
 | Right grip | Focus — the game's held shot |
 | Both grips together | Recentre: puts your head back on Nobeta |
 | Both sticks clicked | The mod's VR settings |
+| Swinging the wand | Melee — no button; see below |
 
 Three of those share a control. Y is interact when tapped and the pause menu when held, so
 interact happens when you let go rather than when you press. The grips recentre only when
@@ -87,6 +88,17 @@ the wheel is up, since that is the stick pointing around it.
 
 Walking physically moves Nobeta, through the game's own collision. She turns to face wherever
 you look, including when you turn on the spot.
+
+Melee has no button. Swinging your right hand fast enough and far enough — 1.6 m/s held for
+25 cm, both settings — swings the wand. The thresholds are measured relative to your own head,
+so walking and turning do not count as swings.
+
+What that swing does depends on your feet. **In the air** it is the game's own attack,
+animation and all, because attacking in mid-air is also how you hang there and that hang is
+only available through the game's own call. **On the ground** the animation would plant your
+feet and swing the wand for you, so it is skipped: the hitbox opens on its own, out in front of
+you and generously sized, and the swing sound, the voice, the wand trail, the impact effect and
+the damage are all still the game's. `MeleeShowHitbox` draws the box while you tune the reach.
 
 ## When the headset stays black
 
