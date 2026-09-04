@@ -53,6 +53,13 @@ namespace NobetaVR.Vr
         private readonly DetachedHands _detached = new();
 
         /// <summary>
+        /// One per hand, because they are two independent signals and sharing a filter
+        /// between them would let one hand's motion open the other's.
+        /// </summary>
+        private readonly SteadyPose _leftSteady = new();
+        private readonly SteadyPose _rightSteady = new();
+
+        /// <summary>
         /// Where the wand hand is and which way it points, in world space, or null on any
         /// frame the hands are not being drawn. Published so aiming can come from the hand
         /// rather than the head without either of them having to know about the other.
@@ -123,6 +130,12 @@ namespace NobetaVR.Vr
                 AimOrigin = null;
                 _detached.SetShown(false);
                 SetFinalIkRestoring(girl.transform, true);
+
+                // Nothing to carry across a cutscene: the hand that comes back has no
+                // relation to the one that went away, and filtering between the two would
+                // slide it into place.
+                _leftSteady.Reset();
+                _rightSteady.Reset();
                 return;
             }
 
@@ -417,6 +430,18 @@ namespace NobetaVR.Vr
             if (camera == null) return;
 
             var cfg = Plugin.Instance;
+
+            // Steadied here, at the source, before the hand or the shot is taken from it.
+            // The tremor is invisible on the hand and plain at the end of the aim ray —
+            // one lever, not two faults — and filtering the two separately would let the
+            // hand and the mark disagree about where you are pointing.
+            if (cfg.HandSteadiness.Value > 0.001f)
+            {
+                (left ? _leftSteady : _rightSteady).Apply(
+                    ref position, ref rotation, Time.unscaledDeltaTime,
+                    cfg.HandSteadiness.Value, cfg.HandSteadinessResponse.Value);
+            }
+
             var controllerWorld = VrCamera.ViewYaw * rotation;
             var world = camera.position + VrCamera.ViewYaw * (position - HeadPose.Raw);
 

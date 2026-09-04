@@ -239,6 +239,15 @@ namespace NobetaVR.Ui
             _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "HANDS", IsHeading = true });
 
+            _items.Add(new Item
+            {
+                Label = "Hand steadiness",
+                Value = () => cfg.HandSteadiness.Value <= 0.001f
+                    ? "Off"
+                    : $"{cfg.HandSteadiness.Value:F2}",
+                Adjust = d => cfg.HandSteadiness.Value =
+                    Mathf.Clamp(cfg.HandSteadiness.Value + d * 0.05f, 0f, 1f),
+            });
             _items.Add(Degrees("Hand pitch", () => cfg.HandRotationPitch));
             _items.Add(Degrees("Hand yaw", () => cfg.HandRotationYaw));
             _items.Add(Degrees("Hand roll", () => cfg.HandRotationRoll));
@@ -391,6 +400,7 @@ namespace NobetaVR.Ui
                          cfg.SmoothTurn, cfg.SnapTurnDegrees, cfg.SmoothTurnSpeed,
                          cfg.HeadOffsetX, cfg.HeadOffsetY, cfg.HeadOffsetZ,
                          cfg.HeadBobbing, cfg.HeadHideDistance,
+                         cfg.HandSteadiness,
                          cfg.HandRotationPitch, cfg.HandRotationYaw, cfg.HandRotationRoll,
                          cfg.HoldWandStill, cfg.WandFollowSpeed,
                          cfg.AimFromHand,

@@ -48,6 +48,8 @@ namespace NobetaVR
         internal ConfigEntry<bool> BodyFollowsView;
         internal ConfigEntry<bool> HoldWandStill;
         internal ConfigEntry<float> WandFollowSpeed;
+        internal ConfigEntry<float> HandSteadiness;
+        internal ConfigEntry<float> HandSteadinessResponse;
         internal ConfigEntry<float> HandRotationPitch;
         internal ConfigEntry<float> HandRotationYaw;
         internal ConfigEntry<float> HandRotationRoll;
@@ -133,6 +135,21 @@ namespace NobetaVR
               + "wand, and a recoil is long over before it gets there. Raise it if the wand "
               + "lags behind a deliberate change of pose; lower it if a shot still throws "
               + "your aim off.");
+
+            HandSteadiness = Config.Bind("Hands", "HandSteadiness", 0.5f,
+                "How much tremor is taken out of the controllers, from 0 to 1. Zero is "
+              + "off. The hands never looked like they were shaking; the reticle did, and "
+              + "that is the same tremor seen through a lever — a tenth of a degree at "
+              + "the controller is nothing on a hand and four centimetres at fifteen "
+              + "metres. Raise it if the mark still crawls while you hold still; lower it "
+              + "if precise aiming starts to feel sticky.");
+
+            HandSteadinessResponse = Config.Bind("Hands", "HandSteadinessResponse", 1f,
+                "How readily the steadying lets go when your hand actually moves. This is "
+              + "the part that keeps the filter from being felt: the cutoff rides the speed "
+              + "of the hand, so lag is only ever spent while nothing is happening to be "
+              + "late for. One is the tuned value. Below it the hands begin to swim behind "
+              + "you; above it the tremor comes back with any movement at all.");
 
             HandRotationPitch = Config.Bind("Hands", "HandRotationPitch", 0f,
                 "Wrist pitch adjustment, in degrees. Zero by default: the difference between how "
