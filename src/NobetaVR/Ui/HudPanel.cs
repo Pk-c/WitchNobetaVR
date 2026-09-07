@@ -33,6 +33,24 @@ namespace NobetaVR.Ui
         private bool _failed;
         private Vector3 _direction;
 
+        /// <summary>The active scene as last seen, which is how a scene change is noticed.</summary>
+        private string _scene;
+
+        /// <summary>Until when the scan runs at <see cref="Eager"/> rather than once a second.</summary>
+        private float _eagerUntil;
+
+        /// <summary>Whether the panel has stepped aside for a load; see <see cref="Settle"/>.</summary>
+        private bool _hidden;
+
+        /// <summary>The scene it stepped aside in, which is the one it is waiting to leave.</summary>
+        private string _hiddenFrom;
+
+        /// <summary>Whether a load has been seen from its start, so its end is acted on once.</summary>
+        private bool _armed;
+
+        private float _giveUp;
+
+
         /// <summary>Depth-test state as last written to the material; see <see cref="DepthTest"/>.</summary>
         private bool? _onTop;
 
@@ -43,8 +61,13 @@ namespace NobetaVR.Ui
             if (_texture == null && !Build()) return;
 
             Rescan();
+            Settle();
             Follow();
             DepthTest();
+
+            // Placed even while hidden, just above, so that it comes back where your head is
+            // rather than snapping in from wherever the transition left it.
+            Show(!_hidden);
         }
 
         /// <summary>
@@ -191,8 +214,71 @@ namespace NobetaVR.Ui
             component.farClipPlane = CanvasPlane + Slab;
         }
 
-        /// <summary>Where the captured canvases are pinned, in metres in front of the camera.</summary>
+        /// <summary>Where a captured canvas first lands, in metres in front of the camera.</summary>
         private const float CanvasPlane = 1f;
+
+        /// <summary>The captured canvases, ordered as the game wants them drawn.</summary>
+        private readonly System.Collections.Generic.List<Canvas> _stack = new();
+
+        /// <summary>
+        /// Pins the captured canvases to the canvas plane, and reports the order they are in.
+        ///
+        /// The report is the useful half. Which piece of interface is in front of which is the
+        /// question this whole arrangement has to get right, and for a long time the log could
+        /// not answer it at all -- the count of canvases said nothing about their order or
+        /// their names. It is logged only when it changes, so a steady session says it once.
+        /// </summary>
+        private void Stack()
+        {
+            if (_stack.Count == 0) return;
+
+            // Insertion sort, because it is stable: canvases sharing a sortingOrder keep the
+            // order they were found in rather than trading places from one pass to the next,
+            // and an interface that reshuffles itself once a second would be worse than one
+            // that is merely in the wrong order.
+            for (var i = 1; i < _stack.Count; i++)
+            {
+                var canvas = _stack[i];
+                var order = canvas.sortingOrder;
+                var j = i - 1;
+
+                while (j >= 0 && _stack[j].sortingOrder > order)
+                {
+                    _stack[j + 1] = _stack[j];
+                    j--;
+                }
+
+                _stack[j + 1] = canvas;
+            }
+
+            // All on the one plane. Spreading them through the capture's depth by sortingOrder
+            // was tried, on the theory that coplanar canvases leave their order to the
+            // renderer, and it changed nothing -- because the game already gives these distinct
+            // sortingOrders and Unity already honours them between canvases at equal distance.
+            // The order was never the fault, so the depth stays simple and this reports rather
+            // than rearranges.
+            var report = new System.Text.StringBuilder();
+
+            for (var i = 0; i < _stack.Count; i++)
+            {
+                _stack[i].planeDistance = CanvasPlane;
+
+                if (i > 0) report.Append(" < ");
+                report.Append(_stack[i].name).Append('(').Append(_stack[i].sortingOrder).Append(')');
+            }
+
+            // Only when it changes. Which interface is in front of which is the question this
+            // whole arrangement exists to get right, and a session that never reshuffles should
+            // say so once rather than once a second.
+            var line = report.ToString();
+            if (line == _order) return;
+
+            _order = line;
+            Plugin.Log.LogInfo($"HUD panel, back to front: {line}");
+        }
+
+        /// <summary>The order as last reported, so a steady stack is not logged over and over.</summary>
+        private string _order;
 
         /// <summary>
         /// A new render texture holds whatever was in that memory. Clearing it to transparent
@@ -209,6 +295,10 @@ namespace NobetaVR.Ui
 
         // -- capture -------------------------------------------------------------------
 
+        /// <summary>How often the scan runs just after a scene change, and for how long.</summary>
+        private const float Eager = 0.1f;
+        private const float EagerFor = 5f;
+
         /// <summary>
         /// Redirects the game's screen-space canvases through the capture camera.
         ///
@@ -218,14 +308,31 @@ namespace NobetaVR.Ui
         /// </summary>
         private void Rescan()
         {
+            // A scene change is the one moment the interface is guaranteed to be different
+            // objects, and the once-a-second timer can be a full second late to it. That second
+            // is a second in which the new scene's canvases are still drawing themselves to a
+            // display nobody is looking at and the culling mask still describes the last
+            // scene's -- which is exactly the window the panel is wrong in. The scene name
+            // forces the pass, and the scan stays quick for a few seconds afterwards, because
+            // the canvases do not all exist on the frame the scene becomes active.
+            var active = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            if (active != _scene)
+            {
+                _scene = active;
+                _nextScan = 0f;
+                _eagerUntil = Time.unscaledTime + EagerFor;
+            }
+
             if (Time.unscaledTime < _nextScan) return;
-            _nextScan = Time.unscaledTime + 1f;
+            _nextScan = Time.unscaledTime + (Time.unscaledTime < _eagerUntil ? Eager : 1f);
 
             var found = UnityEngine.Object.FindObjectsOfType(Il2CppType.Of<Canvas>());
             if (found == null) return;
 
             var mask = 0;
             var redirected = 0;
+
+            _stack.Clear();
 
             for (var i = 0; i < found.Length; i++)
             {
@@ -242,14 +349,14 @@ namespace NobetaVR.Ui
 
                 if (canvas.worldCamera != _capture) continue;
 
-                // Re-asserted every pass rather than only on the frame the canvas was taken
-                // over. The clip planes in Build are wrapped tightly around this exact
-                // distance, so a canvas the game later moves to a different plane would be
-                // clipped away entirely rather than merely drawn at the wrong depth.
-                canvas.planeDistance = CanvasPlane;
-
+                _stack.Add(canvas);
                 mask |= 1 << canvas.gameObject.layer;
             }
+
+            // Every pass, not only on the frame a canvas was taken over: the set changes as
+            // menus and stages come and go, and the depth each one sits at is meaningful only
+            // relative to the others.
+            Stack();
 
             // Taken from the canvases themselves rather than assumed to be layer 5: the game
             // leaves at least one of its canvases on Default, and a canvas left out of the mask
@@ -276,6 +383,105 @@ namespace NobetaVR.Ui
                 _canvasCount = found.Length;
                 if (redirected > 0) Plugin.Log.LogInfo($"redirected {redirected} canvas(es) to the HUD panel");
             }
+        }
+
+        // -- transitions ---------------------------------------------------------------
+
+        /// <summary>The fade level at or under which a transition counts as over.</summary>
+        private const float Down = 0.02f;
+
+        /// <summary>
+        /// How far into a load the panel steps aside, and how far back down counts as a new
+        /// load beginning.
+        ///
+        /// Late on purpose. The loading screen is the one piece of interface that is genuinely
+        /// worth seeing during a load -- it is the only thing telling you the game has not
+        /// hung -- so the panel carries it for as long as it can and leaves only for the last
+        /// tenth, which is where the stage starts arriving and the interface behind the black
+        /// starts being built.
+        /// </summary>
+        private const float HideAt = 0.9f;
+        private const float Rearm = 0.5f;
+
+        /// <summary>The longest the panel will ever wait before it is owed to the player again.</summary>
+        private const float GiveUp = 20f;
+
+        /// <summary>
+        /// Steps the panel aside for the end of a load, and brings it back when the new scene
+        /// has arrived and the fade over it is done.
+        ///
+        /// The panel is drawn over the fade deliberately -- a transition is something you read
+        /// subtitles and prompts through, and an interface that vanished behind every fade
+        /// would be worse than one that occasionally shows too much. The end of a load is the
+        /// exception that proves it. There the fade is not framing the interface, it is hiding
+        /// a stage that has not finished building: menus, message boxes and a results screen
+        /// all live for a moment in whatever state their prefabs were saved in, and the panel
+        /// hands the player every one of them at once, laid over the loading screen, in a room
+        /// the game has taken the trouble to black out.
+        ///
+        /// <para>
+        /// The cue is the loading progress rather than the scene change, and that is the whole
+        /// difference between this and hiding too much. A scene change is late -- the interface
+        /// is already being built by then -- but a scene change is also what the *previous*
+        /// load ends with, so triggering on it took the loading screen away for the whole of
+        /// every load. Progress says exactly what was wanted: carry the loading screen almost
+        /// to the end, and leave for the last tenth.
+        /// </para>
+        ///
+        /// <para>
+        /// Coming back needs both halves. The fade alone is not enough, because it dips between
+        /// the loading screen going and the stage's own fade-in arriving, and a panel that
+        /// returned in that dip would return for precisely the frames this exists to cover. So
+        /// the scene must have changed as well: the thing being waited for is a stage that is
+        /// up and settled, and nothing less says that.
+        /// </para>
+        ///
+        /// <para>
+        /// Bounded at <see cref="GiveUp"/>, because the alternative to a bound here is an
+        /// interface that never comes back. Whatever went wrong, the panel is owed to the
+        /// player eventually.
+        /// </para>
+        /// </summary>
+        private void Settle()
+        {
+            var progress = LoadingProgress.Value;
+
+            // Armed by seeing a load from near its beginning, so that a value left sitting at
+            // one when the last load finished cannot hide the panel again the moment it returns.
+            if (progress < Rearm) _armed = true;
+
+            if (!_hidden && _armed && progress >= HideAt)
+            {
+                _armed = false;
+                _hidden = true;
+                _hiddenFrom = _scene;
+                _giveUp = Time.unscaledTime + GiveUp;
+
+                Plugin.Log.LogInfo($"HUD panel stands aside at {progress:P0} of the load");
+            }
+
+            if (!_hidden) return;
+
+            // With the VR fade off the game paints its own black straight onto the panel, which
+            // covers the same ground. There is nothing to wait for, and waiting would only
+            // blank the interface for no gain.
+            if (!Plugin.Instance.VrFade.Value) { Return("the VR fade is off"); return; }
+
+            if (Time.unscaledTime > _giveUp) { Return("it waited long enough"); return; }
+
+            if (_scene != _hiddenFrom && Vr.ViewFade.Amount < Down) Return($"'{_scene}' is up");
+        }
+
+        private void Return(string why)
+        {
+            _hidden = false;
+            Plugin.Log.LogInfo($"HUD panel back: {why}");
+        }
+
+        private void Show(bool shown)
+        {
+            if (_panel == null) return;
+            if (_panel.gameObject.activeSelf != shown) _panel.gameObject.SetActive(shown);
         }
 
         // -- placement -----------------------------------------------------------------
