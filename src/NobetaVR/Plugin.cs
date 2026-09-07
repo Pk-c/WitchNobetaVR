@@ -80,7 +80,11 @@ namespace NobetaVR
         internal ConfigEntry<float> MoneyShowSeconds;
         internal ConfigEntry<float> ItemBarShowSeconds;
         internal ConfigEntry<bool> WristGauges;
-        internal ConfigEntry<float> WristGaugeScale;
+        internal ConfigEntry<float> WristGaugeRadius;
+        internal ConfigEntry<float> WristGaugeThickness;
+        internal ConfigEntry<float> WristGaugeSpacing;
+        internal ConfigEntry<float> WristGaugeArc;
+        internal ConfigEntry<float> WristGaugeGlow;
         internal ConfigEntry<float> WristGaugeOpacity;
         internal ConfigEntry<float> WristGaugeFillSpeed;
         internal ConfigEntry<float> WristGaugeOffsetX;
@@ -504,9 +508,37 @@ namespace NobetaVR
               + "from the controller rather than from her hand, so they are still there during "
               + "cutscenes and conversations, when the game has her body back.");
 
-            WristGaugeScale = Config.Bind(
-                "Interface", "WristGaugeScale", 1f,
-                "Size of the wrist gauges. 1 is sixty millimetres across, about a watch.");
+            WristGaugeRadius = Config.Bind(
+                "Interface", "WristGaugeRadius", 0.045f,
+                "How far the bands sit from the centre of your wrist, in metres. This is the "
+              + "one to set first: it is the size of the wrist they are worn on, and the two "
+              + "below are proportions of the band rather than of you.");
+
+            WristGaugeThickness = Config.Bind(
+                "Interface", "WristGaugeThickness", 0.006f,
+                "How thick each band is, in metres — the radius of the tube, so a band stands "
+              + "this far off your wrist and is twice this across.");
+
+            WristGaugeSpacing = Config.Bind(
+                "Interface", "WristGaugeSpacing", 0.015f,
+                "Gap between one band and the next along your forearm, in metres. A negative "
+              + "value stacks them the other way, which is the whole of the fix if they come "
+              + "out with mana at your hand rather than at your elbow.");
+
+            WristGaugeArc = Config.Bind(
+                "Interface", "WristGaugeArc", 200f,
+                "How far round your wrist a full band reaches, in degrees. Rather more than a "
+              + "half turn by default: the part you cannot see is not wasted, it is what makes "
+              + "a full gauge read as a closed band rather than as a strip that stops.");
+
+            WristGaugeGlow = Config.Bind(
+                "Interface", "WristGaugeGlow", 1.6f,
+                "How far past full brightness the lit part of a band is driven. There is no way "
+              + "to ask the game's post-processing for bloom from here, so this is the nearest "
+              + "honest thing: on a camera rendering to an HDR buffer a colour above 1 is "
+              + "exactly what a bloom threshold looks for and the bands will glow, and on one "
+              + "that is not it clamps to full saturation and costs nothing. 1 leaves the "
+              + "colours exactly as they are set.");
 
             WristGaugeOpacity = Config.Bind(
                 "Interface", "WristGaugeOpacity", 0.9f,

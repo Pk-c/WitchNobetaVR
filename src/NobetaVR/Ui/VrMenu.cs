@@ -412,10 +412,38 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
-                Label = "Gauge size",
-                Value = () => $"×{cfg.WristGaugeScale.Value:F2}",
-                Adjust = d => cfg.WristGaugeScale.Value =
-                    Mathf.Clamp(cfg.WristGaugeScale.Value + d * 0.05f, 0.2f, 4f),
+                Label = "Wrist radius",
+                Value = () => $"{cfg.WristGaugeRadius.Value * 100f:F1} cm",
+                Adjust = d => cfg.WristGaugeRadius.Value =
+                    Mathf.Clamp(cfg.WristGaugeRadius.Value + d * 0.0025f, 0.01f, 0.15f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Band thickness",
+                Value = () => $"{cfg.WristGaugeThickness.Value * 1000f:F1} mm",
+                Adjust = d => cfg.WristGaugeThickness.Value =
+                    Mathf.Clamp(cfg.WristGaugeThickness.Value + d * 0.0005f, 0.001f, 0.03f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Band spacing",
+                Value = () => $"{cfg.WristGaugeSpacing.Value * 1000f:F0} mm",
+                Adjust = d => cfg.WristGaugeSpacing.Value =
+                    Mathf.Clamp(cfg.WristGaugeSpacing.Value + d * 0.001f, -0.06f, 0.06f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Band wrap",
+                Value = () => $"{cfg.WristGaugeArc.Value:F0}°",
+                Adjust = d => cfg.WristGaugeArc.Value =
+                    Mathf.Clamp(cfg.WristGaugeArc.Value + d * 10f, 30f, 350f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Band glow",
+                Value = () => $"×{cfg.WristGaugeGlow.Value:F1}",
+                Adjust = d => cfg.WristGaugeGlow.Value =
+                    Mathf.Clamp(cfg.WristGaugeGlow.Value + d * 0.1f, 1f, 4f),
             });
             _items.Add(new Item
             {
@@ -610,7 +638,9 @@ namespace NobetaVR.Ui
                          cfg.TidyGameHud, cfg.HideHealthBars, cfg.HideChargeBar,
                          cfg.HideSoulCounter, cfg.HideItemBar, cfg.HideCutsceneBars,
                          cfg.MoneyShowSeconds, cfg.ItemBarShowSeconds,
-                         cfg.WristGauges, cfg.WristGaugeScale, cfg.WristGaugeOpacity,
+                         cfg.WristGauges, cfg.WristGaugeOpacity,
+                         cfg.WristGaugeRadius, cfg.WristGaugeThickness,
+                         cfg.WristGaugeSpacing, cfg.WristGaugeArc, cfg.WristGaugeGlow,
                          cfg.WristGaugeFillSpeed,
                          cfg.WristGaugeOffsetX, cfg.WristGaugeOffsetY, cfg.WristGaugeOffsetZ,
                          cfg.WristGaugePitch, cfg.WristGaugeYaw, cfg.WristGaugeRoll,
