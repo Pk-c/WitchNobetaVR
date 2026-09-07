@@ -63,7 +63,19 @@ namespace NobetaVR.Ui
 
         private void LateUpdate()
         {
-            if (_failed || !Plugin.Instance.HudEnabled.Value) return;
+            if (_failed) return;
+
+            if (!Plugin.Instance.HudEnabled.Value)
+            {
+                // The setting says the interface is not in the headset, and it has to stop the
+                // capture as well as the panel. Returning here without doing either was the
+                // worst of both: the panel went on drawing whatever it last had, and a 1080p
+                // camera went on filling it, for a session in which the player had turned the
+                // whole thing off.
+                Show(false);
+                Capture(false);
+                return;
+            }
 
             if (_texture == null && !Build()) return;
 
@@ -76,6 +88,32 @@ namespace NobetaVR.Ui
             // back where your head is rather than snapping in from wherever the transition
             // left it.
             Show(!_hidden);
+            Capture(!_hidden);
+        }
+
+        /// <summary>Whether the capture camera is currently allowed to render.</summary>
+        private bool? _capturing;
+
+        /// <summary>
+        /// Runs the capture camera only while something is looking at what it draws.
+        ///
+        /// It is a full camera over a 1920x1080 target that culls every layer, and it was
+        /// enabled for the life of the process — through every load, every fade, and every
+        /// stretch with the panel stood aside. That is a render pass and a scene cull per frame
+        /// for a texture hanging on a quad nobody can see.
+        ///
+        /// Safe to switch precisely because the panel is switched with it: a disabled camera
+        /// leaves the last image in the texture, and the one frame where that would show is the
+        /// frame it comes back on — which <see cref="Build"/> settles by giving this camera a
+        /// depth well below the game's, so it has already redrawn by the time anything renders
+        /// the panel it feeds.
+        /// </summary>
+        private void Capture(bool on)
+        {
+            if (_capture == null || _capturing == on) return;
+
+            _capturing = on;
+            _capture.enabled = on;
         }
 
         /// <summary>
@@ -163,6 +201,13 @@ namespace NobetaVR.Ui
             _capture.orthographic = false;
             _capture.allowHDR = false;
             _capture.allowMSAA = false;
+
+            // Before the game's own cameras, which is what makes the texture this frame's
+            // rather than the last one's. Unity orders cameras by depth and gives no order at
+            // all to two that share one, so the default left this racing the view it feeds --
+            // and it is what lets the capture be switched off with the panel at all: whenever
+            // it comes back, it has redrawn before anything renders the quad.
+            _capture.depth = -100f;
             // Every layer. Which sounds reckless and is the opposite: what keeps the world out
             // of this capture is where the camera stands and how little depth in front of it it
             // can see, not the mask — see Park. Culling by the layers of the canvases we found
@@ -349,7 +394,7 @@ namespace NobetaVR.Ui
             // scene's -- which is exactly the window the panel is wrong in. The scene name
             // forces the pass, and the scan stays quick for a few seconds afterwards, because
             // the canvases do not all exist on the frame the scene becomes active.
-            var active = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            var active = ActiveScene.Name;
             if (active != _scene)
             {
                 _scene = active;

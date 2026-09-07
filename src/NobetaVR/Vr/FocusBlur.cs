@@ -96,13 +96,45 @@ namespace NobetaVR.Vr
                 {
                     var component = components[c];
                     if (component == null || !component.active) continue;
-                    if (component.GetIl2CppType().Name != DepthOfField) continue;
+                    if (!IsDepthOfField(component)) continue;
 
                     component.active = false;
                     Silenced.Add(component);
                     Plugin.Log.LogInfo($"depth of field off on volume '{volume.name}'");
                 }
             }
+        }
+
+        private static readonly System.Collections.Generic.HashSet<System.IntPtr> Blur = new();
+        private static readonly System.Collections.Generic.HashSet<System.IntPtr> NotBlur = new();
+
+        /// <summary>
+        /// Whether one override is the depth of field, answered by class pointer after the
+        /// first time each class is seen.
+        ///
+        /// The name is what identifies it — the URP type is not in the interop assemblies to
+        /// cast to — but asking for it is not a comparison, it is a managed <c>Type</c> wrapper
+        /// and a string marshalled out of il2cpp, per override, per volume, per scan. A profile
+        /// carries a dozen overrides and a stage carries several profiles, and none of their
+        /// classes ever change what they are called. So the answer is kept against the class
+        /// itself: a raw pointer, hashed, with the string read exactly once per class per
+        /// session.
+        /// </summary>
+        private static bool IsDepthOfField(VolumeComponent component)
+        {
+            var klass = Il2CppInterop.Runtime.IL2CPP.il2cpp_object_get_class(component.Pointer);
+
+            if (Blur.Contains(klass)) return true;
+            if (NotBlur.Contains(klass)) return false;
+
+            if (component.GetIl2CppType().Name == DepthOfField)
+            {
+                Blur.Add(klass);
+                return true;
+            }
+
+            NotBlur.Add(klass);
+            return false;
         }
 
         /// <summary>

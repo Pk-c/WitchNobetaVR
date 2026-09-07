@@ -139,6 +139,43 @@ namespace NobetaVR.Ui
         /// </summary>
         private const float RingStep = 0.02f;
 
+        /// <summary>
+        /// The tube's cross-section, worked out once.
+        ///
+        /// Every vertex of every ring of every band sits at one of six angles around the tube,
+        /// and those angles are fixed by <see cref="MinorSegments"/> and <see cref="MinorSpan"/>
+        /// alone — nothing about the frame moves them. Computing them per vertex was two
+        /// thousand sine and cosine calls a frame for six answers.
+        /// </summary>
+        private static readonly float[] MinorCos = MinorTable(true);
+        private static readonly float[] MinorSin = MinorTable(false);
+
+        /// <summary>
+        /// How lit each of those six angles is: brightest along the crest, falling away to the
+        /// sides. A function of the cross-section and nothing else, so it is tabled with it.
+        /// </summary>
+        private static readonly float[] MinorLit = MinorLitTable();
+
+        private static float[] MinorTable(bool cosine)
+        {
+            var table = new float[MinorSegments + 1];
+
+            for (var j = 0; j <= MinorSegments; j++)
+            {
+                var minor = (-MinorSpan + 2f * MinorSpan * j / MinorSegments) * Mathf.Deg2Rad;
+                table[j] = cosine ? Mathf.Cos(minor) : Mathf.Sin(minor);
+            }
+
+            return table;
+        }
+
+        private static float[] MinorLitTable()
+        {
+            var table = new float[MinorSegments + 1];
+            for (var j = 0; j <= MinorSegments; j++) table[j] = 0.42f + 0.58f * Mathf.Max(0f, MinorCos[j]);
+            return table;
+        }
+
         private sealed class Bar
         {
             public Color Colour;
@@ -160,6 +197,22 @@ namespace NobetaVR.Ui
             public Mesh Mesh;
             public Il2CppStructArray<Vector3> Vertices;
             public Il2CppStructArray<Color> Colours;
+
+            /// <summary>
+            /// The same points and surface normals as <see cref="Vertices"/>, on this side of
+            /// the interop boundary.
+            ///
+            /// Kept because the colours are recomputed on frames the geometry is not, and the
+            /// facing test needs both — so without a mirror every such frame would either read
+            /// the il2cpp buffer back a vertex at a time or work the trigonometry out again to
+            /// arrive at numbers it already had.
+            /// </summary>
+            public Vector3[] Points;
+            public Vector3[] Normals;
+
+            /// <summary>What the bar read when the geometry was last written; see Reshape.</summary>
+            public float LastShown = float.NaN;
+            public float LastLost = float.NaN;
         }
 
         private readonly Band[] _bands = new Band[Bands];
@@ -231,9 +284,21 @@ namespace NobetaVR.Ui
 
             Place(handPosition, controllerRotation);
             Read(data);
-            Reshape();
-            FadeTo(Plugin.Instance.WristGaugeOpacity.Value);
+
+            var target = Plugin.Instance.WristGaugeOpacity.Value;
+
+            // Nothing to shape into a mesh nobody can see: at zero opacity the bands are a
+            // setting somebody turned off, and the frames either side of a fade are the only
+            // ones where a shape at zero alpha is worth building. The bars are still *read*
+            // above, so a gauge that moved while they were down is already at its right value
+            // when they come back rather than sliding to it in front of you.
+            if (_alpha > Invisible || target > Invisible) Reshape();
+
+            FadeTo(target);
         }
+
+        /// <summary>The alpha at or under which the bands are not worth building a mesh for.</summary>
+        private const float Invisible = 0.001f;
 
         // -- the numbers -----------------------------------------------------------------
 
@@ -318,12 +383,29 @@ namespace NobetaVR.Ui
 
         // -- geometry --------------------------------------------------------------------
 
+        /// <summary>How far the eye may drift, in metres, before the facing test is redone.</summary>
+        private const float ViewerStill = 0.001f;
+
+        private float _lastRadius = float.NaN;
+        private float _lastThickness, _lastSpacing, _lastArc, _lastGlow, _lastPulse;
+        private Vector3 _lastViewer;
+        private bool _haveLastViewer;
+
         /// <summary>
-        /// Writes this frame's shape into the three band meshes.
+        /// Writes this frame's shape into the three band meshes — or as much of it as this
+        /// frame actually moved.
         ///
-        /// All of it, every frame, including the trough. It used to be rebuilt only when a
-        /// setting changed, and it cannot be any more: the vertices now carry which way each
-        /// piece of surface is facing, and that changes whenever you move your arm.
+        /// The two halves of a band have nothing in common but the loop that used to write
+        /// them. Where the vertices *are* depends on the shape settings and on what the bars
+        /// read; what colour they are depends on where your eye is, which moves constantly,
+        /// and on the warning pulse, which only exists on a band that is low. Rebuilding both
+        /// together meant the expensive half — <c>Mesh.vertices</c>, which revalidates and
+        /// re-uploads the whole stream, and the bounds that have to be recomputed after it —
+        /// was paid on every frame the cheap half needed, which is every frame.
+        ///
+        /// So each band is asked two questions rather than one, and a steady gauge — which is
+        /// what a gauge is nearly all of the time — writes colours and leaves its geometry
+        /// alone.
         /// </summary>
         private void Reshape()
         {
@@ -347,8 +429,55 @@ namespace NobetaVR.Ui
             var viewer = eye != null ? _root.transform.InverseTransformPoint(eye.position) : Vector3.zero;
             var facingKnown = eye != null;
 
+            var geometryChanged = radius != _lastRadius
+                               || thickness != _lastThickness
+                               || spacing != _lastSpacing
+                               || arc != _lastArc;
+
+            _lastRadius = radius;
+            _lastThickness = thickness;
+            _lastSpacing = spacing;
+            _lastArc = arc;
+
+            // Against the eye position the shading was last built for, not against the previous
+            // frame's: a drift below the threshold must not be able to accumulate unnoticed
+            // simply because it arrives a tenth of a millimetre at a time.
+            var viewerMoved = facingKnown
+                           && (!_haveLastViewer
+                            || (viewer - _lastViewer).sqrMagnitude > ViewerStill * ViewerStill);
+
+            if (viewerMoved) { _lastViewer = viewer; _haveLastViewer = true; }
+            if (!facingKnown) _haveLastViewer = false;
+
+            var glowChanged = glow != _lastGlow;
+            var pulseChanged = pulse != _lastPulse;
+            _lastGlow = glow;
+            _lastPulse = pulse;
+
             for (var i = 0; i < Bands; i++)
-                Shape(_bands[i], i, radius, thickness, spacing, arc, glow, pulse, viewer, facingKnown);
+            {
+                var band = _bands[i];
+                if (band == null) continue;
+
+                var moveVertices = geometryChanged
+                                || band.Bar.Shown != band.LastShown
+                                || band.Bar.Lost != band.LastLost;
+
+                // The pulse is on the clock, so it changes every frame — but it only reaches
+                // the picture on a band that is low enough to be pulsing, which is where the
+                // test belongs. Asked before the geometry is written, since writing it is what
+                // brings these two up to date.
+                var repaint = moveVertices
+                           || viewerMoved
+                           || glowChanged
+                           || (pulseChanged && band.Bar.Shown < WarnBelow);
+
+                band.LastShown = band.Bar.Shown;
+                band.LastLost = band.Bar.Lost;
+
+                Shape(band, i, radius, thickness, spacing, arc, glow, pulse, viewer, facingKnown,
+                      moveVertices, repaint);
+            }
         }
 
         /// <summary>
@@ -360,9 +489,10 @@ namespace NobetaVR.Ui
         /// case for it: degenerate triangles are free and a branch here would not be.
         /// </summary>
         private void Shape(Band band, int index, float radius, float thickness, float spacing,
-                           float arc, float glow, float pulse, Vector3 viewer, bool facingKnown)
+                           float arc, float glow, float pulse, Vector3 viewer, bool facingKnown,
+                           bool moveVertices, bool repaint)
         {
-            if (band == null) return;
+            if (band == null || (!moveVertices && !repaint)) return;
 
             // Negative spacing stacks them the other way, which is the whole of the fix if
             // they come out with mana at the hand rather than at the elbow.
@@ -372,35 +502,62 @@ namespace NobetaVR.Ui
 
             for (var ring = 0; ring < Rings; ring++)
             {
-                var fraction = ring == 0 ? 1f
-                             : ring == 1 ? band.Bar.Lost
-                             : band.Bar.Shown;
-
-                var sweep = arc * Mathf.Clamp01(fraction);
-                var ringRadius = radius + thickness * RingStep * ring;
                 var paint = Paint(ring, band.Bar, pulse, glow);
                 var alpha = RingAlpha[ring];
 
+                var sweep = 0f;
+                var ringRadius = 0f;
+
+                if (moveVertices)
+                {
+                    var fraction = ring == 0 ? 1f
+                                 : ring == 1 ? band.Bar.Lost
+                                 : band.Bar.Shown;
+
+                    sweep = arc * Mathf.Clamp01(fraction);
+                    ringRadius = radius + thickness * RingStep * ring;
+                }
+
                 for (var i = 0; i <= MajorSegments; i++)
                 {
-                    var angle = (start + sweep * i / MajorSegments) * Mathf.Deg2Rad;
-                    var outward = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle));
+                    var outward = Vector3.zero;
+
+                    if (moveVertices)
+                    {
+                        var angle = (start + sweep * i / MajorSegments) * Mathf.Deg2Rad;
+                        outward = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle));
+                    }
 
                     for (var j = 0; j <= MinorSegments; j++)
                     {
-                        var minor = (-MinorSpan + 2f * MinorSpan * j / MinorSegments) * Mathf.Deg2Rad;
-                        var cos = Mathf.Cos(minor);
-                        var sin = Mathf.Sin(minor);
+                        Vector3 position, normal;
 
-                        var position = outward * (ringRadius + thickness * cos)
+                        if (moveVertices)
+                        {
+                            var cos = MinorCos[j];
+                            var sin = MinorSin[j];
+
+                            position = outward * (ringRadius + thickness * cos)
                                      + Vector3.up * (along + thickness * sin);
+                            normal = outward * cos + Vector3.up * sin;
 
-                        band.Vertices[v] = position;
+                            band.Vertices[v] = position;
+                            band.Points[v] = position;
+                            band.Normals[v] = normal;
+                        }
+                        else
+                        {
+                            // Unchanged since they were last written, and read from this side
+                            // of the boundary rather than out of the il2cpp buffer.
+                            position = band.Points[v];
+                            normal = band.Normals[v];
+                        }
 
                         // The roundness, and the only place it exists. Brightest along the
                         // crest and falling away to the sides, which is what a lit tube does
-                        // and what a flat strip of one colour never can.
-                        var lit = 0.42f + 0.58f * Mathf.Max(0f, cos);
+                        // and what a flat strip of one colour never can. A property of the
+                        // tube's cross-section alone, so it is tabled with it.
+                        var lit = MinorLit[j];
 
                         // Back-face culling, done here because Cull Off is written into the
                         // shader and cannot be asked to stop. Without it the far side of the
@@ -412,7 +569,6 @@ namespace NobetaVR.Ui
                         var seen = 1f;
                         if (facingKnown)
                         {
-                            var normal = outward * cos + Vector3.up * sin;
                             var toEye = viewer - position;
                             var facing = Vector3.Dot(normal, toEye.normalized);
                             seen = Mathf.Clamp01(facing / 0.12f);
@@ -425,9 +581,16 @@ namespace NobetaVR.Ui
                 }
             }
 
-            band.Mesh.vertices = band.Vertices;
+            // The costly pair, and the reason the frame above is split at all: the vertex
+            // setter revalidates and re-uploads the whole stream, and the bounds can only be
+            // recomputed after it. Neither is owed on a frame that only changed a colour.
+            if (moveVertices)
+            {
+                band.Mesh.vertices = band.Vertices;
+                band.Mesh.RecalculateBounds();
+            }
+
             band.Mesh.colors = band.Colours;
-            band.Mesh.RecalculateBounds();
         }
 
         private static Color Paint(int ring, Bar bar, float pulse, float glow)
@@ -535,6 +698,8 @@ namespace NobetaVR.Ui
                 Mesh = new Mesh { name = $"NobetaVR Wrist {name}" },
                 Vertices = new Il2CppStructArray<Vector3>(Rings * RingVertices),
                 Colours = new Il2CppStructArray<Color>(Rings * RingVertices),
+                Points = new Vector3[Rings * RingVertices],
+                Normals = new Vector3[Rings * RingVertices],
             };
 
             // Rewritten every frame, so Unity is told not to treat the buffer as static.

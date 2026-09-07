@@ -171,8 +171,8 @@ namespace NobetaVR.Vr
 
             _detached.SetShown(true);
 
-            PlaceDetached(_left, XRNode.LeftHand, true);
-            PlaceDetached(_right, XRNode.RightHand, false);
+            PlaceDetached(controls.Input, _left, XRNode.LeftHand, true);
+            PlaceDetached(controls.Input, _right, XRNode.RightHand, false);
         }
 
         /// <summary>
@@ -514,12 +514,12 @@ namespace NobetaVR.Vr
         /// the whole point — you reach for something and the hand is there, with nothing in
         /// between that could be off.
         /// </summary>
-        private void PlaceDetached(Arm arm, XRNode node, bool left)
+        private void PlaceDetached(Input.VrInput input, Arm arm, XRNode node, bool left)
         {
             if (arm.Hand == null) return;
 
-            var device = InputDevices.GetDeviceAtXRNode(node);
-            if (!device.isValid) return;
+            // The handle this frame's poll already resolved; see VrInput.TryDevice.
+            if (input == null || !input.TryDevice(node, out var device)) return;
 
             if (!InputDevices.TryGetFeatureValue_Vector3f(device.deviceId, "DevicePosition", out var position)
              || !InputDevices.TryGetFeatureValue_Quaternionf(device.deviceId, "DeviceRotation", out var rotation))

@@ -105,46 +105,105 @@ namespace NobetaVR.Vr
         /// thin and pointed along this very line, so the overshoot is small and lands past the
         /// tip rather than short of it, which is the right way round for a trail.
         ///
-        /// Re-measured every frame rather than cached: the bounds are already maintained by the
-        /// renderers, it is a handful of comparisons, and a wand that changes — a magic
-        /// element, a cutscene prop, a different skin — needs no invalidation to be noticed.
+        /// The *bounds* are read every frame, because they move with the hand and cost nothing
+        /// to ask for. Which renderers to ask is the part that is cached: walking the prop's
+        /// hierarchy is a fresh il2cpp array and a fresh managed wrapper per renderer, every
+        /// frame, for an answer that only changes when the wand itself does. See
+        /// <see cref="Renderers"/> for what still notices that change.
         /// </summary>
         private float TipDistance(Vector3 origin, Vector3 direction, float fallback)
         {
-            var props = VrHands.WandProps;
-            if (props == null) return Fallback(fallback);
+            var renderers = Renderers();
+            if (renderers == null) return Fallback(fallback);
 
             var farthest = 0f;
 
-            foreach (var prop in props)
+            for (var i = 0; i < renderers.Length; i++)
             {
-                if (prop == null) continue;
+                var renderer = renderers[i];
+                if (renderer == null || !renderer.enabled) continue;
 
-                var renderers = prop.GetComponentsInChildren(Il2CppType.Of<Renderer>(), true);
-                for (var i = 0; i < renderers.Length; i++)
-                {
-                    var renderer = renderers[i] != null ? renderers[i].TryCast<Renderer>() : null;
-                    if (renderer == null || !renderer.enabled) continue;
+                var bounds = renderer.bounds;
+                var centre = bounds.center - origin;
+                var extents = bounds.extents;
 
-                    var bounds = renderer.bounds;
-                    var centre = bounds.center - origin;
-                    var extents = bounds.extents;
+                // The corner of the box that reaches furthest along the line, without
+                // walking all eight: the extent projects as the sum of its absolute parts.
+                var reach = Vector3.Dot(centre, direction)
+                          + Mathf.Abs(direction.x) * extents.x
+                          + Mathf.Abs(direction.y) * extents.y
+                          + Mathf.Abs(direction.z) * extents.z;
 
-                    // The corner of the box that reaches furthest along the line, without
-                    // walking all eight: the extent projects as the sum of its absolute parts.
-                    var reach = Vector3.Dot(centre, direction)
-                              + Mathf.Abs(direction.x) * extents.x
-                              + Mathf.Abs(direction.y) * extents.y
-                              + Mathf.Abs(direction.z) * extents.z;
-
-                    if (reach > farthest) farthest = reach;
-                }
+                if (reach > farthest) farthest = reach;
             }
 
             if (farthest <= 0.1f) return Fallback(fallback);
 
             Report(farthest);
             return farthest;
+        }
+
+        private Renderer[] _renderers;
+        private Transform[] _renderersFrom;
+        private float _nextRendererScan;
+
+        /// <summary>How long a collected set of renderers is trusted for, in seconds.</summary>
+        private const float RendererScan = 0.25f;
+
+        /// <summary>
+        /// The renderers under the wand, collected rather than re-walked.
+        ///
+        /// Three things force a fresh walk, and each catches a case the other two miss. A
+        /// different props array is a different hand or a different body. A destroyed renderer
+        /// in the set is the prop having been swapped underneath us. And a quarter-second timer
+        /// covers the rest — a magic element changing, a cutscene prop, a different skin —
+        /// which is the invalidation the per-frame walk used to buy, at a hundredth of the
+        /// price. A quarter of a second of the ribbon ending where the last wand ended is not
+        /// something the eye has any way to catch.
+        /// </summary>
+        private Renderer[] Renderers()
+        {
+            var props = VrHands.WandProps;
+            if (props == null) { _renderers = null; _renderersFrom = null; return null; }
+
+            if (!ReferenceEquals(props, _renderersFrom)
+             || _renderers == null
+             || Time.unscaledTime >= _nextRendererScan
+             || Stale())
+            {
+                _renderersFrom = props;
+                _nextRendererScan = Time.unscaledTime + RendererScan;
+                _renderers = Collect(props);
+            }
+
+            return _renderers;
+        }
+
+        /// <summary>Whether anything in the collected set has been destroyed since.</summary>
+        private bool Stale()
+        {
+            for (var i = 0; i < _renderers.Length; i++)
+                if (_renderers[i] == null) return true;
+            return false;
+        }
+
+        private static Renderer[] Collect(Transform[] props)
+        {
+            var found = new System.Collections.Generic.List<Renderer>();
+
+            foreach (var prop in props)
+            {
+                if (prop == null) continue;
+
+                var under = prop.GetComponentsInChildren(Il2CppType.Of<Renderer>(), true);
+                for (var i = 0; i < under.Length; i++)
+                {
+                    var renderer = under[i] != null ? under[i].TryCast<Renderer>() : null;
+                    if (renderer != null) found.Add(renderer);
+                }
+            }
+
+            return found.ToArray();
         }
 
         private static float Fallback(float reach) => Mathf.Max(0.1f, reach);

@@ -21,7 +21,7 @@ namespace NobetaVR
         internal static Plugin Instance { get; private set; }
 
         internal ConfigEntry<bool> Enabled;
-        internal ConfigEntry<bool> UncapFrameRate;
+        internal ConfigEntry<int> FrameRateLimit;
         internal ConfigEntry<bool> VerboseStartupReport;
         internal ConfigEntry<bool> LogCutsceneState;
         internal ConfigEntry<bool> ShowFpsCounter;
@@ -133,15 +133,22 @@ namespace NobetaVR
                 "Turns the whole mod off without uninstalling it. The plugin still loads, so "
               + "this file stays readable and writable, but nothing touches the game.");
 
-            UncapFrameRate = Config.Bind(
-                "General", "UncapFrameRate", true,
-                "Lifts the game's frame-rate limit while the headset is on. The game offers 30, "
-              + "60 and 120 and nothing else, and its vertical sync follows the desktop "
-              + "monitor — so on a 60 Hz screen it holds a flat 60 whatever the headset is "
-              + "doing. Against a 90 Hz headset that means a third of every frame you see was "
-              + "invented by the compositor from the one before it, which is the wobble you "
-              + "cannot tune out anywhere else. Turn this off if the game misbehaves at a "
-              + "frame rate it was never shipped at; the counter will show what you get.");
+            FrameRateLimit = Config.Bind(
+                "General", "FrameRateLimit", 120,
+                "Frame-rate limit to hold while the headset is on, in frames per second. Zero "
+              + "leaves the game's own limit alone and -1 lifts it entirely.\n"
+              + "The game caps itself: its options offer 30, 60 and 120 and nothing else, and "
+              + "its vertical sync follows the desktop monitor — so on a 60 Hz screen it holds "
+              + "a flat 60 whatever the headset is doing. Against a 90 Hz headset that means a "
+              + "third of every frame you see was invented by the compositor from the one "
+              + "before it, which is the wobble that cannot be tuned out anywhere else.\n"
+              + "A ceiling above the headset's refresh rate rather than no ceiling at all, "
+              + "because the compositor already paces the game to the headset: what a limit "
+              + "still governs is the menus and the loading screens, where nothing is pacing "
+              + "anything and there is no reason to render four hundred frames a second. 120 "
+              + "is also a rate the game ships an option for, so it is a rate it has been run "
+              + "at; uncapped is not. Set this below the headset's refresh rate and you are "
+              + "choosing the wobble on purpose.");
 
             VerboseStartupReport = Config.Bind(
                 "Diagnostics", "VerboseStartupReport", true,

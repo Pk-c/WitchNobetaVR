@@ -45,6 +45,12 @@ namespace NobetaVR.Ui
         /// <summary>The page as last drawn, so an unchanged one costs nothing to redraw.</summary>
         private string _drawn;
 
+        /// <summary>The buffer the page is built in, kept across frames rather than remade.</summary>
+        private readonly StringBuilder _page = new();
+
+        /// <summary>Column the values line up in, in characters. Labels longer than it run on.</summary>
+        private const int LabelWidth = 22;
+
         // How much of the list is on the panel at once, and the panel width it is drawn into.
         // The row count is what a comfortable panel holds at this font size; the height that
         // follows from it is measured rather than assumed.
@@ -618,8 +624,8 @@ namespace NobetaVR.Ui
             _items.Add(new Item
             {
                 Label = "Frame cap",
-                Value = () => cfg.UncapFrameRate.Value ? "Lifted" : "The game's",
-                Adjust = _ => cfg.UncapFrameRate.Value = !cfg.UncapFrameRate.Value,
+                Value = () => FrameCapLabel(cfg.FrameRateLimit.Value),
+                Adjust = d => cfg.FrameRateLimit.Value = StepFrameCap(cfg.FrameRateLimit.Value, d),
             });
 
             _items.Add(new Item { Label = "", IsHeading = true });
@@ -631,6 +637,35 @@ namespace NobetaVR.Ui
             });
 
             MoveSelection(1);   // land on the first real item rather than a heading
+        }
+
+        /// <summary>
+        /// The frame caps this row offers, in the order it steps through them.
+        ///
+        /// Zero leaves the game's own limit alone and -1 is Unity's own "no limit". The rest
+        /// are the rates headsets actually run at, because the only cap worth choosing is one
+        /// that clears the one you are wearing — below it you are choosing the judder.
+        /// </summary>
+        private static readonly int[] FrameCaps = { 0, 72, 90, 120, 144, 240, -1 };
+
+        private static string FrameCapLabel(int fps) =>
+            fps == 0 ? "The game's" : fps < 0 ? "Unlimited" : $"{fps} fps";
+
+        private static int StepFrameCap(int fps, int direction)
+        {
+            var index = Array.IndexOf(FrameCaps, fps);
+
+            // Not one of the offers, so someone typed a number into the config file. Snap to
+            // the nearest of them rather than pretend the list holds it.
+            if (index < 0)
+            {
+                index = 0;
+                for (var i = 1; i < FrameCaps.Length; i++)
+                    if (Mathf.Abs(FrameCaps[i] - fps) < Mathf.Abs(FrameCaps[index] - fps)) index = i;
+                return FrameCaps[index];
+            }
+
+            return FrameCaps[Mathf.Clamp(index + direction, 0, FrameCaps.Length - 1)];
         }
 
         private static Item Degrees(string label, Func<BepInEx.Configuration.ConfigEntry<float>> entry) => new()
@@ -695,7 +730,7 @@ namespace NobetaVR.Ui
                          cfg.WristGaugeFillSpeed,
                          cfg.WristGaugeOffsetX, cfg.WristGaugeOffsetY, cfg.WristGaugeOffsetZ,
                          cfg.WristGaugePitch, cfg.WristGaugeYaw, cfg.WristGaugeRoll,
-                         cfg.ShowFpsCounter, cfg.UncapFrameRate,
+                         cfg.ShowFpsCounter, cfg.FrameRateLimit,
                      })
             {
                 entry.BoxedValue = entry.DefaultValue;
@@ -726,7 +761,12 @@ namespace NobetaVR.Ui
             var first = Mathf.Clamp(_scroll, 0, Mathf.Max(0, _items.Count - 1));
             var last = Mathf.Min(_items.Count, first + VisibleRows);
 
-            var sb = new StringBuilder();
+            // Held rather than made: this runs every frame the menu is up, and almost every one
+            // of those frames throws the whole page away again a few lines below. A builder and
+            // its buffer are the part of that which does not have to be rebuilt to find out.
+            var sb = _page;
+            sb.Clear();
+
             sb.AppendLine("<b>NobetaVR</b>  <size=18>by Pk_c@ChromaticMod</size>");
             sb.AppendLine(Edge(first > 0, "▲"));
 
@@ -735,13 +775,21 @@ namespace NobetaVR.Ui
                 var item = _items[i];
                 if (item.IsHeading)
                 {
-                    sb.AppendLine(string.IsNullOrEmpty(item.Label) ? "" : $"<b>{item.Label}</b>");
+                    if (string.IsNullOrEmpty(item.Label)) sb.AppendLine();
+                    else sb.Append("<b>").Append(item.Label).AppendLine("</b>");
                     continue;
                 }
 
-                var marker = i == _selected ? "<color=#FFD24A>▸ " : "  ";
-                var close = i == _selected ? "</color>" : "";
-                sb.AppendLine($"{marker}{item.Label,-22}{item.Value?.Invoke()}{close}");
+                var selected = i == _selected;
+
+                // Appended rather than interpolated: the format string builds a whole line of
+                // its own before the builder gets it, and there are a dozen of them a frame.
+                sb.Append(selected ? "<color=#FFD24A>▸ " : "  ");
+                sb.Append(item.Label);
+                for (var pad = item.Label.Length; pad < LabelWidth; pad++) sb.Append(' ');
+                sb.Append(item.Value?.Invoke());
+                if (selected) sb.Append("</color>");
+                sb.AppendLine();
             }
 
             sb.AppendLine(Edge(last < _items.Count, "▼"));

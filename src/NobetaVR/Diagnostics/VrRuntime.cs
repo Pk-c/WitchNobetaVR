@@ -67,7 +67,7 @@ namespace NobetaVR.Diagnostics
                 }
             }
 
-            Uncap();
+            HoldFrameLimit();
 
             // Volumes come and go with the stage and with the scene being played, so this is
             // a standing job rather than a one-off. It lives here because it is not welded to
@@ -75,63 +75,73 @@ namespace NobetaVR.Diagnostics
             Vr.FocusBlur.Tick();
 
             // Cheap, and it saves wiring an il2cpp delegate onto sceneLoaded just to learn
-            // which of level0..level14 is which.
-            var active = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            if (active.name != _scene)
+            // which of level0..level14 is which. The build index is only asked for on the
+            // frame the name changed, since that is the only frame anything says it.
+            var active = ActiveScene.Name;
+            if (active != _scene)
             {
-                _scene = active.name;
-                Plugin.Log.LogInfo($"scene -> '{_scene}' (build index {active.buildIndex})");
+                _scene = active;
+                var index = UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex;
+                Plugin.Log.LogInfo($"scene -> '{_scene}' (build index {index})");
             }
         }
 
         /// <summary>
-        /// Takes the game's frame-rate limit off, and keeps taking it off.
+        /// Holds the frame-rate limit the player asked for, against a game that keeps setting
+        /// its own.
         ///
-        /// The game caps itself. `GameSettings` carries an `FPSLimitation` whose only values
-        /// are 30, 60 and 120, and a `vSync` that `UpdateVSyncSettings` hands to Unity — which
-        /// syncs to the desktop monitor, not to the headset. A 60 Hz screen therefore holds the
-        /// game at a flat 60 no matter what the headset asks for.
+        /// The game caps itself, and low. `GameSettings` carries an `FPSLimitation` whose only
+        /// values are 30, 60 and 120, and a `vSync` that `UpdateVSyncSettings` hands to Unity —
+        /// which syncs to the desktop monitor, not to the headset. A 60 Hz screen therefore
+        /// holds the game at a flat 60 no matter what the headset is asking for.
         ///
         /// On a monitor a cap is a preference. Against a 90 Hz headset it is a third of every
         /// frame you see being invented by the compositor from the one before it, by rotating
-        /// the last image to the new head pose — and since this mod submits no depth buffer,
-        /// that rotation cannot get parallax right, so the error lands on whatever is nearest.
-        /// Which is the interface, a metre and a half from your face. It is not something the
-        /// mod can filter out downstream: the frames are simply not there.
+        /// the last image to the new head pose — and unless a depth buffer is being submitted
+        /// that rotation cannot get parallax right, so the whole of the error lands on whatever
+        /// is nearest. Which is the interface, a metre and a half from your face. Nothing
+        /// downstream can filter that out: the frames are not there to be filtered.
+        ///
+        /// A ceiling rather than no ceiling, because the compositor already paces the game to
+        /// the headset and there is nothing to gain above it. What the number still governs is
+        /// the places where nothing is pacing anything — menus, loading screens — and rendering
+        /// four hundred frames a second into one of those is heat for no picture.
         ///
         /// Enforced every frame rather than once, because the game rewrites both values
         /// whenever its own settings change and would quietly take the cap back.
         /// </summary>
-        private void Uncap()
+        private void HoldFrameLimit()
         {
-            if (!Plugin.Instance.UncapFrameRate.Value) return;
+            var limit = Plugin.Instance.FrameRateLimit.Value;
+            if (limit == 0) return;
 
-            // Only while the headset is actually being fed. A flat game keeps the frame rate
-            // its own settings asked for: there is no compositor to starve, and the cap stops
-            // being a comfort problem the moment it stops being a VR one.
+            // Only while the headset is being fed. A flat game keeps the frame rate its own
+            // settings asked for: there is no compositor to starve, and the cap stops being a
+            // comfort problem the moment it stops being a VR one.
             if (_xr is not { CurrentState: XrLoader.State.Running }) return;
 
             var target = Application.targetFrameRate;
             var vsync = QualitySettings.vSyncCount;
-            if (target == -1 && vsync == 0) return;
+            if (target == limit && vsync == 0) return;
 
-            // Only when what we found changed, so the game putting the cap back every frame
+            // Only when what we found changed, so a game that puts its cap back every frame
             // costs one line rather than a log full of them.
             if (target != _capTarget || vsync != _capVsync)
             {
                 _capTarget = target;
                 _capVsync = vsync;
                 Plugin.Log.LogInfo($"frame cap found: targetFrameRate={target}, "
-                                 + $"vSyncCount={vsync}. Lifting both — at {RefreshHz:F0} Hz the "
-                                 + "compositor would be inventing the difference.");
+                                 + $"vSyncCount={vsync}; holding "
+                                 + $"{(limit < 0 ? "no limit" : limit + " fps")} against a "
+                                 + $"{RefreshHz:F0} Hz headset.");
             }
 
-            Application.targetFrameRate = -1;
+            Application.targetFrameRate = limit;
             QualitySettings.vSyncCount = 0;
         }
 
-        private int _capTarget = -1;
-        private int _capVsync;
+        private int _capTarget = int.MinValue;
+        private int _capVsync = int.MinValue;
 
         private void BeginXr()
         {

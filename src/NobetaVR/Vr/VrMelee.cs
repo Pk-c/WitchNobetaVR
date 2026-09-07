@@ -176,8 +176,9 @@ namespace NobetaVR.Vr
         [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private void DetectSwing(VrControls controls, WizardGirlManage girl, Plugin cfg, bool free)
         {
-            var device = InputDevices.GetDeviceAtXRNode(XRNode.RightHand);
-            if (!device.isValid
+            // The handle this frame's poll already resolved; see VrInput.TryDevice.
+            if (controls.Input == null
+             || !controls.Input.TryDevice(XRNode.RightHand, out var device)
              || !InputDevices.TryGetFeatureValue_Vector3f(device.deviceId, "DevicePosition", out var hand))
             {
                 _havePrevious = false;

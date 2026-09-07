@@ -255,7 +255,7 @@ namespace NobetaVR.Vr
         /// </summary>
         private static void Rescan()
         {
-            var active = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+            var active = ActiveScene.Name;
             if (active != _scene)
             {
                 _scene = active;
