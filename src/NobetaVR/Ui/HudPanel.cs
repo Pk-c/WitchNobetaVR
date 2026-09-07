@@ -573,6 +573,9 @@ namespace NobetaVR.Ui
         /// position, gives what is actually wanted: walk and it comes with you exactly, turn
         /// your head and it swings round to catch up a moment later.
         /// </summary>
+        /// <summary>The frame the follow filter last advanced on; see <see cref="Follow"/>.</summary>
+        private int _followedFrame = -1;
+
         private void Follow()
         {
             var cfg = Plugin.Instance;
@@ -596,8 +599,18 @@ namespace NobetaVR.Ui
                 // panel that still moves against the world is not the following doing it.
                 _direction = look;
             }
-            else
+            else if (_followedFrame != Time.frameCount)
             {
+                // Once a frame, however many times this is called in one.
+                //
+                // It is called twice now: once as the view is applied and once again from the
+                // render-time latch, which is a placement rather than a second frame's worth
+                // of catching up. Stepping the filter both times would quietly double
+                // HudFollowSpeed, so the step is taken on the first call and the second only
+                // re-places the panel against the fresher eye -- which is the whole point of
+                // being called again.
+                _followedFrame = Time.frameCount;
+
                 // Frame-rate independent: the fraction remaining after dt seconds rather than a
                 // fixed fraction per frame, so the feel does not change with the frame rate.
                 var t = 1f - Mathf.Exp(-speed * Time.unscaledDeltaTime);

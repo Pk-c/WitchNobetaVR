@@ -29,6 +29,8 @@ namespace NobetaVR
         internal ConfigEntry<bool> SubmitDepth;
         internal ConfigEntry<float> HeadHideDistance;
         internal ConfigEntry<bool> HeadBobbing;
+        internal ConfigEntry<bool> LateLatchPose;
+        internal ConfigEntry<bool> LogPoseLatch;
         internal ConfigEntry<float> HeadOffsetX;
         internal ConfigEntry<float> HeadOffsetY;
         internal ConfigEntry<float> HeadOffsetZ;
@@ -165,6 +167,33 @@ namespace NobetaVR
               + "menu, a press that reached nothing and a press that was never read look "
               + "identical, and this is the difference written down. Off by default; it is for "
               + "one reproduction, not for playing with.");
+
+            LateLatchPose = Config.Bind(
+                "Camera", "LateLatchPose", true,
+                "Reads the headset once more immediately before the frame is drawn, and puts "
+              + "the view on that pose instead of the one the frame's logic was built from.\n"
+              + "Unity updates its tracked poses twice a frame: once at the top of the frame, "
+              + "which is what the mod's LateUpdate work reads, and again at BeforeRender, "
+              + "which is the pose the runtime is told the frame was rendered from. Left "
+              + "unlatched the two disagree by however far the head moved in between, and the "
+              + "compositor's reprojection corrects for a difference that was never there. "
+              + "The error is zero while the head is still and largest while it is moving "
+              + "fastest, so it reads as the world shivering on a nod rather than as lag, and "
+              + "it shows first on near, high-contrast things -- the hands and the interface.\n"
+              + "Turn it off to compare. Nothing else changes: the body, the aim and room-scale "
+              + "still run off the frame's own sample, which is the only one they can all "
+              + "agree on.");
+
+            LogPoseLatch = Config.Bind(
+                "Diagnostics", "LogPoseLatch", false,
+                "Writes a line twice a second saying how far the head moved between the frame's "
+              + "own sample and the render, with the frame rate and the headset's refresh rate "
+              + "beside it. It is the reading that separates the two causes of an unsteady "
+              + "view: degrees here mean the pose was stale, and near-zero degrees with a frame "
+              + "rate under the headset's refresh mean the compositor is inventing frames and "
+              + "no pose work will help. Measured whether or not LateLatchPose is on, so the "
+              + "same run says what the setting is worth. Off by default; it is for one "
+              + "reproduction, not for playing with.");
 
             ShowFpsCounter = Config.Bind(
                 "Diagnostics", "ShowFpsCounter", false,
@@ -874,6 +903,19 @@ namespace NobetaVR
             catch (Exception e)
             {
                 Log.LogError($"Harmony patching failed: {e}");
+            }
+
+            // Separately, and after. This one reaches into the render pipeline rather than into
+            // the game, and it is the one patch here whose target shape is a fact about the URP
+            // version this build shipped rather than about code we can read -- so a failure to
+            // find it must cost the head pose its freshness and nothing else.
+            try
+            {
+                NobetaVR.Vr.LateLatch.Install(new Harmony(Guid + ".render"));
+            }
+            catch (Exception e)
+            {
+                Log.LogError($"The render-time pose latch could not be installed: {e}");
             }
 
             var host = new GameObject("NobetaVR");

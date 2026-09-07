@@ -48,6 +48,27 @@ namespace NobetaVR.Vr
         /// to stand aside.</summary>
         private int _drivenFrame = -1;
 
+        // What the view was built from this frame, kept so the render-time latch can rebuild
+        // it against a fresher head pose without redoing any of the work that found it.
+        private Vector3 _viewPos;
+        private Quaternion _viewRot = Quaternion.identity;
+        private Vector3 _latchHeadPos;
+        private Quaternion _latchHeadRot = Quaternion.identity;
+        private int _appliedFrame = -1;
+        private int _latchedFrame = -1;
+        private int _latchPlacedFrame = -1;
+        private float _nextLatchLog;
+
+        /// <summary>
+        /// The camera the latch is waiting for, by instance id, and its name for the log.
+        ///
+        /// An id rather than the object because this is compared on the render path, once per
+        /// camera per pass: an int compare costs nothing, where reaching through the wrapper
+        /// for a transform or a name is an interop call and a managed string every time.
+        /// </summary>
+        private int _latchCameraId = -1;
+        private string _latchCameraName;
+
         private readonly FirstPerson _firstPerson = new();
 
         /// <summary>
@@ -158,6 +179,7 @@ namespace NobetaVR.Vr
             // The turn control needs the same instance; it owns the camera's yaw.
             var controls = Input.VrControls.Instance;
             if (controls != null) controls.Camera = instance;
+            EnsureLatch(instance.g_CameraSet);
             Describe("PlayerCamera", _target, instance.g_CameraSet);
         }
 
@@ -466,6 +488,14 @@ namespace NobetaVR.Vr
             _writtenPos = _target.position;
             _writtenRot = _target.rotation;
 
+            // Kept for the render-time latch, which redoes only the last two lines above
+            // against a head pose read an instant before the frame is drawn. See LateLatch.
+            _viewPos = viewPos;
+            _viewRot = viewRot;
+            _latchHeadPos = headPos;
+            _latchHeadRot = headRot;
+            _appliedFrame = Time.frameCount;
+
             // Only now is the camera's real position known, and the head's visibility depends on
             // it. Deciding earlier would test last frame's position against this frame's bone.
             _firstPerson.UpdateHeadVisibility(_writtenPos);
@@ -473,25 +503,221 @@ namespace NobetaVR.Vr
             // Same reason: the aim line is the view's line, and the view is only final here.
             VrAim.Apply(_playerCamera, _target);
 
-            // And the same reason once more, in its strongest form: a fade welded to the view
-            // cannot be a frame late without a seam opening at its edge.
-            ViewFade.Apply(_target);
-
-            // Everything else welded to the view, for that reason and with more force than any
-            // of them.
+            // Everything welded to the view: the fade, which cannot be a frame late without a
+            // seam opening at its edge, and the panels, which are pinned rigidly to the eye on
+            // purpose -- so a frame-old eye position does not make them lag, it makes them
+            // shake, by as much as the head moved and in whichever direction. Which is why the
+            // interface was the first part to tremble on a nod.
             //
-            // These placed themselves from their own Update or LateUpdate, which was not a
-            // race so much as a fixed loss. The pose is written from here -- inside the game's
-            // own LateUpdate, through a postfix -- and on the fallback path from this
-            // component's LateUpdate, which was added after theirs. Either way they ran first,
-            // so the view they read was always the previous frame's. The HUD is pinned rigidly
-            // to the eye on purpose, so a frame-old eye position does not make it lag: it makes
-            // it shake, by as much as the head moved in a frame and in whichever direction it
-            // moved. Which is why the interface was the part that trembled on a nod.
+            // Skipped when the render-time latch is doing this instead. It runs after every
+            // LateUpdate and re-places all of it from a head pose read an instant before the
+            // frame is drawn, so placing here first is the same work against a poorer pose,
+            // thrown away a moment later. A frame's grace rather than this frame, because this
+            // frame's latch has not run yet -- it runs after this does.
+            if (_latchPlacedFrame < Time.frameCount - 1) PlaceWeldedToView();
+        }
+
+        /// <summary>
+        /// Everything that hangs off the eye and has to move with it exactly.
+        ///
+        /// One list, called from whichever of the two places wrote the view last -- see
+        /// <see cref="Apply"/> and <see cref="Latch"/>. Two copies of it would be two chances
+        /// for something welded to the view to be left off one of them, and the symptom of
+        /// that is a single panel shaking while the rest hold still.
+        /// </summary>
+        private void PlaceWeldedToView()
+        {
+            ViewFade.Apply(_target);
             Ui.HudPanel.FollowView();
             Ui.VrMenu.FollowView();
             Ui.AimReticle.FollowView();
             Ui.FpsCounter.FollowView();
+        }
+
+        /// <summary>
+        /// Rebuilds the view from a head pose read at render time, called from
+        /// <see cref="LateLatch"/>.
+        ///
+        /// Only the last step of <see cref="Apply"/> is redone. Everything that found the view
+        /// -- which camera is driving, whether the view stands back, where her head bone is --
+        /// is a decision about this frame and is not revisited; only the head goes on again,
+        /// fresher. Nothing that touches the game is repeated either: the aim target has
+        /// already been placed and the character has already been moved, and doing either of
+        /// them twice in a frame would be handing the game two different accounts of one frame.
+        /// </summary>
+        internal static void LateLatchPose(Camera source)
+        {
+            var self = Instance;
+            if (self == null) { Trace("no VrCamera instance"); return; }
+
+            // Told which camera is about to be drawn, this waits for the one the view is
+            // written to -- the HUD's own capture camera goes through the same pipeline every
+            // frame, and refreshing the pose for that one would spend the frame's single latch
+            // on it.
+            //
+            // Told nothing, it latches on the first call of the frame instead. That is the
+            // whole-frame hook, which fires once before anything is drawn, so there is no
+            // wrong camera to wait for.
+            if (source != null && self._latchCameraId != -1
+             && source.GetInstanceID() != self._latchCameraId)
+            {
+                self.TraceWrongCamera(source);
+                return;
+            }
+
+            self.Latch();
+        }
+
+        private void Latch()
+        {
+            if (_target == null) { Trace("no target transform"); return; }
+            if (_xr is not { CurrentState: XrLoader.State.Running }) { Trace("XR not running"); return; }
+
+            // Nothing was placed this frame -- XR down, no camera bound, the view not applied.
+            // There is no pose to refresh, and inventing one from a stale _viewPos would put
+            // the camera somewhere the frame never agreed to.
+            if (_appliedFrame != Time.frameCount)
+            {
+                Trace("the render arrived on a frame the view was never placed on");
+                return;
+            }
+
+            // MultiPass renders the scene once per eye, so this message arrives twice. Both
+            // eyes must be drawn from one head pose or the stereo pair disagrees, which is a
+            // worse tremor than the one this exists to remove.
+            if (_latchedFrame == Time.frameCount) return;
+            _latchedFrame = Time.frameCount;
+
+            if (!HeadPose.Peek(out var headPos, out var headRot, out var eyesFromNeck))
+            {
+                Trace("no recentre origin yet, so there is no pose to express");
+                return;
+            }
+
+            if (Plugin.Instance.RoomScale.Value)
+                headPos = new Vector3(eyesFromNeck.x, headPos.y, eyesFromNeck.z);
+
+            // Measured before the setting is consulted, so a run with the latch off still says
+            // what turning it on would have been worth.
+            LogLatch(headPos, headRot);
+
+            if (!Plugin.Instance.LateLatchPose.Value) return;
+
+            _target.rotation = _viewRot * headRot;
+            _target.position = _viewPos + _viewRot * headPos;
+
+            _writtenPos = _target.position;
+            _writtenRot = _target.rotation;
+
+            // Placed from here rather than from Apply, and this is the frame Apply reads to
+            // know to stand aside. Kept apart from _latchedFrame above: that one says this ran,
+            // which it does whether or not it places anything, and standing Apply down on the
+            // strength of a latch that declined would leave the panels placed by nobody.
+            _latchPlacedFrame = Time.frameCount;
+            PlaceWeldedToView();
+        }
+
+        /// <summary>
+        /// Says once why the render-time latch did or did not happen.
+        ///
+        /// One line per distinct reason, for the life of the process. A latch that never fires
+        /// and a latch that fires and declines are the same silence in a log and want opposite
+        /// fixes, and the reason is not something a player can be asked to reproduce twice.
+        /// </summary>
+        private static readonly System.Collections.Generic.HashSet<string> _traced = new();
+
+        private static void Trace(string why)
+        {
+            if (!Plugin.Instance.LogPoseLatch.Value || !_traced.Add(why)) return;
+            Plugin.Log.LogInfo($"pose latch: {why}");
+        }
+
+        /// <summary>
+        /// Names the camera the latch turned down, once per camera it is bound to.
+        ///
+        /// Kept apart from <see cref="Trace"/> and behind a plain bool because this is the one
+        /// reason that fires on the render path every frame -- the HUD's capture camera is
+        /// drawn through the same pipeline and is never the one wanted. Reading two names to
+        /// build a line the set was going to discard is an interop call and two managed strings
+        /// per frame, spent on saying nothing.
+        /// </summary>
+        private bool _wrongCameraTraced;
+
+        private void TraceWrongCamera(Camera source)
+        {
+            if (_wrongCameraTraced) return;
+            _wrongCameraTraced = true;
+            Trace($"'{source.name}' is not the driven camera '{_latchCameraName}'");
+        }
+
+        /// <summary>
+        /// Reports how far the head moved between the frame's own sample and the render.
+        ///
+        /// This is the measurement that says whether the latch is worth having. If it reads a
+        /// steady zero the pose was already fresh and the tremor is somebody else's -- the
+        /// frame rate against the headset's cadence is the next thing to look at. If it reads
+        /// a fraction of a degree at rest and a degree or more on a nod, that is the shiver,
+        /// written down in the units it is seen in.
+        /// </summary>
+        private void LogLatch(Vector3 pos, Quaternion rot)
+        {
+            if (!Plugin.Instance.LogPoseLatch.Value) return;
+            if (Time.unscaledTime < _nextLatchLog) return;
+            _nextLatchLog = Time.unscaledTime + 0.5f;
+
+            // By hand rather than through Quaternion.Angle: the same IL2CPP wall as
+            // Quaternion.Normalize in SteadyPose -- what the game never calls is not there.
+            var dot = Mathf.Clamp(Mathf.Abs(Quaternion.Dot(_latchHeadRot, rot)), -1f, 1f);
+            var degrees = 2f * Mathf.Acos(dot) * Mathf.Rad2Deg;
+            var metres = (pos - _latchHeadPos).magnitude;
+
+            Plugin.Log.LogInfo($"pose latch: {degrees:F3} deg and {metres * 1000f:F1} mm of head "
+                             + $"movement between the frame's sample and the render, at "
+                             + $"{1f / Mathf.Max(Time.unscaledDeltaTime, 0.0001f):F0} fps against a "
+                             + $"{Diagnostics.VrRuntime.RefreshHz:F0} Hz headset "
+                             + $"(latch {(Plugin.Instance.LateLatchPose.Value ? "on" : "off")})");
+        }
+
+        /// <summary>
+        /// Remembers which camera the render-time latch should wait for.
+        ///
+        /// Nothing is attached to it. The hook is a patch on URP's own entry point rather than
+        /// a component on the camera -- see <see cref="LateLatch"/> for why a component cannot
+        /// work here -- so all this has to do is name the camera the view is written to, and
+        /// let the dispatch ignore every other one the pipeline draws.
+        ///
+        /// The game hands us <c>g_Camera</c> and <c>g_CameraSet</c> separately and does not
+        /// promise they are the same object, so the Camera is preferred where there is one and
+        /// the driven transform is the fallback.
+        /// </summary>
+        private void EnsureLatch(Camera camera)
+        {
+            var found = camera != null ? camera
+                      : _target != null ? _target.GetComponent<Camera>()
+                      : null;
+
+            // A new camera is a new thing to say about, so the report is re-armed rather than
+            // being a once-per-process fact like the rest of them.
+            _wrongCameraTraced = false;
+
+            if (found == null)
+            {
+                // Nothing to compare against, so the latch takes the first camera of the frame.
+                // That is a guess and it is the right one nearly always -- the view is the
+                // camera the game draws the world with -- but it can spend the frame's latch on
+                // some other camera, so it is said out loud rather than silently tolerated.
+                _latchCameraId = -1;
+                _latchCameraName = null;
+                Plugin.Log.LogWarning("No Camera on the driven view, so the render-time latch "
+                                    + "cannot tell which camera to refresh the pose for; it "
+                                    + "will take the first one the pipeline draws.");
+                return;
+            }
+
+            _latchCameraId = found.GetInstanceID();
+            _latchCameraName = found.name;
+
+            Plugin.Log.LogInfo($"the render-time pose latch will wait for '{_latchCameraName}'");
         }
 
         private void AcquireFallbackCamera()
@@ -506,6 +732,7 @@ namespace NobetaVR.Vr
 
             _target = cam.transform;
             _haveOrigin = false;
+            EnsureLatch(cam);
             Describe("fallback", _target, cam);
         }
 

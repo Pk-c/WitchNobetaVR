@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.XR;
 
 namespace NobetaVR.Vr
@@ -54,12 +54,45 @@ namespace NobetaVR.Vr
         private static Vector3 _neckOrigin;
         private static bool _originSet;
 
-        /// <summary>Neck pivot in tracking space, from the current raw pose.</summary>
-        private static Vector3 RawNeck()
+        /// <summary>Neck pivot in tracking space, for a raw pose.</summary>
+        private static Vector3 RawNeck(Vector3 raw, Quaternion rotation)
         {
             var cfg = Plugin.Instance;
             // Down and back from the eyes, in head space: forward is +Z, so behind is -Z.
-            return Raw + Rotation * new Vector3(0f, -cfg.NeckModelDown.Value, -cfg.NeckModelBack.Value);
+            return raw + rotation * new Vector3(0f, -cfg.NeckModelDown.Value, -cfg.NeckModelBack.Value);
+        }
+
+        /// <summary>Neck pivot in tracking space, from the current raw pose.</summary>
+        private static Vector3 RawNeck() => RawNeck(Raw, Rotation);
+
+        /// <summary>
+        /// Reads the headset again, without touching anything.
+        ///
+        /// For the render-time latch and for nothing else. The frame's own sample is what the
+        /// body, the aim and room-scale are all built from, and they have to agree with each
+        /// other rather than with the newest reading available -- a second commit part way
+        /// through a frame would hand room-scale a step the character had already been given.
+        /// So this derives the same three values against the same origin and commits none of
+        /// them; the caller uses the result to place a camera and then throws it away.
+        ///
+        /// Returns false before the origin has been established, which is the frame XR comes
+        /// up on and no other.
+        /// </summary>
+        public static bool Peek(out Vector3 position, out Quaternion rotation, out Vector3 eyesFromNeck)
+        {
+            position = default;
+            rotation = Quaternion.identity;
+            eyesFromNeck = default;
+
+            if (!_originSet) return false;
+
+            var raw = InputTracking.GetLocalPosition(XRNode.CenterEye);
+            rotation = InputTracking.GetLocalRotation(XRNode.CenterEye);
+
+            position = raw - _origin;
+            var neck = RawNeck(raw, rotation) - _neckOrigin;
+            eyesFromNeck = new Vector3(position.x - neck.x, 0f, position.z - neck.z);
+            return true;
         }
 
         private static int _sampledFrame = -1;
