@@ -99,9 +99,47 @@ namespace NobetaVR.Ui
         private float _nextScan;
         private bool _gameCrosshairHidden;
 
+        internal static AimReticle Instance { get; private set; }
+
+        private void Awake() => Instance = this;
+
+        /// <summary>The frame the view last placed the mark on; see <see cref="FollowView"/>.</summary>
+        private int _placedFrame = -1;
+
         private void LateUpdate()
         {
             GameCrosshair();
+
+            // A frame's grace, and then stand down. The mark is placed from the view now, so
+            // if the view stops being placed at all -- XR down, a scene with no camera to
+            // drive -- there is nothing left to move it, and a mark left hanging on a wall is
+            // the one thing the player cannot dismiss. A frame rather than none, because this
+            // runs before the view does within the same frame.
+            if (_placedFrame < Time.frameCount - 1) Hide();
+        }
+
+        /// <summary>
+        /// Marks the aim point, driven from the view at the moment the view is final.
+        ///
+        /// Not from <c>LateUpdate</c>, where this used to sit. The head pose is written inside
+        /// the game's own LateUpdate, after every one of the mod's, so the camera position
+        /// read there was a frame old: the mark is placed along the line from the eye to the
+        /// target, and an eye one frame behind swings that line by as much as the head just
+        /// moved.
+        /// </summary>
+        internal static void FollowView()
+        {
+            var self = Instance;
+            if (self == null) return;
+
+            self.Follow();
+        }
+
+        private void Follow()
+        {
+            // Marked as placed whatever comes of it: the grace period in LateUpdate is
+            // watching for the view going away, not for the reticle deciding to hide itself.
+            _placedFrame = Time.frameCount;
 
             if (_failed || !Plugin.Instance.ShowAimReticle.Value) { Hide(); return; }
 

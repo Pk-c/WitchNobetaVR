@@ -351,10 +351,22 @@ namespace NobetaVR.Xr
         {
             Native.SetRenderMode(Native.RenderMode.MultiPass);
 
-            // Depth submission would let the compositor reproject more accurately, but it
-            // needs XR_KHR_composition_layer_depth and a depth buffer in a format the runtime
-            // accepts. Neither is worth a failure mode at this stage.
-            Native.SetDepthSubmissionMode(Native.DepthSubmissionMode.None);
+            // Depth submission lets the compositor reproject with parallax instead of only
+            // rotating the last image about your eye, which is what a frame the game failed to
+            // deliver gets otherwise. Rotation is exact at infinity and wrong in proportion to
+            // how near a thing is, so the whole of the error arrives on whatever is closest --
+            // the interface panel, a metre and a half away.
+            //
+            // Still opt-in: it asks for XR_KHR_composition_layer_depth and a depth buffer in a
+            // format the runtime will accept, and if either is missing the failure is a black
+            // headset rather than a warning.
+            var depth = Plugin.Instance.SubmitDepth.Value;
+
+            Native.SetDepthSubmissionMode(depth
+                ? Native.DepthSubmissionMode.Depth24Bit
+                : Native.DepthSubmissionMode.None);
+
+            if (depth) Plugin.Log.LogInfo("submitting a 24-bit depth buffer to the compositor");
         }
 
         /// <summary>

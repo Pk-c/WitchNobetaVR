@@ -82,7 +82,6 @@ namespace NobetaVR.Ui
             if (!_open) return;
 
             HandleNavigation(controls);
-            Place();
             Redraw();
         }
 
@@ -408,6 +407,15 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
+                Label = "Panel follow",
+                Value = () => cfg.HudFollowSpeed.Value <= 0f
+                    ? "Rigid"
+                    : $"{cfg.HudFollowSpeed.Value:F0}/s",
+                Adjust = d => cfg.HudFollowSpeed.Value =
+                    Mathf.Clamp(cfg.HudFollowSpeed.Value + d, 0f, 30f),
+            });
+            _items.Add(new Item
+            {
                 Label = "Fade speed",
                 Value = () => $"{cfg.HudFadeSpeed.Value:F1}/s",
                 Adjust = d => cfg.HudFadeSpeed.Value =
@@ -599,6 +607,22 @@ namespace NobetaVR.Ui
             });
 
             _items.Add(new Item { Label = "", IsHeading = true });
+            _items.Add(new Item { Label = "DIAGNOSTICS", IsHeading = true });
+
+            _items.Add(new Item
+            {
+                Label = "FPS counter",
+                Value = () => cfg.ShowFpsCounter.Value ? "On" : "Off",
+                Adjust = _ => cfg.ShowFpsCounter.Value = !cfg.ShowFpsCounter.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Frame cap",
+                Value = () => cfg.UncapFrameRate.Value ? "Lifted" : "The game's",
+                Adjust = _ => cfg.UncapFrameRate.Value = !cfg.UncapFrameRate.Value,
+            });
+
+            _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item
             {
                 Label = "Reset to default",
@@ -661,7 +685,7 @@ namespace NobetaVR.Ui
                          cfg.HapticsMinAmplitude, cfg.HapticsMaxSeconds, cfg.HapticsFrequency,
                          cfg.DodgeAlwaysBackstep, cfg.ThirdPersonOnDeath,
                          cfg.DeathViewRise,
-                         cfg.HudDrawOnTop, cfg.HudFadeSpeed, cfg.VrFade,
+                         cfg.HudDrawOnTop, cfg.HudFadeSpeed, cfg.HudFollowSpeed, cfg.VrFade,
                          cfg.TidyGameHud, cfg.HideHealthBars, cfg.HideChargeBar,
                          cfg.HideSoulCounter, cfg.HideItemBar, cfg.HideCutsceneBars,
                          cfg.MoneyShowSeconds, cfg.ItemBarShowSeconds, cfg.MenuDeadzone,
@@ -671,6 +695,7 @@ namespace NobetaVR.Ui
                          cfg.WristGaugeFillSpeed,
                          cfg.WristGaugeOffsetX, cfg.WristGaugeOffsetY, cfg.WristGaugeOffsetZ,
                          cfg.WristGaugePitch, cfg.WristGaugeYaw, cfg.WristGaugeRoll,
+                         cfg.ShowFpsCounter, cfg.UncapFrameRate,
                      })
             {
                 entry.BoxedValue = entry.DefaultValue;
@@ -757,18 +782,34 @@ namespace NobetaVR.Ui
             rect.sizeDelta = new Vector2(PanelWidth, _text.preferredHeight + Padding * 2f);
         }
 
+        /// <summary>
+        /// Places the panel, driven from the view at the moment the view is final.
+        ///
+        /// This was called from <c>Update</c>, a whole phase before the head pose is written,
+        /// so the menu was placed against a view one frame old and shook against the world
+        /// for as long as the head was moving.
+        /// </summary>
+        internal static void FollowView()
+        {
+            var self = Instance;
+            if (self == null || self._failed || !self._open) return;
+
+            self.Place();
+        }
+
         /// <summary>Sits where the HUD does, so both are read in the same place.</summary>
         private void Place()
         {
             var camera = VrCamera.CameraTransform;
             if (camera == null || _root == null) return;
 
-            var forward = camera.forward;
-            forward.y = 0f;
-            if (forward.sqrMagnitude < 0.0001f) return;
-            forward.Normalize();
+            // See ViewAnchor for why this is not the flattened forward vector.
+            var forward = ViewAnchor.YawForward(camera, _root.transform.forward);
 
-            _root.transform.position = camera.position + forward * Plugin.Instance.MenuDistance.Value;
+            // Fixed vertically, for the reason the HUD panel is; see HudPanel.Follow.
+            var eye = camera.position;
+            _root.transform.position = new Vector3(eye.x, VrCamera.SteadyEyeHeight, eye.z)
+                                     + forward * Plugin.Instance.MenuDistance.Value;
             _root.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
         }
 
@@ -840,7 +881,7 @@ namespace NobetaVR.Ui
         /// asset from anywhere, and cannot be stripped out of the build because it is an engine
         /// binding rather than content.
         /// </summary>
-        private static Font FindFont()
+        internal static Font FindFont()
         {
             foreach (var name in new[] { "Segoe UI", "Arial", "Tahoma", "Verdana" })
             {
@@ -849,7 +890,7 @@ namespace NobetaVR.Ui
                     var font = Font.CreateDynamicFontFromOSFont(name, 28);
                     if (font != null)
                     {
-                        Plugin.Log.LogInfo($"VR menu using the OS font '{name}'");
+                        Plugin.Log.LogInfo($"using the OS font '{name}'");
                         return font;
                     }
                 }

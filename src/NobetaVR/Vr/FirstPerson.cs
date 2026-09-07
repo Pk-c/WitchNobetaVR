@@ -45,6 +45,7 @@ namespace NobetaVR.Vr
             _head = null;
             _headScaleSaved = false;
             _comfortApplied = false;
+            _eyeSeeded = false;
             _candidatesReported = false;
             _aligned = false;
         }
@@ -195,8 +196,64 @@ namespace NobetaVR.Vr
                                               EyeUp + cfg.HeadOffsetY.Value,
                                               EyeForward + cfg.HeadOffsetZ.Value);
 
+            // Taken here because this is where both halves are to hand, and used by anything
+            // hung in front of the eyes rather than by the view itself.
+            var girl = _playerCamera.wizardGirl;
+            if (girl != null) MeasureEyeLevel(girl.transform, position.y);
+            else EyeLevel = position.y;
+
             ReportFacing(gameCameraRotation, head);
             return true;
+        }
+
+        /// <summary>
+        /// Eye level in world units: the height at which a panel hung in front of you belongs.
+        ///
+        /// Deliberately not the height of the eye position above. The view rides her head bone,
+        /// and the head bone answers to more than gravity — the walk cycle moves it, and the
+        /// game's IK turns her head and chest towards the aim target, which this mod puts
+        /// wherever you are looking on every frame the wand is not tracked. That closes a loop:
+        /// your head moves the aim, the aim moves her head, her head moves the view. A loop with
+        /// a frame of delay in it does not settle, it rings, and a panel taking its height from
+        /// the far end of it rings along with it.
+        ///
+        /// Her root does not ring. It is the point the character controller moves, so it changes
+        /// when she walks, jumps or takes a stair, and at no other time. What is added to it is
+        /// how far her eyes sit above her feet — a fact about the model rather than about the
+        /// moment.
+        /// </summary>
+        public float EyeLevel { get; private set; }
+
+        private float _eyeAboveFeet;
+        private bool _eyeSeeded;
+
+        /// <summary>
+        /// Keeps the eyes-above-feet figure, filtered hard enough that nothing the head bone
+        /// does in the course of a second can reach it.
+        ///
+        /// Three seconds of time constant. A walk cycle and a nod both pass through the bone at
+        /// a hertz or more and come out the other side of this at a fraction of a millimetre,
+        /// while a first sample taken while she happened to be crouched, mid-jump or slumped
+        /// against a save statue corrects itself long before anyone would go looking. Clamped as
+        /// well: a sample read while the rig is half loaded is not a small error, it is a
+        /// nonsense, and a filter would carry it for a while rather than reject it.
+        /// </summary>
+        private void MeasureEyeLevel(Transform body, float eyeHeight)
+        {
+            var above = Mathf.Clamp(eyeHeight - body.position.y, 0.4f, 2.5f);
+
+            if (!_eyeSeeded)
+            {
+                _eyeSeeded = true;
+                _eyeAboveFeet = above;
+            }
+            else
+            {
+                _eyeAboveFeet = Mathf.Lerp(_eyeAboveFeet, above,
+                                           1f - Mathf.Exp(-Time.deltaTime / 3f));
+            }
+
+            EyeLevel = body.position.y + _eyeAboveFeet;
         }
 
         /// <summary>

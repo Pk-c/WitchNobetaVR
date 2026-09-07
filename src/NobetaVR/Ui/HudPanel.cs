@@ -30,6 +30,9 @@ namespace NobetaVR.Ui
 
         private float _nextScan;
         private int _canvasCount = -1;
+
+        /// <summary>Layers the captured canvases were last seen on; reported, not enforced.</summary>
+        private int _layers;
         private bool _failed;
         private Vector3 _direction;
 
@@ -54,6 +57,10 @@ namespace NobetaVR.Ui
         /// <summary>Depth-test state as last written to the material; see <see cref="DepthTest"/>.</summary>
         private bool? _onTop;
 
+        internal static HudPanel Instance { get; private set; }
+
+        private void Awake() => Instance = this;
+
         private void LateUpdate()
         {
             if (_failed || !Plugin.Instance.HudEnabled.Value) return;
@@ -62,12 +69,31 @@ namespace NobetaVR.Ui
 
             Rescan();
             Settle();
-            Follow();
             DepthTest();
 
-            // Placed even while hidden, just above, so that it comes back where your head is
-            // rather than snapping in from wherever the transition left it.
+            // Shown here, placed later in the frame from the view; see FollowView. Both land
+            // before anything renders, and it is placed even while hidden, so that it comes
+            // back where your head is rather than snapping in from wherever the transition
+            // left it.
             Show(!_hidden);
+        }
+
+        /// <summary>
+        /// Places the panel, driven from the view at the moment the view is final.
+        ///
+        /// Not from <c>LateUpdate</c>, where this used to be called. The head pose is written
+        /// inside the game's own LateUpdate, after every one of the mod's, so the eye position
+        /// read there belonged to the previous frame -- and this panel is pinned rigidly to
+        /// that position by design, which turns one frame of staleness into a shake rather
+        /// than into lag.
+        /// </summary>
+        internal static void FollowView()
+        {
+            var self = Instance;
+            if (self == null || self._failed || self._texture == null) return;
+            if (!Plugin.Instance.HudEnabled.Value) return;
+
+            self.Follow();
         }
 
         /// <summary>
@@ -137,7 +163,15 @@ namespace NobetaVR.Ui
             _capture.orthographic = false;
             _capture.allowHDR = false;
             _capture.allowMSAA = false;
-            _capture.cullingMask = 0;    // filled in by Rescan, from the canvases actually found
+            // Every layer. Which sounds reckless and is the opposite: what keeps the world out
+            // of this capture is where the camera stands and how little depth in front of it it
+            // can see, not the mask — see Park. Culling by the layers of the canvases we found
+            // was belt on top of that, and the belt was cutting: the mask is built from *root*
+            // canvases, Unity culls a nested canvas by its own layer, and the two together mean
+            // any sub-canvas on a layer no root canvas happened to use is interface that
+            // silently does not exist. The title screen showed it — one root canvas on layer 5,
+            // mask 0x20, and the options page nowhere to be seen.
+            _capture.cullingMask = ~0;
 
             Park(_capture.transform);
 
@@ -358,28 +392,26 @@ namespace NobetaVR.Ui
             // relative to the others.
             Stack();
 
-            // Taken from the canvases themselves rather than assumed to be layer 5: the game
-            // leaves at least one of its canvases on Default, and a canvas left out of the mask
-            // is a piece of interface that silently stops existing.
-            //
-            // Default therefore gets in, and with it, in layer terms, the whole world and every
-            // object this mod hangs in front of you. What keeps those out is not the mask but
-            // where the capture camera stands and how little of the depth in front of it it can
-            // see -- see Build. Sorting it by layer instead was tried and is the wrong tool:
-            // Unity culls a canvas by its own layer, sub-canvases included, so moving a root
-            // canvas to a safe layer takes the parts of the interface that are plain
-            // RectTransforms with it and leaves every nested canvas behind on Default. The
-            // tips and the save-statue menu went that way, and the item bar stayed lit forever
-            // because the tip prompt it flashes for was still being raised, once a frame,
-            // behind an interface that could no longer draw it.
-            if (mask != 0 && _capture.cullingMask != mask)
+            // Reported rather than enforced. The camera sees every layer -- see Build for why
+            // that is safe and why culling by these was not -- but which layers the interface
+            // is spread across is still the first thing worth knowing when a piece of it goes
+            // missing, so the reading is kept and the decision is not.
+            if (mask != 0 && mask != _layers)
             {
-                _capture.cullingMask = mask;
-                Plugin.Log.LogInfo($"HUD capture layers 0x{mask:X}");
+                _layers = mask;
+                Plugin.Log.LogInfo($"HUD canvases on layers 0x{mask:X}");
             }
 
             if (redirected > 0 || _canvasCount != found.Length)
             {
+                // A canvas appearing or disappearing means the interface is being rebuilt --
+                // a page opening, a screen being pushed -- and its parts do not all arrive on
+                // the frame the first of them does. Same reason a scene change goes eager, and
+                // the difference between a menu that appears and a menu that appears a second
+                // later missing half of itself.
+                if (_canvasCount >= 0 && _canvasCount != found.Length)
+                    _eagerUntil = Time.unscaledTime + 1f;
+
                 _canvasCount = found.Length;
                 if (redirected > 0) Plugin.Log.LogInfo($"redirected {redirected} canvas(es) to the HUD panel");
             }
@@ -502,20 +534,42 @@ namespace NobetaVR.Ui
             var camera = VrCamera.CameraTransform;
             if (camera == null || _panel == null) return;
 
-            var look = camera.forward;
-            look.y = 0f;
-            if (look.sqrMagnitude < 0.0001f) return;
-            look.Normalize();
-
-            // Frame-rate independent: the fraction remaining after dt seconds rather than a
-            // fixed fraction per frame, so the feel does not change with the frame rate.
-            var t = 1f - Mathf.Exp(-cfg.HudFollowSpeed.Value * Time.unscaledDeltaTime);
+            // Not the flattened forward vector, which is mostly noise once the gaze is well
+            // off level and made the panel shiver whenever the head looked down. See ViewAnchor.
+            var look = ViewAnchor.YawForward(
+                camera, _direction.sqrMagnitude > 0.0001f ? _direction : Vector3.forward);
 
             if (_direction.sqrMagnitude < 0.0001f) _direction = look;
-            _direction = Vector3.Slerp(_direction, look, t).normalized;
 
-            // Position is not smoothed at all. It is the anchor that must not lag.
-            _panel.position = camera.position
+            var speed = cfg.HudFollowSpeed.Value;
+
+            if (speed <= 0f)
+            {
+                // Rigid. The panel goes exactly where you are looking, with no catching up
+                // left to see -- which is the setting to reach for if the interface appears to
+                // chase the head, and the control experiment for the same complaint: a rigid
+                // panel that still moves against the world is not the following doing it.
+                _direction = look;
+            }
+            else
+            {
+                // Frame-rate independent: the fraction remaining after dt seconds rather than a
+                // fixed fraction per frame, so the feel does not change with the frame rate.
+                var t = 1f - Mathf.Exp(-speed * Time.unscaledDeltaTime);
+                _direction = Vector3.Slerp(_direction, look, t).normalized;
+            }
+
+            // Rigid sideways, fixed vertically.
+            //
+            // Following the eye horizontally is what keeps the panel in front of you as you
+            // walk, and it is not smoothed at all because it is the anchor that must not lag.
+            // Following it *up and down* was a mistake of the same kind as smoothing the rest:
+            // the interface has no business moving because you nodded, and it moved a long
+            // way, since the eyes swing several centimetres below the neck for a modest look
+            // downward. The height comes from the view's anchor instead, so the panel rises
+            // with her and not with your neck.
+            var eye = camera.position;
+            _panel.position = new Vector3(eye.x, VrCamera.SteadyEyeHeight, eye.z)
                             + _direction * cfg.HudDistance.Value
                             + Vector3.up * cfg.HudHeightOffset.Value;
             _panel.rotation = Quaternion.LookRotation(_direction, Vector3.up);

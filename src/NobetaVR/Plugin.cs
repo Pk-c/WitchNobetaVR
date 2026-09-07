@@ -21,9 +21,12 @@ namespace NobetaVR
         internal static Plugin Instance { get; private set; }
 
         internal ConfigEntry<bool> Enabled;
+        internal ConfigEntry<bool> UncapFrameRate;
         internal ConfigEntry<bool> VerboseStartupReport;
         internal ConfigEntry<bool> LogCutsceneState;
+        internal ConfigEntry<bool> ShowFpsCounter;
         internal ConfigEntry<string> OpenXrRuntimeJson;
+        internal ConfigEntry<bool> SubmitDepth;
         internal ConfigEntry<float> HeadHideDistance;
         internal ConfigEntry<bool> HeadBobbing;
         internal ConfigEntry<float> HeadOffsetX;
@@ -130,6 +133,16 @@ namespace NobetaVR
                 "Turns the whole mod off without uninstalling it. The plugin still loads, so "
               + "this file stays readable and writable, but nothing touches the game.");
 
+            UncapFrameRate = Config.Bind(
+                "General", "UncapFrameRate", true,
+                "Lifts the game's frame-rate limit while the headset is on. The game offers 30, "
+              + "60 and 120 and nothing else, and its vertical sync follows the desktop "
+              + "monitor — so on a 60 Hz screen it holds a flat 60 whatever the headset is "
+              + "doing. Against a 90 Hz headset that means a third of every frame you see was "
+              + "invented by the compositor from the one before it, which is the wobble you "
+              + "cannot tune out anywhere else. Turn this off if the game misbehaves at a "
+              + "frame rate it was never shipped at; the counter will show what you get.");
+
             VerboseStartupReport = Config.Bind(
                 "Diagnostics", "VerboseStartupReport", true,
                 "Writes the XR and graphics state of the running game to the BepInEx log at "
@@ -145,6 +158,26 @@ namespace NobetaVR
               + "menu, a press that reached nothing and a press that was never read look "
               + "identical, and this is the difference written down. Off by default; it is for "
               + "one reproduction, not for playing with.");
+
+            ShowFpsCounter = Config.Bind(
+                "Diagnostics", "ShowFpsCounter", false,
+                "Hangs the frame rate in the view, with the worst frame of the last half second "
+              + "and a count of the ones that missed the headset's cadence. It is the reading "
+              + "to take when the world looks unsteady: below the headset's refresh rate the "
+              + "compositor starts inventing frames, and no amount of work inside the game can "
+              + "make that look right. Also switchable from the VR menu, under DIAGNOSTICS.");
+
+            SubmitDepth = Config.Bind(
+                "XR", "SubmitDepth", false,
+                "Hands the depth buffer to the compositor along with the image, so that a frame "
+              + "the game did not deliver in time can be reprojected with parallax rather than "
+              + "only rotated about your eye. Rotating alone is exact for anything at infinity "
+              + "and wrong in proportion to how near a thing is — so the error lands on the "
+              + "interface panel a metre and a half from your face, which is why it is the part "
+              + "that appears to tremble. Off by default because it asks the runtime for an "
+              + "extension and a depth format it may not have, and the failure if it is missing "
+              + "is a black headset rather than a warning. Read at startup; restart the game "
+              + "after changing it.");
 
             OpenXrRuntimeJson = Config.Bind(
                 "XR", "OpenXrRuntimeJson", "",
@@ -818,6 +851,7 @@ namespace NobetaVR
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.WristGauges>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.VrMenu>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.AimReticle>();
+            ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.FpsCounter>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Vr.VrHands>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Vr.VrMelee>();
             // Reported rather than assumed: a patch that silently fails to apply would look
@@ -845,6 +879,7 @@ namespace NobetaVR
             host.AddComponent<NobetaVR.Ui.WristGauges>();
             host.AddComponent<NobetaVR.Ui.VrMenu>();
             host.AddComponent<NobetaVR.Ui.AimReticle>();
+            host.AddComponent<NobetaVR.Ui.FpsCounter>();
             host.AddComponent<NobetaVR.Vr.VrHands>();
             host.AddComponent<NobetaVR.Vr.VrMelee>();
         }

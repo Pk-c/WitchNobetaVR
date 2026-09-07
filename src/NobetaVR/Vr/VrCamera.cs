@@ -78,6 +78,12 @@ namespace NobetaVR.Vr
         /// <summary>Whether the view stood back from her on the last frame it was applied.</summary>
         internal static bool ViewStandsBack { get; private set; }
 
+        /// <summary>
+        /// Eye height with the head's own vertical movement taken out, in world units: the
+        /// height at which the panels in front of you sit. Set in <see cref="Apply"/>.
+        /// </summary>
+        internal static float SteadyEyeHeight { get; private set; }
+
         /// <summary>Points the view back down Nobeta's forward on the next frame.</summary>
         internal static void RealignToBody() => Instance?._firstPerson.RealignToBody();
 
@@ -420,6 +426,8 @@ namespace NobetaVR.Vr
             // room-scale all already stand down whenever the camera is not in Normal.
             ViewStandsBack = ThirdPersonView();
 
+            var inHead = false;
+
             if (ViewStandsBack)
             {
                 viewRot = Quaternion.Euler(0f, _gameRot.eulerAngles.y, 0f);
@@ -432,9 +440,21 @@ namespace NobetaVR.Vr
             {
                 viewPos = fpPos;
                 viewRot = fpRot;
+                inHead = true;
             }
 
             ViewYaw = viewRot;
+
+            // Where a panel hung in front of you belongs, vertically.
+            //
+            // Not the view's own height, which is what this used to be. Taking the headset's
+            // vertical out of it was necessary and not sufficient: what was left is the height
+            // of her head bone, and the head bone is the far end of a loop that runs through
+            // the aim target and the game's IK and back — see FirstPerson.EyeLevel. So in first
+            // person the height comes from her feet plus a figure that does not move. Standing
+            // back there is no body to ask about, and the camera's own height is the only
+            // answer there is.
+            SteadyEyeHeight = inHead ? _firstPerson.EyeLevel : viewPos.y;
 
             var lookForward = viewRot * headRot * Vector3.forward;
             lookForward.y = 0f;
@@ -456,6 +476,22 @@ namespace NobetaVR.Vr
             // And the same reason once more, in its strongest form: a fade welded to the view
             // cannot be a frame late without a seam opening at its edge.
             ViewFade.Apply(_target);
+
+            // Everything else welded to the view, for that reason and with more force than any
+            // of them.
+            //
+            // These placed themselves from their own Update or LateUpdate, which was not a
+            // race so much as a fixed loss. The pose is written from here -- inside the game's
+            // own LateUpdate, through a postfix -- and on the fallback path from this
+            // component's LateUpdate, which was added after theirs. Either way they ran first,
+            // so the view they read was always the previous frame's. The HUD is pinned rigidly
+            // to the eye on purpose, so a frame-old eye position does not make it lag: it makes
+            // it shake, by as much as the head moved in a frame and in whichever direction it
+            // moved. Which is why the interface was the part that trembled on a nod.
+            Ui.HudPanel.FollowView();
+            Ui.VrMenu.FollowView();
+            Ui.AimReticle.FollowView();
+            Ui.FpsCounter.FollowView();
         }
 
         private void AcquireFallbackCamera()
