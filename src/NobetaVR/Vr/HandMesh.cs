@@ -211,10 +211,20 @@ namespace NobetaVR.Vr
         /// Closes the openings left by the cut, so you cannot see inside the wrist.
         ///
         /// Cutting triangles out of a closed surface leaves a hole, and a hole in a mesh with no
-        /// back faces shows its interior. The rim of that hole needs no guesswork to find: in a
-        /// closed surface every edge is shared by two triangles, so after the cut the edges that
-        /// belong to exactly one are precisely the boundary. Chaining them end to end gives the
-        /// loops around each opening.
+        /// back faces shows its interior. The rim of that hole is found by counting: on a closed
+        /// surface every edge is shared by two triangles, so after the cut the edges belonging to
+        /// exactly one are the boundary. Chaining them end to end gives the loops around each
+        /// opening.
+        ///
+        /// That count is taken on welded positions rather than on vertex indices, because the
+        /// premise it rests on is false in index space. A game mesh splits a vertex wherever a UV
+        /// island, a hard edge or a material ends, so the two triangles meeting along a seam
+        /// share a position and no index, and the seam is read as a boundary from each side.
+        /// Counted that way this hand reported 253 rim edges where a wrist needs a dozen, and
+        /// every seam got a fan: flat sheets laid across the finger segments, fighting the
+        /// surface they were built on and shaded by a normal pointing away from the palm. That
+        /// was the broken look on the phalanges, and it was triangles too many rather than
+        /// vertices lost.
         ///
         /// Each loop is filled with a fan to its own centre. The rim vertices are duplicated for
         /// the cap rather than reused, so the cap can be given a flat normal of its own without
@@ -222,6 +232,10 @@ namespace NobetaVR.Vr
         /// measurement rather than assumption: the cap's normal is compared against the direction
         /// leading away from the hand, and the triangles are reversed if it points the wrong way.
         /// A cap facing inwards is invisible and would look exactly like no cap at all.
+        ///
+        /// Only closed loops are filled. A chain that runs out of edges is not the rim of
+        /// anything — it is the mesh disagreeing with the premise above — and fanning it puts
+        /// geometry where there was no hole to close.
         /// </summary>
         private static int Cap(System.Collections.Generic.List<int[]> submeshTriangles,
                                System.Collections.Generic.List<Vector3> vertices,
@@ -232,6 +246,28 @@ namespace NobetaVR.Vr
             var hasNormals = normals.Count == vertices.Count;
             var hasUv = uv.Count == vertices.Count;
 
+            // One index per position, so a seam's duplicates count as the single point they are.
+            // A tenth of a millimetre is far finer than anything a hand mesh resolves and far
+            // coarser than the difference between two exporter copies of the same vertex.
+            var weld = new int[vertices.Count];
+            var byPosition = new System.Collections.Generic.Dictionary<(int, int, int), int>();
+
+            for (var i = 0; i < vertices.Count; i++)
+            {
+                var vertex = vertices[i];
+                var key = (Mathf.RoundToInt(vertex.x * 10000f),
+                           Mathf.RoundToInt(vertex.y * 10000f),
+                           Mathf.RoundToInt(vertex.z * 10000f));
+
+                if (!byPosition.TryGetValue(key, out var first))
+                {
+                    first = i;
+                    byPosition[key] = i;
+                }
+
+                weld[i] = first;
+            }
+
             // Directed edges, counted regardless of direction. A pair seen twice is interior.
             var seen = new System.Collections.Generic.Dictionary<long, int>();
             var direction = new System.Collections.Generic.Dictionary<long, (int From, int To)>();
@@ -240,18 +276,32 @@ namespace NobetaVR.Vr
             {
                 for (var i = 0; i + 2 < triangles.Length; i += 3)
                 {
-                    Count(triangles[i], triangles[i + 1]);
-                    Count(triangles[i + 1], triangles[i + 2]);
-                    Count(triangles[i + 2], triangles[i]);
+                    var a = weld[triangles[i]];
+                    var b = weld[triangles[i + 1]];
+                    var c = weld[triangles[i + 2]];
+
+                    Count(a, b);
+                    Count(b, c);
+                    Count(c, a);
                 }
             }
 
-            var next = new System.Collections.Generic.Dictionary<int, int>();
+            // Each boundary vertex leads to the next one round its opening. Two openings can meet
+            // at a single point, so the steps are kept as a list and consumed as they are walked
+            // rather than overwriting one another.
+            var next = new System.Collections.Generic.Dictionary<int, System.Collections.Generic.List<int>>();
             foreach (var pair in seen)
             {
                 if (pair.Value != 1) continue;
+
                 var edge = direction[pair.Key];
-                next[edge.From] = edge.To;
+                if (!next.TryGetValue(edge.From, out var steps))
+                {
+                    steps = new System.Collections.Generic.List<int>();
+                    next[edge.From] = steps;
+                }
+
+                steps.Add(edge.To);
             }
             if (next.Count == 0) return 0;
 
@@ -261,20 +311,33 @@ namespace NobetaVR.Vr
             centre /= vertices.Count;
 
             var cap = new System.Collections.Generic.List<int>();
-            var visited = new System.Collections.Generic.HashSet<int>();
+            var starts = new int[next.Count];
+            next.Keys.CopyTo(starts, 0);
             var added = 0;
 
-            foreach (var start in next.Keys)
+            foreach (var start in starts)
             {
-                if (visited.Contains(start)) continue;
-
                 var loop = new System.Collections.Generic.List<int>();
                 var current = start;
 
-                while (visited.Add(current))
+                while (true)
                 {
+                    if (!next.TryGetValue(current, out var steps) || steps.Count == 0)
+                    {
+                        // Ran out of rim without coming back: an open chain, not an opening.
+                        loop.Clear();
+                        break;
+                    }
+
+                    var step = steps[0];
+                    steps.RemoveAt(0);
                     loop.Add(current);
-                    if (!next.TryGetValue(current, out current)) break;
+
+                    current = step;
+                    if (current == start) break;
+
+                    // A rim longer than the mesh it was found in is not a rim.
+                    if (loop.Count > vertices.Count) { loop.Clear(); break; }
                 }
 
                 // Two vertices cannot enclose anything; a stray edge is not an opening.
@@ -298,6 +361,10 @@ namespace NobetaVR.Vr
 
             void Count(int a, int b)
             {
+                // Welding can bring a triangle's own corners together. Such an edge is not a
+                // side of anything and would only ever be counted once, so it would read as rim.
+                if (a == b) return;
+
                 var key = a < b ? ((long)a << 32) | (uint)b : ((long)b << 32) | (uint)a;
                 seen[key] = seen.TryGetValue(key, out var count) ? count + 1 : 1;
                 direction[key] = (a, b);
