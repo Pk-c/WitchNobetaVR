@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Il2CppInterop.Runtime;
 using NobetaVR.Vr;
 using UnityEngine;
@@ -163,6 +163,9 @@ namespace NobetaVR.Ui
 
             // Layer 0: seen by the game's cameras, and not by the HUD capture camera, whose
             // mask is built from the interface canvases alone.
+            // Layer 0, with the rest of what this mod draws in the world. The HUD capture
+            // camera renders that layer too and is kept off this by distance instead; see
+            // HudPanel.Park.
             _quad.gameObject.layer = 0;
             _quad.gameObject.SetActive(false);
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Unity.IL2CPP;
@@ -22,6 +22,7 @@ namespace NobetaVR
 
         internal ConfigEntry<bool> Enabled;
         internal ConfigEntry<bool> VerboseStartupReport;
+        internal ConfigEntry<bool> LogCutsceneState;
         internal ConfigEntry<string> OpenXrRuntimeJson;
         internal ConfigEntry<float> HeadHideDistance;
         internal ConfigEntry<bool> HeadBobbing;
@@ -34,6 +35,7 @@ namespace NobetaVR
         internal ConfigEntry<bool> DisableRespiration;
         internal ConfigEntry<bool> DisableCameraShake;
         internal ConfigEntry<bool> ThirdPersonInCutscenes;
+        internal ConfigEntry<bool> DisableDepthOfField;
         internal ConfigEntry<float> MoveDeadzone;
         internal ConfigEntry<float> TurnDeadzone;
         internal ConfigEntry<float> SnapTurnDegrees;
@@ -131,6 +133,16 @@ namespace NobetaVR
                 "Writes the XR and graphics state of the running game to the BepInEx log at "
               + "startup. It is the first thing to read when the headset stays black, so it is "
               + "on by default; it costs one screenful of log, once.");
+
+            LogCutsceneState = Config.Bind(
+                "Diagnostics", "LogCutsceneState", false,
+                "Writes a line a second to the BepInEx log while the game is framing a scene "
+              + "rather than the player, naming which action map is enabled, which controllers "
+              + "are bound and where the input loop stood down. It is what to turn on when a "
+              + "cutscene will not advance: from inside the headset a press that reached a "
+              + "menu, a press that reached nothing and a press that was never read look "
+              + "identical, and this is the difference written down. Off by default; it is for "
+              + "one reproduction, not for playing with.");
 
             OpenXrRuntimeJson = Config.Bind(
                 "XR", "OpenXrRuntimeJson", "",
@@ -283,8 +295,12 @@ namespace NobetaVR
             MenuDistance = Config.Bind("Interface", "MenuDistance", 1.2f,
                 "How far in front of you the mod's own settings panel sits, in metres.");
 
-            MenuDeadzone = Config.Bind("Interface", "MenuDeadzone", 0.5f,
-                "How far the stick must move to step through a menu.");
+            MenuDeadzone = Config.Bind("Interface", "MenuDeadzone", 0.65f,
+                "How far the stick must move to step through a menu -- the game's menus and the "
+              + "mod's own panel alike. Higher than a walking dead zone on purpose: a menu step "
+              + "is a deliberate act, and a thumb resting on a stick that has not quite centred "
+              + "should not be one. Near the diagonal nothing is sent at all, whatever this is "
+              + "set to, so a push meant as 'next setting' cannot arrive as 'change this one'.");
 
             HeadBoneName = Config.Bind(
                 "Camera", "HeadBoneName", "",
@@ -303,6 +319,18 @@ namespace NobetaVR
             DisableCameraShake = Config.Bind(
                 "Comfort", "DisableCameraShake", true,
                 "Switches off combat camera shake, for the same reason.");
+
+            DisableDepthOfField = Config.Bind(
+                "Comfort", "DisableDepthOfField", true,
+                "Switches off the game's depth of field. It picks a focus distance and blurs "
+              + "everything else, which is a camera doing its job on a monitor and is aimed at "
+              + "the wrong eyes in a headset: yours focus wherever you look, so an image that "
+              + "is already blurred where you chose to look reads as optics that will not come "
+              + "into focus. It also blurs the interface, which hangs about a metre in front of "
+              + "you -- during a cutscene focused across the room the dialogue box is blurred "
+              + "with the scenery and cannot be read. Only this one override is touched; the "
+              + "colour grading, bloom and vignette that make up the game's look are left "
+              + "alone.");
 
             ThirdPersonInCutscenes = Config.Bind(
                 "Comfort", "ThirdPersonInCutscenes", true,

@@ -1,4 +1,4 @@
-using Il2CppInterop.Runtime;
+﻿using Il2CppInterop.Runtime;
 using NobetaVR.Ui;
 using UnityEngine;
 using UnityEngine.UI;
@@ -258,8 +258,9 @@ namespace NobetaVR.Vr
 
             _quad = quad.transform;
 
-            // Layer 0: seen by the game's cameras, and not by the HUD capture camera, whose
-            // mask is built from the interface canvases alone.
+            // Layer 0: seen by the game's cameras. The HUD capture camera renders that layer
+            // as well -- the game leaves canvases on it -- and is kept off this quad by being
+            // parked a thousand units away with half a metre of depth to see; see HudPanel.Park.
             _quad.gameObject.layer = 0;
             _quad.gameObject.SetActive(false);
 

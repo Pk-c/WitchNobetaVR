@@ -83,12 +83,30 @@ namespace NobetaVR.Input
             Vr.HeadPose.Sample();
 
             _input.Poll();
-            if (!_input.Connected) return;
+
+            // Which of the gates below the frame took is the one thing a stuck cutscene cannot
+            // be told from inside the headset, and every one of them is silent. See
+            // CutsceneProbe; it costs a string per frame and writes nothing unless asked.
+            Diagnostics.CutsceneProbe.Note(Drive());
+            Diagnostics.CutsceneProbe.Tick(_gameUi.InputManager);
+        }
+
+        /// <summary>
+        /// A frame of control, and who ended up with it.
+        ///
+        /// The gates are a chain of early exits rather than one condition, so the answer to
+        /// "why did that button do nothing" is which exit was taken — and that is what the
+        /// returned name is. Split out from <c>Update</c> only so each exit names itself once,
+        /// where it is, instead of the caller having to infer it afterwards.
+        /// </summary>
+        private string Drive()
+        {
+            if (!_input.Connected) return "no controllers";
 
             // Our own menu reads the controllers itself, and a game menu takes them over while
             // it is up. Either way the gameplay bindings stand down: without this the same
             // stick both walks Nobeta and scrolls the menu she is standing in.
-            if (Ui.VrMenu.Instance != null && Ui.VrMenu.Instance.IsOpen) { StandDown(); return; }
+            if (Ui.VrMenu.Instance != null && Ui.VrMenu.Instance.IsOpen) { StandDown(); return "vr menu"; }
 
             // The wheel is held open by us rather than by the game's menu stack, so it is
             // settled before that gate rather than behind it. Were it behind, anything binding
@@ -96,14 +114,14 @@ namespace NobetaVR.Input
             // to close it.
             var wheel = MagicWheel();
 
-            if (!wheel && _gameUi.Update(_input)) { StandDown(); return; }
+            if (!wheel && _gameUi.Update(_input)) { StandDown(); return "game menu"; }
 
             // Dying, waking at a save point and getting back to her feet are the game's to
             // drive, and it does not stop reporting her controllable through them — it holds
             // her with the state machine instead. Without this the player can spin the world
             // and wave her hands about while she is still sitting slumped against the statue,
             // which is the game and the player driving one body at once.
-            if (Vr.PlayerStatus.DownOrGettingUp) { StandDown(); return; }
+            if (Vr.PlayerStatus.DownOrGettingUp) { StandDown(); return "she is down"; }
 
             Grips();
             Move();
@@ -118,6 +136,8 @@ namespace NobetaVR.Input
             Vr.RoomScale.Apply(Camera != null ? Camera.wizardGirl : null, Vr.VrCamera.ViewYaw,
                                Vr.BodyFacing.Mode == PlayerCamera.CameraMode.Normal
                             && Vr.PlayerStatus.Controllable);
+
+            return wheel ? "magic wheel" : "gameplay";
         }
 
         /// <summary>

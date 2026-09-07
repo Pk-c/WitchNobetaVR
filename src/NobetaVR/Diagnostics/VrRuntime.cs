@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using NobetaVR.Vr;
 using NobetaVR.Xr;
 using UnityEngine;
@@ -52,6 +52,11 @@ namespace NobetaVR.Diagnostics
                     ReportDisplay();
                 }
             }
+
+            // Volumes come and go with the stage and with the scene being played, so this is
+            // a standing job rather than a one-off. It lives here because it is not welded to
+            // the view the way the fade is -- it only has to happen once a frame, somewhere.
+            Vr.FocusBlur.Tick();
 
             // Cheap, and it saves wiring an il2cpp delegate onto sceneLoaded just to learn
             // which of level0..level14 is which.

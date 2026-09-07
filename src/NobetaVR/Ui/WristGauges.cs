@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using NobetaVR.Vr;
 using UnityEngine;
@@ -494,7 +494,7 @@ namespace NobetaVR.Ui
         {
             var go = new GameObject(name);
             go.transform.SetParent(_root.transform, false);
-            go.layer = 0;   // seen by the game's cameras, not by the HUD capture camera
+            go.layer = 0;   // seen by the game's cameras; kept out of the capture by HudPanel.Park
 
             var layer = new Layer
             {

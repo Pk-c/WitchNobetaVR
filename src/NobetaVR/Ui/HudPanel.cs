@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Il2CppInterop.Runtime;
 using NobetaVR.Vr;
 using UnityEngine;
@@ -112,11 +112,11 @@ namespace NobetaVR.Ui
             _capture.targetTexture = _texture;
             _capture.stereoTargetEye = StereoTargetEyeMask.None;   // never render this one in stereo
             _capture.orthographic = false;
-            _capture.nearClipPlane = 0.01f;
-            _capture.farClipPlane = 100f;
             _capture.allowHDR = false;
             _capture.allowMSAA = false;
             _capture.cullingMask = 0;    // filled in by Rescan, from the canvases actually found
+
+            Park(_capture.transform);
 
             _material = new Material(shader) { mainTexture = _texture };
 
@@ -140,11 +140,59 @@ namespace NobetaVR.Ui
             renderer.receiveShadows = false;
 
             _panel = quad.transform;
-            _panel.gameObject.layer = 0;   // seen by the game's cameras, not by the capture one
 
-            Plugin.Log.LogInfo($"HUD panel built: {_texture.width}x{_texture.height}, shader '{shader.name}'");
+            // Layer 0, like every other object this mod hangs in the world, so that whatever
+            // the game's own camera renders, it renders this too. What keeps it out of the
+            // capture is Park, not the layer.
+            _panel.gameObject.layer = 0;
+
+            Plugin.Log.LogInfo($"HUD panel built: {_texture.width}x{_texture.height}, "
+                             + $"shader '{shader.name}', capture parked at {_capture.transform.position}");
             return true;
         }
+
+        /// <summary>How far from the canvas plane the capture camera can see, either way.</summary>
+        private const float Slab = 0.5f;
+
+        /// <summary>
+        /// Stands the capture camera somewhere nothing else is, and stops it seeing further
+        /// than the interface.
+        ///
+        /// The camera has to be allowed to render the Default layer, because the game leaves
+        /// canvases on it and a canvas outside the mask is interface that silently stops
+        /// existing. But Default is also the world's layer and this mod's own -- the panel, the
+        /// reticle, the wrist gauges, the fade -- so on the mask alone the capture would draw
+        /// the level and, worse, the panel itself, feeding the texture back into its own
+        /// picture.
+        ///
+        /// <para>
+        /// The way out is that this camera does not have to be anywhere in particular. A
+        /// <c>ScreenSpaceCamera</c> canvas is placed by Unity in front of its camera every
+        /// frame, at <c>planeDistance</c>, so the canvases follow wherever this is put and the
+        /// captured image is identical. Parked well below the world and able to see half a
+        /// metre either side of that one plane, it can only ever render what is placed against
+        /// it -- which is exactly and only the interface. No layer has to be guessed at, and
+        /// nothing of the game's is modified to make it true.
+        /// </para>
+        ///
+        /// <para>
+        /// A thousand units, not a million: far enough that no level reaches it, near enough
+        /// that single-precision still resolves this canvas to a fraction of a pixel. The depth
+        /// the whole thing depends on is asserted every scan; see <see cref="Rescan"/>.
+        /// </para>
+        /// </summary>
+        private static void Park(Transform camera)
+        {
+            camera.position = new Vector3(0f, -1000f, 0f);
+            camera.rotation = Quaternion.identity;
+
+            var component = camera.GetComponent<Camera>();
+            component.nearClipPlane = CanvasPlane - Slab;
+            component.farClipPlane = CanvasPlane + Slab;
+        }
+
+        /// <summary>Where the captured canvases are pinned, in metres in front of the camera.</summary>
+        private const float CanvasPlane = 1f;
 
         /// <summary>
         /// A new render texture holds whatever was in that memory. Clearing it to transparent
@@ -188,17 +236,35 @@ namespace NobetaVR.Ui
                 {
                     canvas.renderMode = RenderMode.ScreenSpaceCamera;
                     canvas.worldCamera = _capture;
-                    canvas.planeDistance = 1f;
+                    canvas.planeDistance = CanvasPlane;
                     redirected++;
                 }
 
-                if (canvas.worldCamera == _capture)
-                    mask |= 1 << canvas.gameObject.layer;
+                if (canvas.worldCamera != _capture) continue;
+
+                // Re-asserted every pass rather than only on the frame the canvas was taken
+                // over. The clip planes in Build are wrapped tightly around this exact
+                // distance, so a canvas the game later moves to a different plane would be
+                // clipped away entirely rather than merely drawn at the wrong depth.
+                canvas.planeDistance = CanvasPlane;
+
+                mask |= 1 << canvas.gameObject.layer;
             }
 
-            // Taken from the canvases themselves rather than assumed to be layer 5. The capture
-            // camera must see the interface and nothing else -- above all not our own panel,
-            // which would feed the texture back into itself.
+            // Taken from the canvases themselves rather than assumed to be layer 5: the game
+            // leaves at least one of its canvases on Default, and a canvas left out of the mask
+            // is a piece of interface that silently stops existing.
+            //
+            // Default therefore gets in, and with it, in layer terms, the whole world and every
+            // object this mod hangs in front of you. What keeps those out is not the mask but
+            // where the capture camera stands and how little of the depth in front of it it can
+            // see -- see Build. Sorting it by layer instead was tried and is the wrong tool:
+            // Unity culls a canvas by its own layer, sub-canvases included, so moving a root
+            // canvas to a safe layer takes the parts of the interface that are plain
+            // RectTransforms with it and leaves every nested canvas behind on Default. The
+            // tips and the save-statue menu went that way, and the item bar stayed lit forever
+            // because the tip prompt it flashes for was still being raised, once a frame,
+            // behind an interface that could no longer draw it.
             if (mask != 0 && _capture.cullingMask != mask)
             {
                 _capture.cullingMask = mask;

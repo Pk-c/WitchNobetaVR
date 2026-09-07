@@ -1,4 +1,4 @@
-using NobetaVR.Ui;
+﻿using NobetaVR.Ui;
 using UnityEngine;
 
 namespace NobetaVR.Vr
@@ -84,6 +84,8 @@ namespace NobetaVR.Vr
 
             // Layer 0: seen by the game's cameras, not by the HUD capture camera, whose mask is
             // built from the interface canvases alone.
+            // Layer 0, like the rest of what this mod draws; see HudPanel.Park for what
+            // keeps the HUD capture camera from picking it up.
             _sphere.gameObject.layer = 0;
             _sphere.gameObject.SetActive(false);
 

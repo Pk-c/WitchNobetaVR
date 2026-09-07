@@ -1,4 +1,4 @@
-using Il2CppInterop.Runtime;
+﻿using Il2CppInterop.Runtime;
 using MarsSDK;
 using NobetaVR.Input;
 using UnityEngine;
@@ -47,6 +47,12 @@ namespace NobetaVR.Ui
         /// every screen at once rather than one flag per menu.
         /// </summary>
         public bool MenuOpen => Controller() != null;
+
+        /// <summary>
+        /// The game's input manager, for the diagnostics that have to read the same state this
+        /// class routes on. Exposed rather than found again, so both are looking at one object.
+        /// </summary>
+        public GameInputManager InputManager => Manager();
 
         /// <summary>
         /// Returns true when a menu was up and took the input, so the gameplay bindings can
@@ -184,20 +190,13 @@ namespace NobetaVR.Ui
 
         private void Navigate(IUIController ui, VrInput input)
         {
-            var stick = input.LeftStick;
-            var dead = Plugin.Instance.MenuDeadzone.Value;
+            var step = MenuStick.Step(input.LeftStick);
 
-            var direction = Direction2D.None;
-            if (Mathf.Abs(stick.y) > Mathf.Abs(stick.x))
-            {
-                if (stick.y > dead) direction = Direction2D.Up;
-                else if (stick.y < -dead) direction = Direction2D.Down;
-            }
-            else
-            {
-                if (stick.x > dead) direction = Direction2D.Right;
-                else if (stick.x < -dead) direction = Direction2D.Left;
-            }
+            var direction = step.y > 0 ? Direction2D.Up
+                          : step.y < 0 ? Direction2D.Down
+                          : step.x > 0 ? Direction2D.Right
+                          : step.x < 0 ? Direction2D.Left
+                          : Direction2D.None;
 
             if (direction == Direction2D.None)
             {

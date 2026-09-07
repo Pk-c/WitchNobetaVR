@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using NobetaVR.Xr;
 using UnityEngine;
 using UnityEngine.XR;
@@ -62,6 +62,21 @@ namespace NobetaVR.Vr
 
         /// <summary>The transform the view is being written to, or null before one is bound.</summary>
         internal static Transform CameraTransform => Instance?._target;
+
+        /// <summary>
+        /// Whether the game's own camera update drove us this frame, rather than the fallback
+        /// in <c>LateUpdate</c> having to stand in for it.
+        ///
+        /// The difference is the whole of one failure: a scene that frames itself through some
+        /// camera other than the <c>PlayerCamera</c> leaves us writing the head pose onto a
+        /// transform nothing renders, which from inside the headset is a view placed at random
+        /// with no way to tell it from a camera that simply went to the wrong place.
+        /// </summary>
+        internal static bool GameDriving
+            => Instance != null && Instance._drivenFrame >= Time.frameCount - 1;
+
+        /// <summary>Whether the view stood back from her on the last frame it was applied.</summary>
+        internal static bool ViewStandsBack { get; private set; }
 
         /// <summary>Points the view back down Nobeta's forward on the next frame.</summary>
         internal static void RealignToBody() => Instance?._firstPerson.RealignToBody();
@@ -403,7 +418,9 @@ namespace NobetaVR.Vr
             // Nothing else has to be undone. The head comes back on its own, because it is
             // hidden by distance rather than by a switch, and the hands, the body facing and
             // room-scale all already stand down whenever the camera is not in Normal.
-            if (ThirdPersonView())
+            ViewStandsBack = ThirdPersonView();
+
+            if (ViewStandsBack)
             {
                 viewRot = Quaternion.Euler(0f, _gameRot.eulerAngles.y, 0f);
                 viewPos += Vector3.up * DeathRise();

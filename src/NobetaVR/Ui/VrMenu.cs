@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 using Il2CppInterop.Runtime;
@@ -116,17 +116,15 @@ namespace NobetaVR.Ui
         private void HandleNavigation(VrControls controls)
         {
             var stick = controls.Input.LeftStick;
-            const float dead = 0.5f;
+            var step = MenuStick.Step(stick);
 
-            var vertical = Mathf.Abs(stick.y) > Mathf.Abs(stick.x);
-
-            if (vertical && Mathf.Abs(stick.y) > dead)
+            if (step.y != 0)
             {
-                if (Repeat(stick)) MoveSelection(stick.y > 0 ? -1 : 1);
+                if (Repeat(stick)) MoveSelection(step.y > 0 ? -1 : 1);
             }
-            else if (!vertical && Mathf.Abs(stick.x) > dead)
+            else if (step.x != 0)
             {
-                if (Repeat(stick)) _items[_selected].Adjust?.Invoke(stick.x > 0 ? 1 : -1);
+                if (Repeat(stick)) _items[_selected].Adjust?.Invoke(step.x);
             }
             else
             {
@@ -266,6 +264,12 @@ namespace NobetaVR.Ui
                 Value = () => cfg.ThirdPersonInCutscenes.Value ? "Third person" : "Stay in her head",
                 Adjust = _ => cfg.ThirdPersonInCutscenes.Value = !cfg.ThirdPersonInCutscenes.Value,
             });
+            _items.Add(new Item
+            {
+                Label = "Depth of field",
+                Value = () => cfg.DisableDepthOfField.Value ? "Off" : "As the game has it",
+                Adjust = _ => cfg.DisableDepthOfField.Value = !cfg.DisableDepthOfField.Value,
+            });
 
             _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "HANDS", IsHeading = true });
@@ -367,6 +371,13 @@ namespace NobetaVR.Ui
                 Value = () => $"{cfg.MoneyShowSeconds.Value:F1} s",
                 Adjust = d => cfg.MoneyShowSeconds.Value =
                     Mathf.Clamp(cfg.MoneyShowSeconds.Value + d * 0.5f, 0.5f, 20f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Menu deadzone",
+                Value = () => $"{cfg.MenuDeadzone.Value:F2}",
+                Adjust = d => cfg.MenuDeadzone.Value =
+                    Mathf.Clamp(cfg.MenuDeadzone.Value + d * 0.05f, 0.2f, 0.9f),
             });
             _items.Add(new Item
             {
@@ -618,7 +629,7 @@ namespace NobetaVR.Ui
                          cfg.SmoothTurn, cfg.SnapTurnDegrees, cfg.SmoothTurnSpeed,
                          cfg.HeadOffsetX, cfg.HeadOffsetY, cfg.HeadOffsetZ,
                          cfg.HeadBobbing, cfg.HeadHideDistance,
-                         cfg.ThirdPersonInCutscenes,
+                         cfg.ThirdPersonInCutscenes, cfg.DisableDepthOfField,
                          cfg.HandSteadiness,
                          cfg.HandRotationPitch, cfg.HandRotationYaw, cfg.HandRotationRoll,
                          cfg.HoldWandStill, cfg.WandFollowSpeed,
@@ -637,7 +648,7 @@ namespace NobetaVR.Ui
                          cfg.HudDrawOnTop, cfg.HudFadeSpeed, cfg.VrFade,
                          cfg.TidyGameHud, cfg.HideHealthBars, cfg.HideChargeBar,
                          cfg.HideSoulCounter, cfg.HideItemBar, cfg.HideCutsceneBars,
-                         cfg.MoneyShowSeconds, cfg.ItemBarShowSeconds,
+                         cfg.MoneyShowSeconds, cfg.ItemBarShowSeconds, cfg.MenuDeadzone,
                          cfg.WristGauges, cfg.WristGaugeOpacity,
                          cfg.WristGaugeRadius, cfg.WristGaugeThickness,
                          cfg.WristGaugeSpacing, cfg.WristGaugeArc, cfg.WristGaugeGlow,
