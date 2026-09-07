@@ -1,5 +1,6 @@
 ﻿using System;
 using Il2CppInterop.Runtime;
+using NobetaVR.Input;
 using NobetaVR.Vr;
 using UnityEngine;
 
@@ -22,15 +23,77 @@ namespace NobetaVR.Ui
     /// where it actually is. It also stops mattering which aim mode is on, because this marks
     /// the target rather than the line that found it, and gaze and wand differ only in the
     /// line.
+    ///
+    /// <para>
+    /// The shape is three marks around an opening — up to the left, up to the right and
+    /// straight below — each pointing in at the aim point, with nothing drawn on the point
+    /// itself. That is the point: a dot covers the thing you are about to shoot, at the
+    /// moment you most want to see it. Three points say where the centre is without occupying
+    /// it, and putting the upper two on the diagonals leaves the horizon through the aim point
+    /// clear, which is the line a target crosses it on.
+    /// </para>
+    ///
+    /// <para>
+    /// The opening is not a fixed width. It is wide while the wand is loose and closes as the
+    /// right grip takes focus, which is the one thing this shape can say that a dot cannot: a
+    /// wand swung free kicks, and a mark drawn tight around a shot that will not land there is
+    /// a lie told precisely. Both widths are settings, and setting them equal gives back a
+    /// reticle that never moves.
+    /// </para>
     /// </summary>
     public sealed class AimReticle : MonoBehaviour
     {
         public AimReticle(IntPtr ptr) : base(ptr) { }
 
-        private Transform _quad;
+        // -- the shape ------------------------------------------------------------------
+        //
+        // Everything here is a fraction of the reticle's own size, so the one size setting
+        // still scales the whole of it and the proportions survive being made bigger.
+
+        /// <summary>How big each of the three marks is.</summary>
+        private const float MarkSize = 0.26f;
+
+        /// <summary>
+        /// Where the three marks stand, in degrees anticlockwise from the player's right —
+        /// which is also how far each is turned, because a mark points inwards wherever it is
+        /// put, so one angle is both its place on the ring and its own roll.
+        /// </summary>
+        private static readonly float[] Angles = { 45f, 135f, 270f };
+
+        // The triangle inside its texture, in the texture's own [-1, 1] space: apex towards
+        // -X, base at +X, so an unrotated mark points left. Named out here rather than left
+        // inside the drawing, because the placement needs the apex too — the gap is measured
+        // to the point of each mark, which is the part the eye reads, and not to the middle of
+        // a quad that is mostly empty.
+        private const float ApexX = -0.72f;
+        private const float BaseX = 0.72f;
+        private const float BaseHalfHeight = 0.66f;
+
+        /// <summary>Apex to quad centre, in quad widths: the texture spans [-1, 1] over one.</summary>
+        private const float ApexOffset = -ApexX * 0.5f;
+
+        /// <summary>How quickly the opening follows the focus, per second.</summary>
+        private const float GapSpeed = 16f;
+
+        /// <summary>
+        /// How solid the marks are. Transparent on purpose: this hangs over the thing you are
+        /// aiming at, and a solid mark in front of an enemy's tell is a sight that costs you
+        /// the fight it was drawn to win.
+        /// </summary>
+        private const float Fill = 0.75f;
+
+        private Transform _root;
+        private readonly Transform[] _marks = new Transform[Angles.Length];
+
+        /// <summary>Centre to mark, one unit vector per angle, worked out once.</summary>
+        private readonly Vector3[] _outward = new Vector3[Angles.Length];
         private Material _material;
         private Texture2D _texture;
         private bool _failed;
+
+        /// <summary>The opening as it is being drawn, and whether it has been set at all yet.</summary>
+        private float _gap;
+        private bool _gapSettled;
 
         private UIAimingPoint _gameCrosshair;
         private float _nextScan;
@@ -44,7 +107,7 @@ namespace NobetaVR.Ui
 
             // Only while she is the player's to aim. The same gate the hands use: in a
             // cutscene or a menu the aim target still exists and still has a position, and a
-            // dot left hanging on a wall through a conversation is exactly the kind of thing a
+            // mark left hanging on a wall through a conversation is exactly the kind of thing a
             // mod leaves behind by never asking.
             if (!VrHands.PlayerInControl) { Hide(); return; }
 
@@ -52,7 +115,7 @@ namespace NobetaVR.Ui
             var camera = VrCamera.CameraTransform;
             if (target == null || camera == null) { Hide(); return; }
 
-            if (_quad == null && !Build()) return;
+            if (_root == null && !Build()) return;
 
             var toTarget = target.Value - camera.position;
             var distance = toTarget.magnitude;
@@ -60,25 +123,74 @@ namespace NobetaVR.Ui
 
             var direction = toTarget / distance;
 
-            // Lifted off the surface towards the eye. The aim point is *on* the wall it found,
-            // and a quad coplanar with a wall is a coin toss between the two every frame,
-            // which reads as the reticle flickering rather than as anything to do with depth.
-            // Scaled with distance so the lift stays small next to what it is marking.
-            _quad.position = target.Value - direction * Mathf.Min(0.05f, distance * 0.04f);
-            _quad.rotation = Quaternion.LookRotation(direction, camera.up);
-
             // Constant angular size rather than constant world size: a reticle that shrinks
             // with distance disappears exactly when a shot needs it most, and one that does
             // not swells into a dinner plate against a near wall.
             var size = distance * Plugin.Instance.AimReticleSize.Value;
-            _quad.localScale = new Vector3(size, size, 1f);
 
-            if (!_quad.gameObject.activeSelf) _quad.gameObject.SetActive(true);
+            Gap();
+            Place();
+
+            // Lifted off the surface towards the eye. The aim point is *on* the wall it found,
+            // and a quad coplanar with a wall is a coin toss between the two every frame,
+            // which reads as the reticle flickering rather than as anything to do with depth.
+            // Scaled with distance so the lift stays small next to what it is marking, and
+            // with the reticle's own reach on top of that: the marks stand off the centre now,
+            // so on a wall taken at an angle they are the parts that go through it first.
+            var lift = Mathf.Min(0.05f, distance * 0.04f) + Reach() * size * 0.5f;
+
+            _root.position = target.Value - direction * lift;
+            _root.rotation = Quaternion.LookRotation(direction, camera.up);
+            _root.localScale = new Vector3(size, size, 1f);
+
+            if (!_root.gameObject.activeSelf) _root.gameObject.SetActive(true);
+        }
+
+        /// <summary>
+        /// Opens or closes the gap towards whichever of the two widths the right grip asks for.
+        ///
+        /// Eased rather than switched, because the switch is what it means and the ease is how
+        /// it reads: a gap that jumps between two widths is two reticles seen in turn, while
+        /// one that closes over a fifth of a second is a single reticle settling — which is
+        /// exactly what the hand it is drawn from is doing. On unscaled time, so it neither
+        /// freezes nor races when the game takes the clock.
+        /// </summary>
+        private void Gap()
+        {
+            var wanted = VrControls.Focusing
+                ? Plugin.Instance.AimReticleFocusGap.Value
+                : Plugin.Instance.AimReticleGap.Value;
+
+            // Snapped the first time, and after every spell of being hidden. Easing out of a
+            // width left over from before a cutscene is an animation of nothing, played at the
+            // moment the player is hunting for the mark again.
+            if (!_gapSettled) { _gap = wanted; _gapSettled = true; return; }
+
+            _gap = Mathf.Lerp(_gap, wanted, 1f - Mathf.Exp(-GapSpeed * Time.unscaledDeltaTime));
+        }
+
+        /// <summary>Centre to the outer corner of a mark, in reticle sizes.</summary>
+        private float Reach() => _gap + (BaseX - ApexX) * 0.5f * MarkSize;
+
+        /// <summary>
+        /// Puts the three marks around the opening, at the width <see cref="Gap"/> arrived at.
+        ///
+        /// In the root's own space, which the root has already turned to face the eye: +X is
+        /// the player's right and +Y is up, so <see cref="Angles"/> reads as it looks. The
+        /// offset is to each quad's centre, hence the apex term — the setting is the distance
+        /// to the points, because the points are what the eye measures the gap by.
+        /// </summary>
+        private void Place()
+        {
+            var offset = _gap + ApexOffset * MarkSize;
+
+            for (var i = 0; i < _marks.Length; i++) _marks[i].localPosition = _outward[i] * offset;
         }
 
         private void Hide()
         {
-            if (_quad != null && _quad.gameObject.activeSelf) _quad.gameObject.SetActive(false);
+            if (_root != null && _root.gameObject.activeSelf) _root.gameObject.SetActive(false);
+            _gapSettled = false;
         }
 
         private void OnDisable()
@@ -136,6 +248,15 @@ namespace NobetaVR.Ui
 
         // -- construction --------------------------------------------------------------
 
+        /// <summary>
+        /// One texture, three quads, and a parent to aim all three at once.
+        ///
+        /// Three quads rather than one, because the opening moves. A single baked reticle would
+        /// have to be redrawn on every frame the gap changed, which is a texture upload per
+        /// frame to say something a transform already says; keeping the marks apart makes the
+        /// whole of the animation three local positions, and the mark itself stays the one
+        /// texture it was.
+        /// </summary>
         private bool Build()
         {
             var shader = TransparentShader.Find();
@@ -144,9 +265,25 @@ namespace NobetaVR.Ui
             _texture = Draw();
             _material = new Material(shader) { mainTexture = _texture };
 
+            var root = new GameObject("NobetaVR Reticle");
+            UnityEngine.Object.DontDestroyOnLoad(root);
+            root.hideFlags = HideFlags.HideAndDontSave;
+            _root = root.transform;
+
+            // The unrotated mark sits to the right and points left, so one angle turns it to
+            // its place on the ring and leaves it pointing in, both at once.
+            for (var i = 0; i < Angles.Length; i++) Mark(i, Angles[i]);
+
+            root.SetActive(false);
+
+            Plugin.Log.LogInfo("aim reticle built");
+            return true;
+        }
+
+        private void Mark(int index, float angle)
+        {
             var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            quad.name = "NobetaVR Reticle";
-            UnityEngine.Object.DontDestroyOnLoad(quad);
+            quad.name = "NobetaVR Reticle Mark";
             quad.hideFlags = HideFlags.HideAndDontSave;
 
             // A collider here would be a pane of invisible glass hanging wherever you point,
@@ -155,39 +292,36 @@ namespace NobetaVR.Ui
             if (collider != null) UnityEngine.Object.Destroy(collider);
 
             var renderer = quad.GetComponent<MeshRenderer>();
-            renderer.material = _material;
+            renderer.sharedMaterial = _material;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
 
-            _quad = quad.transform;
-
-            // Layer 0: seen by the game's cameras, and not by the HUD capture camera, whose
-            // mask is built from the interface canvases alone.
             // Layer 0, with the rest of what this mod draws in the world. The HUD capture
             // camera renders that layer too and is kept off this by distance instead; see
             // HudPanel.Park.
-            _quad.gameObject.layer = 0;
-            _quad.gameObject.SetActive(false);
+            quad.layer = 0;
 
-            Plugin.Log.LogInfo("aim reticle built");
-            return true;
+            var mark = quad.transform;
+            mark.SetParent(_root, false);
+            mark.localRotation = Quaternion.Euler(0f, 0f, angle);
+            mark.localScale = new Vector3(MarkSize, MarkSize, 1f);
+
+            var radians = angle * Mathf.Deg2Rad;
+            _outward[index] = new Vector3(Mathf.Cos(radians), Mathf.Sin(radians), 0f);
+            _marks[index] = mark;
         }
 
         /// <summary>
-        /// Draws the reticle into a texture rather than shipping one.
+        /// Draws one mark into a texture rather than shipping one.
         ///
-        /// A ring with a dot in the middle: the dot is the point, the ring is what makes it
-        /// findable against a busy wall. Both are white inside a dark rim, which is the
-        /// cheapest way to stay readable over anything — a white mark disappears on snow and a
-        /// black one in a crypt, and this game has both.
+        /// A triangle pointing towards -X, white inside a dark rim. The rim is the cheapest way
+        /// to stay readable over anything — a white mark disappears on snow and a black one in
+        /// a crypt, and this game has both.
         /// </summary>
         private static Texture2D Draw()
         {
             const int size = 128;
-            const float ring = 0.30f;      // radius of the ring, where 1 is the texture's edge
-            const float band = 0.055f;     // half its thickness
-            const float dot = 0.075f;      // radius of the centre dot
-            const float rim = 0.035f;      // thickness of the dark rim around both
+            const float rim = 0.035f;      // thickness of the dark rim, where 1 is half the texture
 
             var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
             {
@@ -195,6 +329,13 @@ namespace NobetaVR.Ui
                 wrapMode = TextureWrapMode.Clamp,
                 filterMode = FilterMode.Bilinear,
             };
+
+            // The outward normal of the upper slanted edge. The lower edge is its mirror, which
+            // is why the distance below is taken to |dy| rather than to dy.
+            var edgeX = BaseX - ApexX;
+            var length = Mathf.Sqrt(edgeX * edgeX + BaseHalfHeight * BaseHalfHeight);
+            var normalX = -BaseHalfHeight / length;
+            var normalY = edgeX / length;
 
             var edge = 2f / size;          // a texel or so, so the edges do not step
             var clear = new Color(0f, 0f, 0f, 0f);
@@ -205,18 +346,20 @@ namespace NobetaVR.Ui
                 {
                     var dx = (x + 0.5f) / size * 2f - 1f;
                     var dy = (y + 0.5f) / size * 2f - 1f;
-                    var d = Mathf.Sqrt(dx * dx + dy * dy);
 
-                    // How far outside the shape a pixel is; negative inside either part of it.
-                    var outside = Mathf.Min(Mathf.Abs(d - ring) - band, d - dot);
+                    // How far outside the triangle a pixel is; negative inside it. The greater
+                    // of the two half-plane distances, which for a convex shape is the distance
+                    // to it, and which mitres the corners rather than rounding them off.
+                    var slant = normalX * (dx - ApexX) + normalY * Mathf.Abs(dy);
+                    var outside = Mathf.Max(slant, dx - BaseX);
 
                     var core = Mathf.Clamp01(1f - outside / edge);
                     var halo = Mathf.Clamp01(1f - (outside - edge) / rim);
 
-                    var alpha = Mathf.Max(core, halo * 0.85f);
+                    var alpha = Mathf.Max(core, halo * 0.85f) * Fill;
                     if (alpha <= 0.001f) { texture.SetPixel(x, y, clear); continue; }
 
-                    // White in the shape, black in the rim around it.
+                    // White in the triangle, black in the rim around it.
                     texture.SetPixel(x, y, new Color(core, core, core, alpha));
                 }
             }

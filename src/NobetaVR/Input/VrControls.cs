@@ -38,6 +38,15 @@ namespace NobetaVR.Input
 
         internal static VrControls Instance { get; private set; }
 
+        /// <summary>
+        /// Whether the right grip is holding focus. Read by the reticle, which draws the gap
+        /// at its centre from it: focused is the steadier shot, and the mark closes to say so.
+        /// Kept here rather than asked of the game, because this is the hold as the player made
+        /// it — what the game does with it afterwards is another question, and one the reticle
+        /// would be a frame late in reading.
+        /// </summary>
+        internal static bool Focusing { get; private set; }
+
         private readonly VrInput _input = new();
         private readonly Ui.GameUiInput _gameUi = new();
 
@@ -166,6 +175,7 @@ namespace NobetaVR.Input
             }
 
             _shootHeld = _runHeld = _aimHeld = _wheelOpen = _wasMoving = false;
+            Focusing = false;
             _snapArmed = true;
 
             _jumpHeld = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
@@ -277,6 +287,7 @@ namespace NobetaVR.Input
         {
             if (_aimHeld == held || InputController == null) return;
             _aimHeld = held;
+            Focusing = held;
             InputController.Aim(held);
         }
 

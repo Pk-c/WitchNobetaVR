@@ -1,8 +1,7 @@
-﻿using System;
+using System;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using NobetaVR.Vr;
 using UnityEngine;
-using UnityEngine.XR;
 
 namespace NobetaVR.Ui
 {
@@ -29,6 +28,21 @@ namespace NobetaVR.Ui
     /// </para>
     ///
     /// <para>
+    /// <b>Sorting, which is where this got hard.</b> Every alpha-blended shader that survived
+    /// stripping has <c>ZWrite Off</c> written into it, not exposed as a property, so these
+    /// bands cannot write depth and cannot be resolved against each other by the depth buffer.
+    /// Two things stand in for it. Between bands, each is its own renderer with its own bounds
+    /// centre, so Unity's own back-to-front sort of transparent renderers has something real to
+    /// sort by — the earlier arrangement of one mesh per *layer* gave all three identical
+    /// centres and the sort nothing to work with, which is why it looked like there was no
+    /// sorting at all. Within a band, the far side of the ring is removed instead of being
+    /// ordered: its surface faces away from you, so it is faded out per vertex on the facing,
+    /// which is back-face culling done on the processor because <c>Cull Off</c> is written into
+    /// the shader as well. What is left inside one band is concentric and in index order, and
+    /// that orders itself.
+    /// </para>
+    ///
+    /// <para>
     /// What cannot honestly be done this way is a true glow. Bloom belongs to the game's own
     /// post-processing and there is no way to ask for it from here. What there is instead is
     /// <c>WristGaugeGlow</c>, which drives the lit colour past 1: on a camera rendering to an
@@ -37,10 +51,11 @@ namespace NobetaVR.Ui
     /// the roundness above is doing most of the work.
     /// </para>
     ///
-    /// The pose comes from the controller rather than from the character's hand. The hand is
-    /// only posed while she is yours — cutscenes, conversations and death give her whole body
-    /// back to the game — and a health gauge that vanished whenever the game took over would be
-    /// missing at exactly the times you want to check it.
+    /// They are worn on the hands and they go where the hands go. The mod draws her hands only
+    /// while she is yours to move — cutscenes, conversations, menus and death all give her whole
+    /// body back to the game — and three lit bands left hanging in the air where a hand is not
+    /// would be worse than no bands at all. So the placement arrives from inside the hand's own,
+    /// and a frame with no such call is the whole of the reading; see <see cref="Follow"/>.
     /// </summary>
     public sealed class WristGauges : MonoBehaviour
     {
@@ -59,12 +74,13 @@ namespace NobetaVR.Ui
         ///
         /// Past 90 the band curls back towards the arm, which is what gives it a rounded
         /// silhouette from a grazing angle instead of ending in a visible flat edge. Not the
-        /// full 180: the far half is inside the wrist, where the arm's own mesh covers it, so
-        /// drawing it would be paying for geometry nobody can see.
+        /// full 180: the far half is inside the wrist, so drawing it would be paying for
+        /// geometry that is either hidden or faded out by the facing test anyway.
         /// </summary>
         private const float MinorSpan = 110f;
 
         private const int Bands = 3;
+        private const int Rings = 3;   // trough, ghost, lit — concentric, in that order
         private const int RingVertices = (MajorSegments + 1) * (MinorSegments + 1);
 
         /// <summary>Below this fraction a gauge pulses, the way the game's own bars do.</summary>
@@ -110,9 +126,18 @@ namespace NobetaVR.Ui
         /// </summary>
         private static readonly Color TroughPaint = new(0.16f, 0.15f, 0.14f);
 
-        /// <summary>How solid each layer is, before the whole thing is faded.</summary>
-        private const float TroughAlpha = 0.55f;
-        private const float GhostAlpha = 0.85f;
+        /// <summary>How solid each ring is, before the whole thing is faded.</summary>
+        private static readonly float[] RingAlpha = { 0.55f, 0.85f, 1f };
+
+        /// <summary>
+        /// How far apart the three rings of one band sit, as a fraction of the tube's thickness.
+        ///
+        /// They have to be concentric rather than coincident: index order puts the lit ring
+        /// last so it wins where they overlap, but three surfaces at exactly one radius is the
+        /// arrangement that z-fights on one driver and not another, and a twentieth of a
+        /// millimetre costs nothing to be certain of.
+        /// </summary>
+        private const float RingStep = 0.02f;
 
         private sealed class Bar
         {
@@ -125,25 +150,24 @@ namespace NobetaVR.Ui
             public float Lost = 1f;
         }
 
-        /// <summary>One mesh carrying all three bands, at one depth in the stack.</summary>
-        private sealed class Layer
+        /// <summary>
+        /// One band: its own renderer, so that Unity's back-to-front sort of transparent
+        /// renderers has a distinct bounds centre to sort it by.
+        /// </summary>
+        private sealed class Band
         {
+            public Bar Bar;
             public Mesh Mesh;
-            public Material Material;
             public Il2CppStructArray<Vector3> Vertices;
             public Il2CppStructArray<Color> Colours;
         }
 
-        private readonly Bar[] _bars = new Bar[Bands];
+        private readonly Band[] _bands = new Band[Bands];
 
         private GameObject _root;
-        private Layer _trough, _ghost, _fill;
+        private Material _material;
         private bool _failed;
         private float _alpha;
-
-        /// <summary>The shape the trough was last built at, so a static mesh is not rebuilt
-        /// for nothing.</summary>
-        private Vector4 _builtShape = Vector4.one * -1f;
 
         internal static WristGauges Instance { get; private set; }
 
@@ -176,29 +200,26 @@ namespace NobetaVR.Ui
         }
 
         /// <summary>
-        /// The fallback, for every frame the hands are not being placed: menus, conversations,
-        /// cutscenes, death. The bands stay on through all of those — a health gauge that went
-        /// away whenever the game took her would be missing at the times you most want it — so
-        /// the controller is read here instead.
+        /// Fades them out on any frame the hands are not being placed.
         ///
-        /// Stands aside for a frame after the hands last drove it, rather than for the same
-        /// frame only. Component order within one GameObject is not something to depend on: if
-        /// this runs first, the hands' call is still to come, and doing the work twice would
-        /// place the bands at the raw pose and then at the steadied one every frame.
+        /// The bands are worn on the hands, so they go where the hands go: menus, cutscenes,
+        /// conversations and death all hand her body back to the game, and three lit bands
+        /// hanging in the air where a hand is not is worse than no bands at all. Nothing calls
+        /// <see cref="Follow"/> on those frames, so the absence of a call is the whole of the
+        /// reading — there is no second condition here to get out of step with the one the
+        /// hands are already using.
+        ///
+        /// A frame's grace rather than none, because component order within one GameObject is
+        /// not something to depend on: if this runs before the hands do, the call for this
+        /// frame is still to come, and fading on the strength of that would strobe the bands
+        /// off and on every frame they were up.
         /// </summary>
         private void LateUpdate()
         {
-            if (_failed) return;
-            if (_root == null && !Plugin.Instance.WristGauges.Value) return;
+            if (_failed || _root == null) return;
             if (_drivenFrame >= Time.frameCount - 1) return;
 
-            if (!Plugin.Instance.WristGauges.Value || !SampleController(out var world, out var rotation))
-            {
-                FadeTo(0f);
-                return;
-            }
-
-            Render(world, rotation);
+            FadeTo(0f);
         }
 
         private void Render(Vector3 handPosition, Quaternion controllerRotation)
@@ -243,8 +264,9 @@ namespace NobetaVR.Ui
                        * Time.unscaledDeltaTime;
             var settle = refill * 0.45f;
 
-            foreach (var bar in _bars)
+            foreach (var band in _bands)
             {
+                var bar = band?.Bar;
                 if (bar == null) continue;
 
                 var value = Mathf.Clamp01(bar.Read(data));
@@ -279,35 +301,6 @@ namespace NobetaVR.Ui
                                                                cfg.WristGaugeRoll.Value);
         }
 
-        /// <summary>
-        /// The left controller in world space, worked out the same way the hands are: the
-        /// controller's offset from the headset is the wrist's offset from the eyes, turned
-        /// into the world by the view's yaw.
-        ///
-        /// Only reached when the hands are not being drawn. Returns false when there is no left
-        /// controller to read — a runtime that has not brought one up yet, or one that has gone
-        /// to sleep — and the bands then fade out rather than freezing where they were.
-        /// </summary>
-        private static bool SampleController(out Vector3 wrist, out Quaternion controller)
-        {
-            wrist = default;
-            controller = Quaternion.identity;
-
-            var device = InputDevices.GetDeviceAtXRNode(XRNode.LeftHand);
-            if (!device.isValid) return false;
-
-            if (!InputDevices.TryGetFeatureValue_Vector3f(device.deviceId, "DevicePosition", out var position)
-             || !InputDevices.TryGetFeatureValue_Quaternionf(device.deviceId, "DeviceRotation", out var rotation))
-                return false;
-
-            var camera = VrCamera.CameraTransform;
-            if (camera == null) return false;
-
-            controller = VrCamera.ViewYaw * rotation;
-            wrist = camera.position + VrCamera.ViewYaw * (position - HeadPose.Raw);
-            return true;
-        }
-
         private void FadeTo(float target)
         {
             if (_root == null) return;
@@ -315,30 +308,22 @@ namespace NobetaVR.Ui
             _alpha = Mathf.MoveTowards(_alpha, target,
                 Mathf.Max(0.01f, Plugin.Instance.HudFadeSpeed.Value) * Time.unscaledDeltaTime);
 
-            // Carried on the shared materials rather than on every vertex, so fading is one
-            // colour write per layer instead of a mesh rebuild.
-            Tint(_trough, TroughAlpha);
-            Tint(_ghost, GhostAlpha);
-            Tint(_fill, 1f);
+            // Carried on the one shared material rather than on every vertex, so fading is a
+            // single colour write instead of three mesh rebuilds.
+            if (_material != null) _material.color = new Color(1f, 1f, 1f, _alpha);
 
             var visible = _alpha > 0.001f;
             if (_root.activeSelf != visible) _root.SetActive(visible);
         }
 
-        private void Tint(Layer layer, float layerAlpha)
-        {
-            if (layer != null && layer.Material != null)
-                layer.Material.color = new Color(1f, 1f, 1f, _alpha * layerAlpha);
-        }
-
         // -- geometry --------------------------------------------------------------------
 
         /// <summary>
-        /// Writes this frame's shape into the three meshes.
+        /// Writes this frame's shape into the three band meshes.
         ///
-        /// The trough is the full arc and only changes when a setting does, so it is rebuilt on
-        /// a comparison rather than every frame. The other two are rebuilt always: their sweep
-        /// *is* the reading, and the lit one's colour carries the warning pulse on top of it.
+        /// All of it, every frame, including the trough. It used to be rebuilt only when a
+        /// setting changed, and it cannot be any more: the vertices now carry which way each
+        /// piece of surface is facing, and that changes whenever you move your arm.
         /// </summary>
         private void Reshape()
         {
@@ -348,59 +333,53 @@ namespace NobetaVR.Ui
             var thickness = Mathf.Max(0.0005f, cfg.WristGaugeThickness.Value);
             var spacing = cfg.WristGaugeSpacing.Value;
             var arc = Mathf.Clamp(cfg.WristGaugeArc.Value, 10f, 350f);
-
-            var shape = new Vector4(radius, thickness, spacing, arc);
-            if (shape != _builtShape)
-            {
-                _builtShape = shape;
-                Fill(_trough, radius, thickness, spacing, arc, 0f);
-            }
+            var glow = Mathf.Max(0.1f, cfg.WristGaugeGlow.Value);
 
             // Between the colour and a hotter version of it, not between the colour and
             // nothing. Pulsing towards transparent faded the band into the trough, which reads
             // as a gauge going out rather than as one asking for attention.
             var pulse = 0.5f + 0.5f * Mathf.Cos(Time.unscaledTime * 6f);
 
-            // Stacked outwards by a fraction of a millimetre. They are drawn in queue order
-            // rather than sorted, so this is belt and braces — but three coincident transparent
-            // surfaces is exactly the arrangement that z-fights on some drivers and not others,
-            // and a twentieth of a millimetre costs nothing to be sure.
-            Fill(_ghost, radius + thickness * 0.02f, thickness, spacing, arc, 0f);
-            Fill(_fill, radius + thickness * 0.04f, thickness, spacing, arc, pulse);
+            // The eye, in the bands' own space. Taken once: the two eyes are three centimetres
+            // apart and the bands are forty away, which is far below what the facing test can
+            // tell apart.
+            var eye = VrCamera.CameraTransform;
+            var viewer = eye != null ? _root.transform.InverseTransformPoint(eye.position) : Vector3.zero;
+            var facingKnown = eye != null;
+
+            for (var i = 0; i < Bands; i++)
+                Shape(_bands[i], i, radius, thickness, spacing, arc, glow, pulse, viewer, facingKnown);
         }
 
         /// <summary>
-        /// Lays one layer's three arcs into its vertex and colour arrays.
+        /// Lays one band's three concentric rings into its vertex and colour arrays.
         ///
         /// The arc is centred on the frame's +Z — the face you read — and grows from one end,
         /// so a full band wraps the whole sweep and an empty one is nothing. A zero-length arc
         /// collapses to coincident vertices and draws nothing, which is why there is no special
         /// case for it: degenerate triangles are free and a branch here would not be.
         /// </summary>
-        private void Fill(Layer layer, float radius, float thickness, float spacing, float arc,
-                          float pulse)
+        private void Shape(Band band, int index, float radius, float thickness, float spacing,
+                           float arc, float glow, float pulse, Vector3 viewer, bool facingKnown)
         {
-            if (layer == null) return;
+            if (band == null) return;
 
-            var glow = Mathf.Max(0.1f, Plugin.Instance.WristGaugeGlow.Value);
+            // Negative spacing stacks them the other way, which is the whole of the fix if
+            // they come out with mana at the hand rather than at the elbow.
+            var along = (1 - index) * spacing;
+            var start = -arc * 0.5f;
             var v = 0;
 
-            for (var band = 0; band < Bands; band++)
+            for (var ring = 0; ring < Rings; ring++)
             {
-                var bar = _bars[band];
-
-                // Negative spacing stacks them the other way, which is the whole of the fix if
-                // they come out with mana at the hand rather than at the elbow.
-                var along = (1 - band) * spacing;
-
-                var fraction = ReferenceEquals(layer, _trough) ? 1f
-                             : ReferenceEquals(layer, _fill) ? bar.Shown
-                             : bar.Lost;
+                var fraction = ring == 0 ? 1f
+                             : ring == 1 ? band.Bar.Lost
+                             : band.Bar.Shown;
 
                 var sweep = arc * Mathf.Clamp01(fraction);
-                var start = -arc * 0.5f;
-
-                var paint = Paint(layer, bar, pulse, glow);
+                var ringRadius = radius + thickness * RingStep * ring;
+                var paint = Paint(ring, band.Bar, pulse, glow);
+                var alpha = RingAlpha[ring];
 
                 for (var i = 0; i <= MajorSegments; i++)
                 {
@@ -413,28 +392,48 @@ namespace NobetaVR.Ui
                         var cos = Mathf.Cos(minor);
                         var sin = Mathf.Sin(minor);
 
-                        layer.Vertices[v] = outward * (radius + thickness * cos)
-                                          + Vector3.up * (along + thickness * sin);
+                        var position = outward * (ringRadius + thickness * cos)
+                                     + Vector3.up * (along + thickness * sin);
+
+                        band.Vertices[v] = position;
 
                         // The roundness, and the only place it exists. Brightest along the
                         // crest and falling away to the sides, which is what a lit tube does
                         // and what a flat strip of one colour never can.
                         var lit = 0.42f + 0.58f * Mathf.Max(0f, cos);
-                        layer.Colours[v] = new Color(paint.r * lit, paint.g * lit, paint.b * lit, 1f);
+
+                        // Back-face culling, done here because Cull Off is written into the
+                        // shader and cannot be asked to stop. Without it the far side of the
+                        // ring draws over the near side purely because it comes later in the
+                        // index buffer, and no amount of sorting between objects can help with
+                        // something inside one of them. The cut is tight on purpose: only
+                        // surface within a few degrees of edge-on fades, so the band keeps its
+                        // full width right up to its own silhouette.
+                        var seen = 1f;
+                        if (facingKnown)
+                        {
+                            var normal = outward * cos + Vector3.up * sin;
+                            var toEye = viewer - position;
+                            var facing = Vector3.Dot(normal, toEye.normalized);
+                            seen = Mathf.Clamp01(facing / 0.12f);
+                        }
+
+                        band.Colours[v] = new Color(paint.r * lit, paint.g * lit, paint.b * lit,
+                                                    alpha * seen);
                         v++;
                     }
                 }
             }
 
-            layer.Mesh.vertices = layer.Vertices;
-            layer.Mesh.colors = layer.Colours;
-            layer.Mesh.RecalculateBounds();
+            band.Mesh.vertices = band.Vertices;
+            band.Mesh.colors = band.Colours;
+            band.Mesh.RecalculateBounds();
         }
 
-        private Color Paint(Layer layer, Bar bar, float pulse, float glow)
+        private static Color Paint(int ring, Bar bar, float pulse, float glow)
         {
-            if (ReferenceEquals(layer, _trough)) return TroughPaint;
-            if (ReferenceEquals(layer, _ghost)) return Ghost(bar.Colour);
+            if (ring == 0) return TroughPaint;
+            if (ring == 1) return Ghost(bar.Colour);
 
             var lit = bar.Shown < WarnBelow ? Color.Lerp(bar.Colour, bar.Warned, pulse) : bar.Colour;
             return new Color(lit.r * glow, lit.g * glow, lit.b * glow, 1f);
@@ -468,21 +467,45 @@ namespace NobetaVR.Ui
             UnityEngine.Object.DontDestroyOnLoad(_root);
             _root.hideFlags = HideFlags.HideAndDontSave;
 
+            _material = new Material(shader)
+            {
+                // White with the fade in its alpha; the bands' own colours are on the vertices,
+                // and UI/Default multiplies the two — which is what lets one material serve all
+                // three renderers, and keeps them in one sorting group while it does.
+                color = new Color(1f, 1f, 1f, 0f),
+                mainTexture = Texture2D.whiteTexture,
+                renderQueue = 3000,
+            };
+
+            // Depth tested, and said so out loud.
+            //
+            // `UI/Default` declares `ZTest [unity_GUIZTestMode]` so that a canvas can choose,
+            // which means a material that never chooses takes whatever that global happens to
+            // hold — and outside the canvas system it holds nothing useful, so the bands drew
+            // over the world including the hand they are worn on. What it does *not* buy is
+            // depth between the bands themselves: `ZWrite Off` is written into the shader, so
+            // nothing here writes depth for anything else to test against. See the class
+            // remarks for what stands in for it.
+            _material.SetInt("unity_GUIZTestMode", (int)UnityEngine.Rendering.CompareFunction.LessEqual);
+            _material.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.LessEqual);
+
             // Blue, violet, red down the arm. Health is at the end of the run rather than the
             // start of it, which puts the one you cannot afford to miss nearest your hand —
             // and cool to warm reads as an ascending scale of how much it matters.
-            _bars[0] = new Bar { Colour = Mana, Warned = Warn(Mana), Read = d => Fraction(d.GetMP(), d.GetMPMax()) };
-            _bars[1] = new Bar { Colour = Stamina, Warned = Warn(Stamina), Read = d => Fraction(d.GetSP(), d.GetSPMax()) };
-            _bars[2] = new Bar { Colour = Health, Warned = Warn(Health), Read = d => Fraction(d.GetHP(), d.GetHPMax()) };
+            _bands[0] = MakeBand("Mana", new Bar
+            {
+                Colour = Mana, Warned = Warn(Mana), Read = d => Fraction(d.GetMP(), d.GetMPMax()),
+            });
+            _bands[1] = MakeBand("Stamina", new Bar
+            {
+                Colour = Stamina, Warned = Warn(Stamina), Read = d => Fraction(d.GetSP(), d.GetSPMax()),
+            });
+            _bands[2] = MakeBand("Health", new Bar
+            {
+                Colour = Health, Warned = Warn(Health), Read = d => Fraction(d.GetHP(), d.GetHPMax()),
+            });
 
-            // Drawn in queue order rather than left to the distance sort. All three sit within
-            // a fraction of a millimetre of each other, so their bounds centres are effectively
-            // identical and the sort has nothing to work with.
-            _trough = MakeLayer(shader, "Trough", 3000);
-            _ghost = MakeLayer(shader, "Ghost", 3001);
-            _fill = MakeLayer(shader, "Fill", 3002);
-
-            Plugin.Log.LogInfo($"wrist gauges built: {Bands} bands, "
+            Plugin.Log.LogInfo($"wrist gauges built: {Bands} bands of {Rings} rings, "
                              + $"{MajorSegments}x{MinorSegments} segments each, "
                              + $"shader '{shader.name}'");
 
@@ -490,71 +513,61 @@ namespace NobetaVR.Ui
             return true;
         }
 
-        private Layer MakeLayer(Shader shader, string name, int queue)
+        /// <summary>
+        /// One band on its own renderer.
+        ///
+        /// That is the point of the split rather than an accident of it. Unity sorts transparent
+        /// renderers back to front by their bounds centre, which is the only depth resolution
+        /// available with a shader that cannot write depth — and it needs the centres to differ.
+        /// One mesh per *layer*, which is what this was, gave three renderers sitting on top of
+        /// one another with identical centres, so the sort had nothing to work with and the
+        /// bands drew in whatever order they were created in.
+        /// </summary>
+        private Band MakeBand(string name, Bar bar)
         {
             var go = new GameObject(name);
             go.transform.SetParent(_root.transform, false);
-            go.layer = 0;   // seen by the game's cameras; kept out of the capture by HudPanel.Park
+            go.layer = 0;   // seen by the game's cameras, not by the HUD capture camera
 
-            var layer = new Layer
+            var band = new Band
             {
+                Bar = bar,
                 Mesh = new Mesh { name = $"NobetaVR Wrist {name}" },
-                Material = new Material(shader),
-                Vertices = new Il2CppStructArray<Vector3>(Bands * RingVertices),
-                Colours = new Il2CppStructArray<Color>(Bands * RingVertices),
+                Vertices = new Il2CppStructArray<Vector3>(Rings * RingVertices),
+                Colours = new Il2CppStructArray<Color>(Rings * RingVertices),
             };
 
             // Rewritten every frame, so Unity is told not to treat the buffer as static.
-            layer.Mesh.MarkDynamic();
-            layer.Mesh.vertices = layer.Vertices;
-            layer.Mesh.triangles = Topology();
-
-            // White with the fade in its alpha; the bands' own colours are on the vertices, and
-            // UI/Default multiplies the two — which is what lets one material serve all three.
-            layer.Material.color = new Color(1f, 1f, 1f, 0f);
-            layer.Material.mainTexture = Texture2D.whiteTexture;
-            layer.Material.renderQueue = queue;
-
-            // Depth tested, and said so out loud.
-            //
-            // `UI/Default` declares `ZTest [unity_GUIZTestMode]` so that a canvas can choose,
-            // which means a material that never chooses takes whatever that global happens to
-            // hold — and outside the canvas system it holds nothing useful, so the bands were
-            // drawing over everything including each other. That is not the bands being sorted
-            // wrongly, it is the bands not being depth tested at all: the far side of an arc
-            // came out on top of the near side because it was drawn later, and the arm behind
-            // them never got a say. The two other places the mod hangs geometry in the world
-            // both set this too, in the other direction, which is what made it look deliberate
-            // rather than missing.
-            layer.Material.SetInt("unity_GUIZTestMode", (int)UnityEngine.Rendering.CompareFunction.LessEqual);
-            layer.Material.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.LessEqual);
+            band.Mesh.MarkDynamic();
+            band.Mesh.vertices = band.Vertices;
+            band.Mesh.triangles = Topology();
 
             // sharedMesh, not mesh: the `mesh` accessor is the one that quietly clones, and a
             // clone would leave every per-frame rebuild being written to a mesh nothing draws.
             var filter = go.AddComponent<MeshFilter>();
-            filter.sharedMesh = layer.Mesh;
+            filter.sharedMesh = band.Mesh;
 
             var renderer = go.AddComponent<MeshRenderer>();
-            renderer.material = layer.Material;
+            renderer.sharedMaterial = _material;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
 
-            return layer;
+            return band;
         }
 
         /// <summary>
-        /// The triangle list, which never changes: only the vertices move. There is no need to
-        /// wind both ways — <c>UI/Default</c> is <c>Cull Off</c>, so a band is solid from either
-        /// side and from inside the wrist as well.
+        /// The triangle list for one band's three rings, which never changes: only the vertices
+        /// move. The rings are laid out trough, ghost, lit, so index order alone puts the lit
+        /// one last where they overlap.
         /// </summary>
         private static Il2CppStructArray<int> Topology()
         {
-            var indices = new Il2CppStructArray<int>(Bands * MajorSegments * MinorSegments * 6);
+            var indices = new Il2CppStructArray<int>(Rings * MajorSegments * MinorSegments * 6);
             var t = 0;
 
-            for (var band = 0; band < Bands; band++)
+            for (var ring = 0; ring < Rings; ring++)
             {
-                var origin = band * RingVertices;
+                var origin = ring * RingVertices;
 
                 for (var i = 0; i < MajorSegments; i++)
                 {

@@ -64,6 +64,8 @@ namespace NobetaVR
         internal ConfigEntry<float> AimDistance;
         internal ConfigEntry<bool> ShowAimReticle;
         internal ConfigEntry<float> AimReticleSize;
+        internal ConfigEntry<float> AimReticleGap;
+        internal ConfigEntry<float> AimReticleFocusGap;
         internal ConfigEntry<bool> HideGameCrosshair;
         internal ConfigEntry<bool> HudEnabled;
         internal ConfigEntry<float> HudDistance;
@@ -256,6 +258,21 @@ namespace NobetaVR
               + "than absolute on purpose: a fixed world size disappears at range, which is "
               + "when a shot needs it most, and swells into a dinner plate against a near "
               + "wall.");
+
+            AimReticleGap = Config.Bind("Aim", "AimReticleGap", 0.28f,
+                "How far the three marks stand off the centre when you are not focusing, as "
+              + "a fraction of the reticle's size. The gap is most of what the shape says: "
+              + "three marks around an opening read as a spread, and the point they aim at "
+              + "reads as the shot. Wide is the honest default, because a wand swung free of "
+              + "the right grip kicks, and a mark drawn tight around a shot that will not "
+              + "land there is a lie told precisely.");
+
+            AimReticleFocusGap = Config.Bind("Aim", "AimReticleFocusGap", 0.12f,
+                "The same gap while the right grip is holding focus, as a fraction of the "
+              + "reticle's size. Smaller than the one above, and the difference is the point: "
+              + "a reticle that closes as you settle says the shot is worth more now without "
+              + "a word or a number for it. Set it equal to the gap above for a reticle that "
+              + "never moves.");
 
             HideGameCrosshair = Config.Bind("Aim", "HideGameCrosshair", false,
                 "Switches off the game's centred crosshair. Off by default, because that mark "
@@ -530,11 +547,12 @@ namespace NobetaVR
 
             WristGauges = Config.Bind(
                 "Interface", "WristGauges", true,
-                "Wears health, stamina and mana on your left wrist. Three short bars on the "
-              + "back of your hand cost nothing while you are not looking at them and are read "
-              + "by turning your wrist, which is a movement you make anyway. They are placed "
-              + "from the controller rather than from her hand, so they are still there during "
-              + "cutscenes and conversations, when the game has her body back.");
+                "Wears health, stamina and mana on your left wrist as three bands. They cost "
+              + "nothing while you are not looking at them and are read by turning your arm, "
+              + "which is a movement you make anyway. They are shown only while the mod is "
+              + "drawing your hands, and go with them: cutscenes, conversations, menus and "
+              + "death all hand her body back to the game, and three lit bands hanging in the "
+              + "air where a hand is not would be worse than no bands at all.");
 
             WristGaugeRadius = Config.Bind(
                 "Interface", "WristGaugeRadius", 0.045f,

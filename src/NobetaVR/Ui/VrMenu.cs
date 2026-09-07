@@ -327,6 +327,20 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
+                Label = "Reticle gap",
+                Value = () => $"{cfg.AimReticleGap.Value * 100f:F0}",
+                Adjust = d => cfg.AimReticleGap.Value =
+                    Mathf.Clamp(cfg.AimReticleGap.Value + d * 0.01f, 0f, 0.8f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Gap when focusing",
+                Value = () => $"{cfg.AimReticleFocusGap.Value * 100f:F0}",
+                Adjust = d => cfg.AimReticleFocusGap.Value =
+                    Mathf.Clamp(cfg.AimReticleFocusGap.Value + d * 0.01f, 0f, 0.8f),
+            });
+            _items.Add(new Item
+            {
                 Label = "Game crosshair",
                 Value = () => cfg.HideGameCrosshair.Value ? "Hidden" : "Shown",
                 Adjust = _ => cfg.HideGameCrosshair.Value = !cfg.HideGameCrosshair.Value,
@@ -635,7 +649,9 @@ namespace NobetaVR.Ui
                          cfg.HoldWandStill, cfg.WandFollowSpeed,
                          cfg.AimFromHand,
                          cfg.AimPitchOffset, cfg.AimYawOffset, cfg.AimRollOffset,
-                         cfg.ShowAimReticle, cfg.AimReticleSize, cfg.HideGameCrosshair,
+                         cfg.ShowAimReticle, cfg.AimReticleSize,
+                         cfg.AimReticleGap, cfg.AimReticleFocusGap,
+                         cfg.HideGameCrosshair,
                          cfg.Melee, cfg.MeleeSpeed, cfg.MeleeDistance,
                          cfg.MeleeReleaseSpeed, cfg.MeleeCooldown,
                          cfg.MeleeHitboxReach, cfg.MeleeShowHitbox,
