@@ -555,10 +555,19 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
-                Label = "Hitbox size",
-                Value = () => $"×{cfg.MeleeHitboxSize.Value:F1}",
-                Adjust = d => cfg.MeleeHitboxSize.Value =
-                    Mathf.Clamp(cfg.MeleeHitboxSize.Value + d * 0.25f, 0.5f, 8f),
+                Label = "Hitbox radius",
+                Value = () => $"{cfg.MeleeHitboxRadius.Value:F2} m",
+                Adjust = d => cfg.MeleeHitboxRadius.Value =
+                    Mathf.Clamp(cfg.MeleeHitboxRadius.Value + d * 0.025f, 0.05f, 1.5f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Hitbox length",
+                Value = () => cfg.MeleeHitboxLength.Value < 0.005f
+                    ? "Sphere"
+                    : $"{cfg.MeleeHitboxLength.Value:F2} m",
+                Adjust = d => cfg.MeleeHitboxLength.Value =
+                    Mathf.Clamp(cfg.MeleeHitboxLength.Value + d * 0.05f, 0f, 2f),
             });
             _items.Add(new Item
             {
@@ -572,6 +581,26 @@ namespace NobetaVR.Ui
                 Value = () => $"{cfg.MeleeHitboxReach.Value:F2} m",
                 Adjust = d => cfg.MeleeHitboxReach.Value =
                     Mathf.Clamp(cfg.MeleeHitboxReach.Value + d * 0.02f, 0f, 2f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Hitbox pitch",
+                Value = () => $"{cfg.MeleeHitboxPitch.Value:F0}°",
+                Adjust = d => cfg.MeleeHitboxPitch.Value =
+                    Mathf.Clamp(cfg.MeleeHitboxPitch.Value + d * 2f, -90f, 90f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Hitbox yaw",
+                Value = () => $"{cfg.MeleeHitboxYaw.Value:F0}°",
+                Adjust = d => cfg.MeleeHitboxYaw.Value =
+                    Mathf.Clamp(cfg.MeleeHitboxYaw.Value + d * 2f, -90f, 90f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Needs wand out",
+                Value = () => cfg.MeleeRequireWand.Value ? "On" : "Off",
+                Adjust = _ => cfg.MeleeRequireWand.Value = !cfg.MeleeRequireWand.Value,
             });
             _items.Add(new Item
             {
@@ -735,7 +764,10 @@ namespace NobetaVR.Ui
                          cfg.MeleeReleaseSpeed, cfg.MeleeCooldown,
                          cfg.MeleeHitboxReach, cfg.MeleeShowHitbox,
                          cfg.MeleeFreeSwingOnGround,
-                         cfg.MeleeHitboxSize, cfg.MeleeTrailSeconds, cfg.MeleeSwingVoice,
+                         cfg.MeleeHitboxRadius, cfg.MeleeHitboxLength,
+                         cfg.MeleeHitboxPitch, cfg.MeleeHitboxYaw,
+                         cfg.MeleeRequireWand,
+                         cfg.MeleeTrailSeconds, cfg.MeleeSwingVoice,
                          cfg.Haptics, cfg.HapticsHand, cfg.HapticsStrength,
                          cfg.HapticsMinAmplitude, cfg.HapticsMaxSeconds, cfg.HapticsFrequency,
                          cfg.DodgeAlwaysBackstep, cfg.ThirdPersonOnDeath,

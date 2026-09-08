@@ -113,7 +113,11 @@ namespace NobetaVR
         internal ConfigEntry<float> MeleeHitboxReach;
         internal ConfigEntry<bool> MeleeShowHitbox;
         internal ConfigEntry<bool> MeleeFreeSwingOnGround;
-        internal ConfigEntry<float> MeleeHitboxSize;
+        internal ConfigEntry<float> MeleeHitboxRadius;
+        internal ConfigEntry<float> MeleeHitboxLength;
+        internal ConfigEntry<float> MeleeHitboxPitch;
+        internal ConfigEntry<float> MeleeHitboxYaw;
+        internal ConfigEntry<bool> MeleeRequireWand;
         internal ConfigEntry<float> MeleeTrailSeconds;
         internal ConfigEntry<bool> MeleeSwingVoice;
         internal ConfigEntry<string> MeleeRangeName;
@@ -773,15 +777,19 @@ namespace NobetaVR
 
 
             MeleeHitboxReach = Config.Bind(
-                "Melee", "MeleeHitboxReach", 0.45f,
-                "How far along the wand the hitbox sits, in metres from your hand. It rides the "
-              + "same line the shot goes down, so the wand pitch and yaw offsets under Aim point "
-              + "both at once; this is only how far up that line the business end is. With "
-              + "MeleeHitboxSize it is the whole geometry of a blow.");
+                "Melee", "MeleeHitboxReach", 0.5f,
+                "Where the middle of the hitbox sits, in metres along the wand from your hand. "
+              + "It rides the same line the shot goes down, so the wand pitch and yaw offsets "
+              + "under Aim point both at once; this is only how far up that line the business "
+              + "end is. With MeleeHitboxLength and MeleeHitboxRadius it is the whole geometry "
+              + "of a blow: the capsule runs from Reach - Length/2 to Reach + Length/2, with a "
+              + "rounded cap of Radius on each end. That first point is also the base a tilt "
+              + "turns about — see MeleeHitboxPitch — so this stays what it says whatever "
+              + "angle the capsule ends up at.");
 
             MeleeShowHitbox = Config.Bind(
                 "Melee", "MeleeShowHitbox", false,
-                "Draws the hitbox: a sphere where the blow will be, at the size it will be, "
+                "Draws the hitbox: a capsule where the blow will be, at the size it will be, "
               + "turning orange for as long as it is actually open. The game has a switch of "
               + "its own for this and it cannot work in a shipped build — range drawing goes "
               + "through OnDrawGizmos, which is editor-only — so this is drawn rather than "
@@ -799,13 +807,47 @@ namespace NobetaVR
               + "sound, the voice and the wand trail are its own calls made from here. In the "
               + "air she always keeps the game's attack whatever this says — see below.");
 
-            MeleeHitboxSize = Config.Bind(
-                "Melee", "MeleeHitboxSize", 2.25f,
-                "How big the sphere on the wand is, as a multiplier on the game's own radius. "
-              + "Her attack ranges carry no collider and all share one point, so a blow is a "
-              + "sphere about wherever that point was put: this is not a refinement of how "
-              + "forgiving a swing is, it is the whole of it. Turn on MeleeShowHitbox to see "
-              + "what you are setting.");
+            MeleeHitboxRadius = Config.Bind(
+                "Melee", "MeleeHitboxRadius", 0.25f,
+                "How thick the hitbox is, in metres. The game's own radius is 0.30 m and this "
+              + "replaces it outright rather than scaling it, because a blow has no other "
+              + "dimension to trade against: her attack ranges carry no collider and all share "
+              + "one point, so the volume around that point is the whole of how forgiving a "
+              + "swing is. Turn on MeleeShowHitbox to see what you are setting.");
+
+            MeleeHitboxLength = Config.Bind(
+                "Melee", "MeleeHitboxLength", 0.6f,
+                "How long the hitbox is along the wand, in metres, between the centres of its "
+              + "two rounded ends. Zero is a plain sphere, which is what the game's melee "
+              + "actually is; anything above it is a capsule lying on the wand line, so a stick "
+              + "swung at something can hit with its length instead of only with one fat ball "
+              + "somewhere along it. The whole capsule reaches Length + 2 x Radius from end to "
+              + "end.");
+
+            MeleeHitboxPitch = Config.Bind(
+                "Melee", "MeleeHitboxPitch", 0f,
+                "Tilt of the hitbox away from the wand line, in degrees, positive nose-down. "
+              + "It turns about the capsule's base, so the near end stays exactly where "
+              + "MeleeHitboxReach and MeleeHitboxLength put it and only the far end swings — and "
+              + "the line the shot goes down is not touched at all, only the volume laid along "
+              + "it. This is the setting for putting the capsule on the sceptre you can see, "
+              + "when the angle the model sits at in her hand is not quite the angle the "
+              + "controller points at. There is no roll: a capsule is round about its own axis, "
+              + "so rolling it changes nothing.");
+
+            MeleeHitboxYaw = Config.Bind(
+                "Melee", "MeleeHitboxYaw", 0f,
+                "Sideways turn of the hitbox away from the wand line, in degrees, positive to "
+              + "the right. About the capsule's base, like MeleeHitboxPitch.");
+
+            MeleeRequireWand = Config.Bind(
+                "Melee", "MeleeRequireWand", true,
+                "Only lets melee work while the wand is actually in her hand. The game hides "
+              + "and shows it as her animations call for it, and a hitbox that is live while "
+              + "her hand is empty is a swing that connects with nothing to connect with. With "
+              + "this on, a swing made with no wand out does nothing and the hitbox goes back "
+              + "where the game had it. Turn it off if a stowed wand is stopping swings you "
+              + "meant to land.");
 
             MeleeTrailSeconds = Config.Bind(
                 "Melee", "MeleeTrailSeconds", 0.35f,

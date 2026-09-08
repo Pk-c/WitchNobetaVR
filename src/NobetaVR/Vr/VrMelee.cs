@@ -45,14 +45,39 @@ namespace NobetaVR.Vr
     /// colliders, all twenty-seven at one point, so a range is a position and the blow is a
     /// sphere of <c>g_fCollisionSize</c> about it. That sphere is put on the wand line, the same
     /// origin and direction the shot goes down, so what you hit and what you fire at are one
-    /// line and the wand pitch and yaw offsets aim both at once. <c>MeleeHitboxSize</c> is its
-    /// radius, and being the only dimension the hitbox has, it is the whole of how forgiving a
-    /// swing is. See <see cref="PlaceHitbox"/>.
+    /// line and the wand pitch and yaw offsets aim both at once. See <see cref="PlaceHitbox"/>.
     ///
     /// They are moved every frame rather than only while a range is open. A hitbox that is
     /// teleported the instant it switches on has, for that one frame, travelled from wherever
     /// the animation left it to where we want it — and a melee test that sweeps between frames
     /// would read that as a blow struck along the whole of that path.
+    ///
+    /// **A capsule out of one sphere.** A wand is a stick, and a stick's hitbox is a capsule
+    /// along it, not a ball somewhere on it. The game cannot be asked for one: the range has no
+    /// collider to replace, and the single radius on <c>AnimAttackCollisionData</c> is all the
+    /// shape its collision code knows. But the *position* of that sphere is ours every frame,
+    /// and a capsule is exactly the set of points within <c>Radius</c> of its axis — so the
+    /// sphere is put on the point of the axis nearest whatever is in the capsule. The game's own
+    /// test then hits precisely when that thing is inside the capsule, which is the capsule,
+    /// evaluated by the game rather than by us. <c>MeleeHitboxLength</c> is the axis, from
+    /// <c>Reach - Length/2</c> to <c>Reach + Length/2</c>; zero leaves the plain sphere the game
+    /// has. See <see cref="Aim"/>.
+    ///
+    /// That axis can be tilted off the wand line, and it turns about its own base rather than
+    /// about the hand: the near end stays where the reach put it and the far end swings, which
+    /// is how a capsule is laid along a sceptre whose angle in her hand is not the angle the
+    /// controller points at. The shot is not moved by it — the aim line stays the aim line and
+    /// only the volume laid along it turns — so this is the one place the hitbox and the shot
+    /// are allowed to disagree, and it is a few degrees of model geometry rather than a second
+    /// way to aim. See <see cref="Tilt"/>.
+    ///
+    /// Every placement is on that axis and every sphere is the same radius, so the union of
+    /// them — and of anything a swept test reads between them — is inside the capsule. Aiming
+    /// cannot reach past the volume being drawn.
+    ///
+    /// **Only with the wand out.** The game hides and shows the wand as her animations call for
+    /// it, and a live hitbox on an empty hand is a blow struck with nothing. The renderer the
+    /// game switches is the gate; see <see cref="WandOut"/>.
     /// </summary>
     public sealed class VrMelee : MonoBehaviour
     {
@@ -88,6 +113,8 @@ namespace NobetaVR.Vr
         private AnimAttackCollision _collision;
         private IntPtr _boundCollision;
         private bool _displaced;
+        private bool? _wandOut;
+        private bool _wandWarned;
 
         private readonly MeleeGizmo _gizmo = new();
         private readonly WandTrail _trail = new();
@@ -110,6 +137,11 @@ namespace NobetaVR.Vr
 
             var girl = controls.Camera != null ? controls.Camera.wizardGirl : null;
             if (girl == null) { StandDown(); return; }
+
+            // An empty hand swings nothing. Standing down here rather than only refusing to
+            // fire is the point of the setting: the ranges go back to the character, so there
+            // is no hitbox of ours in the world at all while the wand is away.
+            if (cfg.MeleeRequireWand.Value && !WandOut(girl)) { StandDown(); return; }
 
             HeadPose.Sample();
 
@@ -152,6 +184,77 @@ namespace NobetaVR.Vr
 
             var controller = girl.characterController;
             return controller == null || controller.isGrounded;
+        }
+
+        /// <summary>
+        /// Whether the wand is in her hand this frame.
+        ///
+        /// Read off the renderer the game itself switches — <c>NobetaSkin.weaponMesh</c>, the
+        /// mesh on <c>Bone_Weapon</c> under her right hand — rather than inferred from her
+        /// state. The state machine says what she is doing; this says what she is holding, and
+        /// it is what she is holding that a swing is made with. Both halves of "visible" are
+        /// asked, since a prop can be put away by switching the renderer or the object.
+        ///
+        /// The mod moves that bone onto its own hand while the hands are drawn, so the object
+        /// is asked whether it is active in *its* hierarchy, wherever that now is.
+        ///
+        /// Unknown counts as out. On a character with no weapon renderer to read, refusing
+        /// every swing would be a worse answer than allowing them, so the gate opens and the
+        /// log says once that it cannot be trusted here.
+        /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
+        private bool WandOut(WizardGirlManage girl)
+        {
+            var renderer = WandRenderer(girl);
+            if (renderer == null)
+            {
+                if (!_wandWarned)
+                {
+                    _wandWarned = true;
+                    Plugin.Log.LogWarning("melee: no weapon renderer on this character, so "
+                                        + "MeleeRequireWand cannot tell a drawn wand from a "
+                                        + "stowed one. Swings are allowed either way.");
+                }
+                return true;
+            }
+
+            var visible = renderer.enabled && renderer.gameObject.activeInHierarchy;
+
+            // Logged on the change alone. If swings stop landing, the one thing worth knowing
+            // is whether this ever said "out" — which separates a gate reading the wrong thing
+            // from a wand that really is away.
+            if (_wandOut != visible)
+            {
+                _wandOut = visible;
+                Plugin.Log.LogInfo(visible ? "melee: wand out" : "melee: wand stowed");
+            }
+
+            return visible;
+        }
+
+        /// <summary>
+        /// The wand's renderer, from the skin if it has one and from the props the hands are
+        /// carrying otherwise — which is the same object by another route, since
+        /// <see cref="DetachedHands"/> took them off <c>Bone_Weapon</c> itself.
+        /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
+        private static Renderer WandRenderer(WizardGirlManage girl)
+        {
+            var skin = girl.skinInstance;
+            var mesh = skin != null ? skin.weaponMesh : null;
+            if (mesh != null) return mesh;
+
+            var props = VrHands.WandProps;
+            if (props == null) return null;
+
+            foreach (var prop in props)
+            {
+                if (prop == null) continue;
+                var renderer = prop.GetComponentInChildren<Renderer>(true);
+                if (renderer != null) return renderer;
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -386,11 +489,12 @@ namespace NobetaVR.Vr
         /// separately, and the wand pitch and yaw offsets under Aim point both at once. There is
         /// no second source of truth for where the wand is.
         ///
-        /// <c>MeleeHitboxSize</c> multiplies the sphere's radius. Since the measured rig gives a
-        /// range no collider and no offset of its own, that radius is the only dimension the
-        /// hitbox has — it is not a refinement of how forgiving a swing is, it is the whole of
-        /// it. The per-range scale applied below can do nothing on this character and is kept
-        /// only for one whose ranges do have colliders, the boss-rush swaps included.
+        /// <c>MeleeHitboxRadius</c> is written straight into <c>g_fCollisionSize</c> rather than
+        /// scaling it, because on the measured rig a range has no collider and no offset of its
+        /// own: that radius is the only dimension the game's melee has, so a number in metres
+        /// says what the blow is where a multiplier only says what it used to be. The per-range
+        /// scale applied below can do nothing on this character and is kept, in the same ratio,
+        /// for one whose ranges do have colliders — the boss-rush swaps included.
         /// </summary>
         [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private void PlaceHitbox(WizardGirlManage girl, Plugin cfg)
@@ -403,30 +507,47 @@ namespace NobetaVR.Vr
             if (!VrHands.AimOrigin.HasValue) { _gizmo.Hide(); Restore(); _trail.Release(); return; }
 
             var forward = VrHands.AimDirection;
-            var centre = VrHands.AimOrigin.Value + forward * cfg.MeleeHitboxReach.Value;
+            var line = forward.sqrMagnitude > 1e-6f ? forward.normalized : Vector3.forward;
 
-            // The swing trail rides the same line, for the same reason the hitbox does: there
-            // is one wand, and everything that claims to be on it has to come from one place.
+            // The swing trail rides the wand line itself, for the same reason the hitbox hangs
+            // off it: there is one wand, and everything that claims to be on it has to come
+            // from one place. The tilt below is the hitbox's own and stops here.
             if (cfg.MeleeTrailSeconds.Value > 0f)
                 _trail.Follow(girl.transform, VrHands.AimOrigin.Value, forward,
                               cfg.MeleeHitboxReach.Value);
             else
                 _trail.Release();
 
-            HitCentre = centre;
+            var radius = Mathf.Max(0.01f, cfg.MeleeHitboxRadius.Value);
+            var half = Mathf.Max(0f, cfg.MeleeHitboxLength.Value) * 0.5f;
 
-            var rotation = forward.sqrMagnitude > 1e-6f
-                ? Quaternion.LookRotation(forward.normalized, Vector3.up)
-                : Quaternion.identity;
+            // The base first, on the wand line, because it is what the tilt turns about: the
+            // reach then means the same thing at every angle, and tuning the two against each
+            // other does not turn into chasing one with the other.
+            var from = VrHands.AimOrigin.Value + line * (cfg.MeleeHitboxReach.Value - half);
+            var axis = Tilt(line, cfg.MeleeHitboxPitch.Value, cfg.MeleeHitboxYaw.Value);
+            var to = from + axis * (half * 2f);
+            var centre = (from + to) * 0.5f;
 
-            var scale = Mathf.Max(0.01f, cfg.MeleeHitboxSize.Value);
+            var rotation = Facing(axis);
 
             var data = ResolveData(girl, collision);
-            var radius = _haveOriginalSize ? _originalCollisionSize * scale : UnknownRadius;
-            if (data != null) data.g_fCollisionSize = _originalCollisionSize * scale;
+            if (data != null) data.g_fCollisionSize = radius;
+
+            // The range's own scale, in the ratio the radius was changed by. It does nothing
+            // here — these ranges have no colliders — and it is what would carry the change on a
+            // character whose ranges do.
+            var scale = _haveOriginalSize && _originalCollisionSize > 1e-4f
+                ? radius / _originalCollisionSize
+                : 1f;
+
+            // The one point the game will test, chosen so that its sphere answers the capsule.
+            var point = half > 1e-4f ? Aim(collision, girl, from, to, radius) : centre;
+            HitCentre = point;
 
             if (cfg.MeleeShowHitbox.Value)
-                _gizmo.Show(centre, radius, collision.g_bCollisionEnable);
+                _gizmo.Show(from, to, _haveOriginalSize ? radius : UnknownRadius,
+                            collision.g_bCollisionEnable);
             else
                 _gizmo.Hide();
 
@@ -434,12 +555,164 @@ namespace NobetaVR.Vr
             {
                 var range = _ranges[i];
                 if (range == null) continue;
-                range.position = centre;
+                range.position = point;
                 range.rotation = rotation;
                 range.localScale = _rangeLocalScales[i] * scale;
             }
 
             _displaced = true;
+        }
+
+        /// <summary>
+        /// Which point on the capsule's axis the game's single sphere is put on this frame.
+        ///
+        /// The capsule is asked for by hand — <c>Physics.OverlapCapsule</c> against the same
+        /// <c>hitLayer</c> the game's own melee tests, so the question is the game's question —
+        /// and whatever it finds, the sphere is moved to the point of the axis nearest that
+        /// thing. Being within <c>radius</c> of the axis *is* being in the capsule, so the
+        /// game's test on that point answers exactly what a capsule collider would have, and
+        /// answers it in the game's own collision code, with its own exclusions, its own hit
+        /// effects and its own damage.
+        ///
+        /// Nothing inside means nothing to aim at, and the sphere sits at the middle of the
+        /// axis: no target, no difference from the plain sphere.
+        ///
+        /// What is in there is ranked before it is measured, because the layer mask lets scenery
+        /// in and a sphere pulled onto a wall while an enemy stands at the other end of the wand
+        /// is a swing spent on a spark. The game's own tags do the ranking: <c>Enemy</c> first,
+        /// then <c>AttackableObject</c> — the breakables, which are a real target and not
+        /// scenery — then everything else, which is still allowed to be hit because the game
+        /// hits it too. Within a tier the nearer to the axis wins.
+        ///
+        /// Only one target can be served per test: the game tests one point, and that is the
+        /// price of using its collision rather than writing a second one.
+        /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
+        private Vector3 Aim(AnimAttackCollision collision, WizardGirlManage girl,
+                            Vector3 from, Vector3 to, float radius)
+        {
+            var centre = (from + to) * 0.5f;
+
+            var count = Physics.OverlapCapsuleNonAlloc(from, to, radius, _candidates,
+                                                       collision.hitLayer.value,
+                                                       QueryTriggerInteraction.Collide);
+            if (count <= 0) return centre;
+
+            var best = centre;
+            var bestScore = float.PositiveInfinity;
+            Collider bestCollider = null;
+
+            for (var i = 0; i < count && i < _candidates.Length; i++)
+            {
+                var candidate = _candidates[i];
+                if (candidate == null) continue;
+
+                var t = candidate.transform;
+                if (t == null) continue;
+
+                // Herself. The game's collision would ignore her anyway — it has g_IgnoreTag
+                // for exactly that — but a sphere aimed at her own body is a sphere not aimed
+                // at whatever you swung at.
+                if (girl != null && girl.transform != null && t.IsChildOf(girl.transform)) continue;
+                if (t.CompareTag("Player")) continue;
+
+                // Two steps, because either alone picks a worse point: the collider's nearest
+                // point to the axis, then the axis's nearest point to that.
+                var bounds = candidate.bounds;
+                var near = bounds.ClosestPoint(Nearest(from, to, bounds.center));
+                var onAxis = Nearest(from, to, near);
+
+                var score = (near - onAxis).magnitude + Tier(t) * TierStep;
+
+                if (score >= bestScore) continue;
+                bestScore = score;
+                best = onAxis;
+                bestCollider = candidate;
+            }
+
+            // Once per kind of thing, up to a handful. One line said what the capsule found
+            // first and nothing about the rest, and the rest is the question: it was a line
+            // like this, naming a barrel tagged AttackableObject, that showed the ranking had
+            // to be more than "Enemy or not".
+            if (bestCollider != null && _reportedTags.Count < ReportedTagLimit)
+            {
+                var tag = bestCollider.tag;
+                if (_reportedTags.Add(tag))
+                {
+                    Plugin.Log.LogInfo($"melee: capsule aimed at '{bestCollider.name}' "
+                                     + $"(tag {tag}, layer {bestCollider.gameObject.layer}), "
+                                     + $"{Vector3.Distance(from, best):F2} m along the axis");
+                }
+            }
+
+            return best;
+        }
+
+        /// <summary>
+        /// What a thing in the capsule is worth being hit, lowest first. The tags are the
+        /// game's own, read out of its tag list rather than guessed: <c>Enemy</c> is what its
+        /// enemies carry and <c>AttackableObject</c> is what its breakables carry.
+        /// </summary>
+        private static int Tier(Transform t)
+        {
+            if (t.CompareTag("Enemy")) return 0;
+            if (t.CompareTag("AttackableObject")) return 1;
+            return 2;
+        }
+
+        /// <summary>
+        /// How far behind a better target each tier is put. Larger than any distance the capsule
+        /// can produce on its own — no point inside it is further than one radius from the
+        /// axis, and a radius is a fraction of a metre — so an enemy anywhere inside beats a
+        /// barrel anywhere inside, and a barrel beats a wall.
+        /// </summary>
+        private const float TierStep = 100f;
+
+        /// <summary>How many kinds of target the log will name before it stops.</summary>
+        private const int ReportedTagLimit = 8;
+
+        private readonly System.Collections.Generic.HashSet<string> _reportedTags = new();
+
+        /// <summary>How many things the capsule will consider in one frame.</summary>
+        private const int CandidateLimit = 16;
+
+        private readonly Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<Collider>
+            _candidates = new(CandidateLimit);
+
+        /// <summary>
+        /// The wand line, turned by the hitbox's own pitch and yaw.
+        ///
+        /// In the line's own frame rather than the world's, so pitch stays "towards her feet"
+        /// and yaw "across the swing" however she is standing: an offset set once while looking
+        /// at the sceptre has to keep meaning the same thing when you turn round.
+        /// </summary>
+        private static Vector3 Tilt(Vector3 line, float pitch, float yaw)
+        {
+            if (Mathf.Abs(pitch) < 0.01f && Mathf.Abs(yaw) < 0.01f) return line;
+            return Facing(line) * Quaternion.Euler(pitch, yaw, 0f) * Vector3.forward;
+        }
+
+        /// <summary>
+        /// A rotation looking along <paramref name="direction"/>, with an up axis that is never
+        /// parallel to it. A wand can be pointed at the ceiling, and <c>LookRotation</c> answers
+        /// that with an error and the identity — which would drop the hitbox back onto the
+        /// world's forward at the one moment you are looking straight along it.
+        /// </summary>
+        private static Quaternion Facing(Vector3 direction)
+        {
+            var up = Mathf.Abs(direction.y) > 0.999f ? Vector3.forward : Vector3.up;
+            return Quaternion.LookRotation(direction, up);
+        }
+
+        /// <summary>The point of the segment a-b nearest <paramref name="point"/>.</summary>
+        private static Vector3 Nearest(Vector3 a, Vector3 b, Vector3 point)
+        {
+            var span = b - a;
+            var length = span.sqrMagnitude;
+            if (length < 1e-8f) return a;
+
+            var t = Mathf.Clamp01(Vector3.Dot(point - a, span) / length);
+            return a + span * t;
         }
 
         /// <summary>
@@ -483,8 +756,11 @@ namespace NobetaVR.Vr
             {
                 _sizeWarned = true;
                 Plugin.Log.LogWarning("melee: no AnimAttackCollisionData on this character, so "
-                                    + "the hitbox size cannot be read or widened. MeleeHitboxSize "
-                                    + $"does nothing and the gizmo draws a placeholder {UnknownRadius:F2} m.");
+                                    + "the hitbox radius can be neither read nor set. "
+                                    + "MeleeHitboxRadius does nothing, the blow keeps whatever "
+                                    + "radius the character came with, the capsule is aimed at "
+                                    + "the radius you asked for rather than the one being "
+                                    + $"tested, and the gizmo draws a placeholder {UnknownRadius:F2} m.");
             }
 
             return null;

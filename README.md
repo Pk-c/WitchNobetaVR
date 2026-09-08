@@ -129,10 +129,28 @@ only available through the game's own call. **On the ground** the animation woul
 feet and swing the wand for you, so it is skipped: the hitbox opens on its own and the swing
 sound, the voice, the wand trail, the impact effect and the damage are all still the game's.
 
-The hitbox is a sphere on the wand either way, on the same line the shot goes down.
-`MeleeHitboxReach` is how far up the wand it sits and `MeleeHitboxSize` is how big it is — that
-sphere is the whole geometry of a blow, so those two settings are the whole of how forgiving
-melee feels. `MeleeShowHitbox` draws it while you tune them, orange for as long as it is open.
+The hitbox is a capsule lying on the wand either way, on the same line the shot goes down.
+`MeleeHitboxReach` is where its middle sits along the wand, `MeleeHitboxLength` is how far it
+runs along it and `MeleeHitboxRadius` is how thick it is, all in metres, with
+`MeleeHitboxPitch` and `MeleeHitboxYaw` to tilt it off that line — that volume is the
+whole geometry of a blow, so those three settings are the whole of how forgiving melee feels.
+`MeleeShowHitbox` draws it while you tune them, orange for as long as it is open.
+
+The tilt turns the capsule about its own base, so the near end stays where the reach put it and
+only the far end swings — it is for laying the capsule along the sceptre you can see, when
+the angle the model sits at in her hand is not the angle the controller points at. It moves the
+hitbox alone: the shot still goes down the wand line untouched.
+
+The game's own melee has no capsule to ask for: its hitbox is one point with one radius. The
+capsule is served by moving that point to whatever part of the axis is nearest what you swung
+at, so the game's own collision — its damage, its knockback, its hit effects — answers a
+question a capsule collider would have answered. One target per test, ranked by the game's own
+tags: enemies first, then breakables, then everything else.
+
+`MeleeRequireWand` keeps melee to the hand that is holding something. The game puts the wand
+away when her animations have no use for it, and a hitbox that stays live through that is a
+blow struck with an empty hand; with this on, the ranges go back to the character until the
+wand is out again.
 
 ## When the headset stays black
 
