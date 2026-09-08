@@ -56,6 +56,7 @@ namespace NobetaVR
         internal ConfigEntry<bool> BodyFollowsView;
         internal ConfigEntry<bool> HoldWandStill;
         internal ConfigEntry<float> WandFollowSpeed;
+        internal ConfigEntry<int> HandPlacement;
         internal ConfigEntry<float> HandSteadiness;
         internal ConfigEntry<float> HandSteadinessResponse;
         internal ConfigEntry<float> HandRotationPitch;
@@ -252,6 +253,23 @@ namespace NobetaVR
               + "wand, and a recoil is long over before it gets there. Raise it if the wand "
               + "lags behind a deliberate change of pose; lower it if a shot still throws "
               + "your aim off.");
+
+            HandPlacement = Config.Bind("Hands", "HandPlacement", 1,
+                "Where in the frame the hands are put on the controllers: 0 from the mod's own "
+              + "LateUpdate, 1 with the camera, 2 at the render.\n"
+              + "A hand has to be placed late enough to be measured from the eye the frame is "
+              + "drawn from, and early enough for Unity to still be listening. Both ends are "
+              + "real. The eye is not written until the game's own LateUpdate, which runs after "
+              + "every one of the mod's, so 0 anchors a hand where the eye was a frame ago -- "
+              + "measured at 30 to 80 mm while walking. But the hands are skinned meshes, and "
+              + "Unity freezes the bone matrices of those in PostLateUpdate, before anything is "
+              + "drawn, so 2 places them where nothing will read them until the next frame. Two "
+              + "different faults, both worth one frame, which is why neither looked much "
+              + "better than the other.\n"
+              + "1 is the point between: a postfix on the game's own camera update, inside its "
+              + "LateUpdate. The eye is final and the skinning has not happened yet. The other "
+              + "two are kept because this is the kind of claim that should be checkable from "
+              + "inside the headset rather than argued.");
 
             HandSteadiness = Config.Bind("Hands", "HandSteadiness", 0.5f,
                 "How much tremor is taken out of the controllers, from 0 to 1. Zero is "

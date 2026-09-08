@@ -281,6 +281,18 @@ namespace NobetaVR.Ui
 
             _items.Add(new Item
             {
+                Label = "Hands placed",
+                Value = () => cfg.HandPlacement.Value switch
+                {
+                    0 => "At LateUpdate",
+                    2 => "At the render",
+                    _ => "With the camera",
+                },
+                Adjust = d => cfg.HandPlacement.Value =
+                    ((cfg.HandPlacement.Value + (d > 0 ? 1 : 2)) % 3),
+            });
+            _items.Add(new Item
+            {
                 Label = "Hand steadiness",
                 Value = () => cfg.HandSteadiness.Value <= 0.001f
                     ? "Off"
@@ -703,7 +715,7 @@ namespace NobetaVR.Ui
                          cfg.HeadOffsetX, cfg.HeadOffsetY, cfg.HeadOffsetZ,
                          cfg.HeadBobbing, cfg.HeadHideDistance,
                          cfg.ThirdPersonInCutscenes, cfg.DisableDepthOfField,
-                         cfg.HandSteadiness,
+                         cfg.HandPlacement, cfg.HandSteadiness,
                          cfg.HandRotationPitch, cfg.HandRotationYaw, cfg.HandRotationRoll,
                          cfg.HoldWandStill, cfg.WandFollowSpeed,
                          cfg.AimFromHand,

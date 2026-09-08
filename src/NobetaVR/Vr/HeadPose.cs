@@ -72,21 +72,29 @@ namespace NobetaVR.Vr
         /// body, the aim and room-scale are all built from, and they have to agree with each
         /// other rather than with the newest reading available -- a second commit part way
         /// through a frame would hand room-scale a step the character had already been given.
-        /// So this derives the same three values against the same origin and commits none of
+        /// So this derives the same values against the same origin and commits none of
         /// them; the caller uses the result to place a camera and then throws it away.
+        ///
+        /// The untouched tracking-space reading comes back too. Anything placed against the
+        /// view has to measure its offset from the same headset reading the view was built
+        /// from -- the hands are the case, and measuring them from the frame's committed
+        /// sample while the camera sits on this one would put the head's own movement into
+        /// them twice.
         ///
         /// Returns false before the origin has been established, which is the frame XR comes
         /// up on and no other.
         /// </summary>
-        public static bool Peek(out Vector3 position, out Quaternion rotation, out Vector3 eyesFromNeck)
+        public static bool Peek(out Vector3 position, out Quaternion rotation,
+                                out Vector3 eyesFromNeck, out Vector3 raw)
         {
             position = default;
             rotation = Quaternion.identity;
             eyesFromNeck = default;
+            raw = default;
 
             if (!_originSet) return false;
 
-            var raw = InputTracking.GetLocalPosition(XRNode.CenterEye);
+            raw = InputTracking.GetLocalPosition(XRNode.CenterEye);
             rotation = InputTracking.GetLocalRotation(XRNode.CenterEye);
 
             position = raw - _origin;

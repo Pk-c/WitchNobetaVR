@@ -227,6 +227,19 @@ namespace NobetaVR.Vr
         internal static Quaternion ViewYaw { get; private set; } = Quaternion.identity;
 
         /// <summary>
+        /// The headset reading, in tracking space, that the camera now on screen was placed
+        /// from -- the frame's own sample normally, the render-time latch's fresher one once
+        /// the latch has run.
+        ///
+        /// Anything hung off the eye by a tracking-space offset has to subtract this one rather
+        /// than <see cref="HeadPose.Raw"/>. The hands are the case: their offset from the eye is
+        /// a controller reading minus a headset reading, and taking the headset from a different
+        /// instant than the camera was placed at leaves the difference between the two instants
+        /// in the hand, which is the head's own movement, added to a hand that already had it.
+        /// </summary>
+        internal static Vector3 ViewHeadRaw { get; private set; }
+
+        /// <summary>
         /// Where you are actually looking, flattened: the game's yaw with the headset's own
         /// rotation folded in.
         ///
@@ -496,6 +509,17 @@ namespace NobetaVR.Vr
             _latchHeadRot = headRot;
             _appliedFrame = Time.frameCount;
 
+            // The raw reading rather than headPos: room-scale rewrites headPos to leave the
+            // horizontal to the body, and what an offset from the eye has to be measured
+            // against is the headset where it actually was.
+            ViewHeadRaw = HeadPose.Raw;
+
+            // The hands, while the eye is final and the frame is still in LateUpdate. This is
+            // the one point that satisfies both ends of what a skinned mesh hung off the eye
+            // needs; see VrHands.PlaceWithCamera. Before VrAim below, so the aim it takes from
+            // the wand hand is this frame's.
+            VrHands.PlaceWithCamera();
+
             // Only now is the camera's real position known, and the head's visibility depends on
             // it. Deciding earlier would test last frame's position against this frame's bone.
             _firstPerson.UpdateHeadVisibility(_writtenPos);
@@ -524,6 +548,16 @@ namespace NobetaVR.Vr
         /// <see cref="Apply"/> and <see cref="Latch"/>. Two copies of it would be two chances
         /// for something welded to the view to be left off one of them, and the symptom of
         /// that is a single panel shaking while the rest hold still.
+        ///
+        /// <para>
+        /// The hands are the exception, and belong on this list only when the setting asks for
+        /// it. Everything else here is an ordinary mesh, whose transform the pipeline reads
+        /// during culling -- after this. The hands are skinned, and Unity freezes the bone
+        /// matrices of skinned meshes in PostLateUpdate, before it. So the latest possible
+        /// placement, which is the right answer for a panel, draws a hand from the previous
+        /// frame's pose. Theirs is <see cref="VrHands.PlaceWithCamera"/>, from
+        /// <see cref="Apply"/>, where the eye is final and the freeze has not happened yet.
+        /// </para>
         /// </summary>
         private void PlaceWeldedToView()
         {
@@ -532,6 +566,7 @@ namespace NobetaVR.Vr
             Ui.VrMenu.FollowView();
             Ui.AimReticle.FollowView();
             Ui.FpsCounter.FollowView();
+            VrHands.FollowView();
         }
 
         /// <summary>
@@ -588,7 +623,7 @@ namespace NobetaVR.Vr
             if (_latchedFrame == Time.frameCount) return;
             _latchedFrame = Time.frameCount;
 
-            if (!HeadPose.Peek(out var headPos, out var headRot, out var eyesFromNeck))
+            if (!HeadPose.Peek(out var headPos, out var headRot, out var eyesFromNeck, out var headRaw))
             {
                 Trace("no recentre origin yet, so there is no pose to express");
                 return;
@@ -608,6 +643,10 @@ namespace NobetaVR.Vr
 
             _writtenPos = _target.position;
             _writtenRot = _target.rotation;
+
+            // The view moved, so the reading everything welded to it measures from moves with
+            // it. Set before PlaceWeldedToView below, which is what reads it.
+            ViewHeadRaw = headRaw;
 
             // Placed from here rather than from Apply, and this is the frame Apply reads to
             // know to stand aside. Kept apart from _latchedFrame above: that one says this ran,

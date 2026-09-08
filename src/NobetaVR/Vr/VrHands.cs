@@ -58,8 +58,55 @@ namespace NobetaVR.Vr
         /// One per hand, because they are two independent signals and sharing a filter
         /// between them would let one hand's motion open the other's.
         /// </summary>
-        private readonly SteadyPose _leftSteady = new();
-        private readonly SteadyPose _rightSteady = new();
+        private readonly Steadied _leftSteady = new();
+        private readonly Steadied _rightSteady = new();
+
+        /// <summary>
+        /// A hand's filter, advanced once a frame however many times the hand is placed.
+        ///
+        /// A hand is normally placed once a frame, but not always: the fallback in
+        /// <see cref="LateUpdate"/> can place a hand that the camera then places again. A filter
+        /// stepped twice against one frame's worth of dt is a filter running at half the cutoff
+        /// it was asked for, so the pose is filtered on the first placement of a frame and the
+        /// result handed back unchanged on any second. Nothing is lost by that: the controller
+        /// reading does not change within a frame — measured, and exactly zero every time — and
+        /// what the second placement is for is the eye, not the hand.
+        /// </summary>
+        private sealed class Steadied
+        {
+            private readonly SteadyPose _filter = new();
+            private int _frame = -1;
+            private Vector3 _position;
+            private Quaternion _rotation = Quaternion.identity;
+
+            public void Reset()
+            {
+                _filter.Reset();
+                _frame = -1;
+            }
+
+            public void Apply(ref Vector3 position, ref Quaternion rotation)
+            {
+                if (_frame == Time.frameCount)
+                {
+                    position = _position;
+                    rotation = _rotation;
+                    return;
+                }
+
+                var cfg = Plugin.Instance;
+
+                if (cfg.HandSteadiness.Value > 0.001f)
+                {
+                    _filter.Apply(ref position, ref rotation, Time.unscaledDeltaTime,
+                                  cfg.HandSteadiness.Value, cfg.HandSteadinessResponse.Value);
+                }
+
+                _frame = Time.frameCount;
+                _position = position;
+                _rotation = rotation;
+            }
+        }
 
         /// <summary>
         /// Where the wand hand is and which way it points, in world space, or null on any
@@ -112,7 +159,27 @@ namespace NobetaVR.Vr
         }
 
         /// <summary>
-        /// Solves in LateUpdate, after the animator has posed the skeleton.
+        /// Decides in LateUpdate, after the animator has posed the skeleton; places from the
+        /// camera, in <see cref="PlaceWithCamera"/>.
+        ///
+        /// Whether the hands are out at all, whose skeleton they belong to and who owns the
+        /// arms are all questions about this frame, and this is after the animator, which is
+        /// where they have to be answered. Where the hands *go* is a different question, and
+        /// it was the wrong one to answer here.
+        ///
+        /// A hand sits at an offset from the eye, and the eye is not written until the game's
+        /// own LateUpdate — which runs after every one of the mod's, because the mod's host
+        /// object is created at load, long before any stage builds the WizardGirlManage that
+        /// drives the camera. So the anchor read from here was always a frame old: 30 to 80 mm
+        /// while walking, measured. Invisible standing still, and a tremor the moment the
+        /// anchor moves.
+        ///
+        /// The reticle had that fault and was fixed by moving to render time. The hands cannot
+        /// be: they are skinned meshes, and Unity freezes the bone matrices of those in
+        /// PostLateUpdate, before the render callback the reticle rides. Placed there they are
+        /// drawn from the previous frame's matrices, which is the same frame of error again
+        /// from the other end. Both were tried in the headset and neither was better than the
+        /// other, which is what the two faults being worth one frame each predicts.
         ///
         /// An attempt was made to move this to `Application.onBeforeRender`, which runs after
         /// every LateUpdate and would have settled the ordering by construction. It cannot be
@@ -164,15 +231,100 @@ namespace NobetaVR.Vr
             YieldTheArms(girl);
             SetFinalIkRestoring(girl.transform, false);
 
-            AimOrigin = null;
-
             if (!_detached.Attached)
                 _detached.Attach(_left.Upper, _left.Hand, _right.Upper, _right.Hand);
 
             _detached.SetShown(true);
 
+            // Placed later in the frame — see PlaceWithCamera — unless this is the placement
+            // the setting asked for, or unless nothing placed them last frame. That last one is
+            // the safety net: if the camera path is not running at all, the hands are shown and
+            // nobody is moving them, and hands frozen in the air are worse than hands placed
+            // against a stale anchor. A frame's grace rather than none, because this runs
+            // before the placements that would clear it.
+            if (Plugin.Instance.HandPlacement.Value == FromLateUpdate
+             || _placedFrame < Time.frameCount - 1)
+                Place();
+        }
+
+        /// <summary>Where in the frame the hands are put on the controllers; see the setting.</summary>
+        private const int FromLateUpdate = 0;
+        private const int WithCamera = 1;
+        private const int AtRender = 2;
+
+        /// <summary>
+        /// Puts the hands where the controllers are, from the postfix on the game's own camera
+        /// update — the default, and the only one of the three placements with nothing wrong
+        /// with it.
+        ///
+        /// The eye has just been written, so the anchor is this frame's rather than last
+        /// frame's. And this is still inside a LateUpdate, so Unity has not yet frozen the bone
+        /// matrices of the skinned meshes the hands are made of — which is what happens to the
+        /// placement at render time, and why moving that placement later did not help.
+        /// </summary>
+        internal static void PlaceWithCamera()
+        {
+            // Anything that is not one of the other two, rather than an equality test on this
+            // one: a number typed into the config file that matches no placement would
+            // otherwise leave the hands to the fallback in LateUpdate, which is a visibly
+            // broken hand rather than a setting quietly out of range. This also keeps the
+            // behaviour and the menu's own label, which defaults the same way, in agreement.
+            var placement = Plugin.Instance.HandPlacement.Value;
+            if (placement == FromLateUpdate || placement == AtRender) return;
+
+            PlaceIfShown();
+        }
+
+        /// <summary>
+        /// The render-time placement, from <see cref="VrCamera"/>'s welded list. Kept for
+        /// comparison; see the setting for why it is not the default.
+        /// </summary>
+        internal static void FollowView()
+        {
+            if (Plugin.Instance.HandPlacement.Value != AtRender) return;
+            PlaceIfShown();
+        }
+
+        private static void PlaceIfShown()
+        {
+            var self = Instance;
+            if (self == null || !PlayerInControl || !self._detached.Attached) return;
+
+            self.Place();
+        }
+
+        /// <summary>The frame the hands were last put on the controllers; see LateUpdate.</summary>
+        private int _placedFrame = -1;
+
+        private void Place()
+        {
+            var controls = VrControls.Instance;
+            if (controls == null) return;
+
+            _placedFrame = Time.frameCount;
+
+            // Cleared here rather than in LateUpdate, where it used to be. Nulling it there and
+            // filling it in from the placement would leave it null for the whole LateUpdate
+            // phase now that the placement happens after it, and melee reads it from a
+            // LateUpdate of its own.
+            AimOrigin = null;
+
             PlaceDetached(controls.Input, _left, XRNode.LeftHand, true);
             PlaceDetached(controls.Input, _right, XRNode.RightHand, false);
+        }
+
+        /// <summary>One controller reading, or false if the device is not there this frame.</summary>
+        private static bool ReadController(Input.VrInput input, XRNode node,
+                                           out Vector3 position, out Quaternion rotation)
+        {
+            position = default;
+            rotation = Quaternion.identity;
+
+            // The handle this frame's poll already resolved; see VrInput.TryDevice.
+            if (input == null || !input.TryDevice(node, out var device)) return false;
+
+            return InputDevices.TryGetFeatureValue_Vector3f(device.deviceId, "DevicePosition", out position)
+                && InputDevices.TryGetFeatureValue_Quaternionf(device.deviceId, "DeviceRotation", out rotation);
         }
 
         /// <summary>
@@ -518,12 +670,7 @@ namespace NobetaVR.Vr
         {
             if (arm.Hand == null) return;
 
-            // The handle this frame's poll already resolved; see VrInput.TryDevice.
-            if (input == null || !input.TryDevice(node, out var device)) return;
-
-            if (!InputDevices.TryGetFeatureValue_Vector3f(device.deviceId, "DevicePosition", out var position)
-             || !InputDevices.TryGetFeatureValue_Quaternionf(device.deviceId, "DeviceRotation", out var rotation))
-                return;
+            if (!ReadController(input, node, out var position, out var rotation)) return;
 
             var camera = VrCamera.CameraTransform;
             if (camera == null) return;
@@ -534,15 +681,17 @@ namespace NobetaVR.Vr
             // The tremor is invisible on the hand and plain at the end of the aim ray —
             // one lever, not two faults — and filtering the two separately would let the
             // hand and the mark disagree about where you are pointing.
-            if (cfg.HandSteadiness.Value > 0.001f)
-            {
-                (left ? _leftSteady : _rightSteady).Apply(
-                    ref position, ref rotation, Time.unscaledDeltaTime,
-                    cfg.HandSteadiness.Value, cfg.HandSteadinessResponse.Value);
-            }
+            (left ? _leftSteady : _rightSteady).Apply(ref position, ref rotation);
 
             var controllerWorld = VrCamera.ViewYaw * rotation;
-            var world = camera.position + VrCamera.ViewYaw * (position - HeadPose.Raw);
+
+            // Measured from the headset reading the camera on screen was placed from, rather
+            // than from the frame's committed sample. The two are the same reading in the
+            // default placement and differ under the render-time one, where the camera has
+            // been rebuilt on a fresher head: subtracting the older sample there would leave
+            // the difference between the two instants in the hand, which is the head's own
+            // movement, added to a hand that already had it.
+            var world = camera.position + VrCamera.ViewYaw * (position - VrCamera.ViewHeadRaw);
 
             // The rig's own rest orientation does the work of matching a controller's
             // convention to a Biped hand bone's axes; the three Euler values on top are the
