@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 
 namespace NobetaVR.Input
@@ -227,9 +227,19 @@ namespace NobetaVR.Input
         /// Sharing two buttons between three actions only works if the combination can be told
         /// from its halves, and the two halves are not alike. Focus is a hold the game tracks
         /// itself, so it can start immediately and be taken back if the other grip joins it.
-        /// Cycling is a one-shot, and a one-shot cannot be taken back — so it waits out the
-        /// window instead. An item step that arrives a fifth of a second late is not something
-        /// you notice; a recentre that also changed your item is.
+        /// Cycling is a one-shot, and a one-shot cannot be taken back — so it may not fire on
+        /// the press.
+        ///
+        /// <para>
+        /// It fires on the release instead, or on the window running out while the grip is
+        /// still down, whichever comes first. Letting go inside the window is itself the proof
+        /// that this was never half a recentre — that needs both grips down at once, and one
+        /// of them is now up — so there is nothing left to wait for. Which is what makes a tap
+        /// a tap: the item steps when your finger comes off, rather than a fifth of a second
+        /// after it went on. Waiting the window out was the first cut of this and was wrong in
+        /// exactly the way a delay is always wrong on a button you press to change something
+        /// you are looking at.
+        /// </para>
         ///
         /// The window also runs the other way. Both grips down is only a recentre if they went
         /// down together: holding focus and then reaching for an item is an ordinary thing to
@@ -243,6 +253,8 @@ namespace NobetaVR.Input
             var right = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Grip);
             var now = Time.unscaledTime;
             var window = Plugin.Instance.RecentreGripWindow.Value;
+
+            var leftReleased = !left && _leftGripHeld;
 
             if (left && !_leftGripHeld) { _leftGripAt = now; _cyclePending = true; }
             if (right && !_rightGripHeld) _rightGripAt = now;
@@ -263,15 +275,25 @@ namespace NobetaVR.Input
             if (!left && !right) _gripsConsumed = false;
             if (_gripsConsumed) return;
 
-            if (!left) _cyclePending = false;
+            if (!left)
+            {
+                if (leftReleased && _cyclePending) CycleItem();
+                _cyclePending = false;
+            }
             else if (_cyclePending && now - _leftGripAt >= window)
             {
                 _cyclePending = false;
-                if (Plugin.Instance.ItemCycleForward.Value) InputController.SelectItemRightward();
-                else InputController.SelectItemLeftward();
+                CycleItem();
             }
 
             Aim(right);
+        }
+
+        /// <summary>One step along the item bar, in whichever direction the setting asks for.</summary>
+        private void CycleItem()
+        {
+            if (Plugin.Instance.ItemCycleForward.Value) InputController.SelectItemRightward();
+            else InputController.SelectItemLeftward();
         }
 
         /// <summary>

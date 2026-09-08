@@ -200,7 +200,12 @@ namespace NobetaVR.Vr
             // No character to put hands on at all: the title screen, a loading screen, the
             // gap between stages. Said out loud rather than returned quietly, because
             // anything keyed off it has to stand down too.
-            if (girl == null || !Bind(girl.transform))
+            // Settled before the bind rather than after it, because the bind is where the wrist
+            // calibration is taken and that reading is only worth anything on a body the game
+            // has finished doing things to; see TakeRest.
+            var hasControl = girl != null && PlayerHasControl(controls, girl);
+
+            if (girl == null || !Bind(girl.transform, hasControl))
             {
                 SetInControl(false);
                 return;
@@ -212,7 +217,7 @@ namespace NobetaVR.Vr
             // conversation is not a trade worth making for hands nobody is holding. The
             // cut-out hands are kept rather than rebuilt: cutting them out of the mesh
             // costs a visible hitch, and every doorway would pay it twice.
-            SetInControl(PlayerHasControl(controls, girl));
+            SetInControl(hasControl);
 
             if (!PlayerInControl)
             {
@@ -311,6 +316,50 @@ namespace NobetaVR.Vr
 
             PlaceDetached(controls.Input, _left, XRNode.LeftHand, true);
             PlaceDetached(controls.Input, _right, XRNode.RightHand, false);
+        }
+
+        /// <summary>
+        /// Puts one controller reading into the world, against the view the camera on screen
+        /// was placed from.
+        ///
+        /// The head is subtracted from the headset reading the camera was placed from rather
+        /// than from the frame's committed sample. The two are the same reading in the default
+        /// placement and differ under the render-time one, where the camera has been rebuilt on
+        /// a fresher head: subtracting the older sample there would leave the difference between
+        /// the two instants in the hand, which is the head's own movement, added to a hand that
+        /// already had it.
+        /// </summary>
+        private static void Compose(Transform camera, Vector3 position, Quaternion rotation,
+                                    out Vector3 world, out Quaternion controllerWorld)
+        {
+            controllerWorld = VrCamera.ViewYaw * rotation;
+            world = camera.position + VrCamera.ViewYaw * (position - VrCamera.ViewHeadRaw);
+        }
+
+        /// <summary>
+        /// Where one controller is right now, for anything worn on it that outlives the hands.
+        ///
+        /// Unsteadied, and deliberately so. <see cref="SteadyPose"/> is a filter with state, and
+        /// there is exactly one of it per hand because the hand and the shot have to agree; a
+        /// second caller stepping it would be a second reading of one thing, which is the fault
+        /// <see cref="Ui.WristGauges.Follow"/> exists to avoid. This is the other case — the
+        /// hands are not being placed at all, so the filter is not running and there is nothing
+        /// to agree with. What is left is the raw pose, which is what a thing on its way out
+        /// wants: it only has to stay on the wrist while it goes.
+        /// </summary>
+        internal static bool TryWristPose(XRNode node, out Vector3 world,
+                                          out Quaternion controllerWorld)
+        {
+            world = default;
+            controllerWorld = Quaternion.identity;
+
+            var controls = VrControls.Instance;
+            var camera = VrCamera.CameraTransform;
+            if (controls == null || camera == null) return false;
+            if (!ReadController(controls.Input, node, out var position, out var rotation)) return false;
+
+            Compose(camera, position, rotation, out world, out controllerWorld);
+            return true;
         }
 
         /// <summary>One controller reading, or false if the device is not there this frame.</summary>
@@ -467,7 +516,7 @@ namespace NobetaVR.Vr
         ///
         /// The chain is logged the first time. Reading it off the rig beats assuming it.
         /// </summary>
-        private bool Bind(Transform root)
+        private bool Bind(Transform root, bool settled)
         {
             if (ReferenceEquals(root, _boundRoot) && _left.Valid && _right.Valid) return true;
 
@@ -508,8 +557,11 @@ namespace NobetaVR.Vr
             Resolve(_left, bones, "l hand", "lefthand", "l_hand", "l upperarm", "leftarm", "l_upperarm");
             Resolve(_right, bones, "r hand", "righthand", "r_hand", "r upperarm", "rightarm", "r_upperarm");
 
-            if (_left.Valid) TakeRest(_left, root);
-            if (_right.Valid) TakeRest(_right, root);
+            if (settled)
+            {
+                if (_left.Valid) TakeRest(_left, root);
+                if (_right.Valid) TakeRest(_right, root);
+            }
 
             if (!_reported)
             {
@@ -543,6 +595,26 @@ namespace NobetaVR.Vr
         /// survives every death of the session. A genuinely different skeleton has a different
         /// path and is measured afresh.
         ///
+        /// <para>
+        /// Holding it fixes the session and says nothing about the next one, because what is
+        /// held is still the first reading and the first reading was still whatever frame the
+        /// bind caught. A stage opening is the worst possible moment to ask: she is being
+        /// placed, faded in and walked onto a mark, and which of those the first bound frame
+        /// lands in is a race with the loader that comes out differently every launch. So the
+        /// measurement now waits for a body the game has finished doing things to — the same
+        /// "she is yours to move" test the hands themselves stand down on — and the pose it
+        /// reads is a gameplay idle rather than a stage entrance. The hands are not drawn
+        /// before that moment either, so nothing is waiting on a calibration that has not been
+        /// taken.
+        /// </para>
+        ///
+        /// <para>
+        /// What is measured is logged, not just what a second body would have differed by. Two
+        /// launches of the same stage should now print the same angles, and that line is the
+        /// only way to tell a calibration that moved from a controller that was held
+        /// differently.
+        /// </para>
+        ///
         /// What a second reading *would* have been is logged when there is one, because that
         /// difference is the whole of the fault above and one line settles whether it is really
         /// what moved.
@@ -556,6 +628,11 @@ namespace NobetaVR.Vr
             {
                 RestByRig[key] = measured;
                 arm.RestRelativeToBody = measured;
+
+                var angles = measured.eulerAngles;
+                Plugin.Log.LogInfo($"wrist calibration for {arm.Hand.name}: "
+                                 + $"{angles.x:F1}, {angles.y:F1}, {angles.z:F1} "
+                                 + "(relative to her body, taken once she was controllable)");
                 return;
             }
 
@@ -683,15 +760,7 @@ namespace NobetaVR.Vr
             // hand and the mark disagree about where you are pointing.
             (left ? _leftSteady : _rightSteady).Apply(ref position, ref rotation);
 
-            var controllerWorld = VrCamera.ViewYaw * rotation;
-
-            // Measured from the headset reading the camera on screen was placed from, rather
-            // than from the frame's committed sample. The two are the same reading in the
-            // default placement and differ under the render-time one, where the camera has
-            // been rebuilt on a fresher head: subtracting the older sample there would leave
-            // the difference between the two instants in the hand, which is the head's own
-            // movement, added to a hand that already had it.
-            var world = camera.position + VrCamera.ViewYaw * (position - VrCamera.ViewHeadRaw);
+            Compose(camera, position, rotation, out var world, out var controllerWorld);
 
             // The rig's own rest orientation does the work of matching a controller's
             // convention to a Biped hand bone's axes; the three Euler values on top are the
@@ -706,6 +775,19 @@ namespace NobetaVR.Vr
             // The wrist gauges are worn on this hand, so they are placed from this pose rather
             // than from a second sample of the same controller — see WristGauges.Follow for why
             // a second sample is not the same pose.
+            //
+            // The controller's frame, not the hand's, and that is the whole of it: the bands'
+            // rest pose was measured on a controller, and a controller is held the same way
+            // every time the game is launched. The hand's frame is not, because it is the
+            // controller's turned by the rig calibration — see TakeRest — and the bands were
+            // briefly hung off it so they would follow the three hand-rotation adjustments.
+            // That works out as `C · R · U · R⁻¹`, which is the taste offset U turned about an
+            // axis that R decides: it cancels to C exactly while U is zero, and the moment it
+            // is not, the bands inherit every wobble in a calibration read off whatever pose
+            // the animator had her in on the frame the mod bound to her. Which is a different
+            // pose from one launch to the next, and it showed as the bands sitting somewhere
+            // new each time the game started. The bands have their own three angles for taste;
+            // they do not need the hand's.
             if (left) Ui.WristGauges.Follow(world, controllerWorld);
 
             // The wand is in the right hand, so that is the one aiming. The direction is taken

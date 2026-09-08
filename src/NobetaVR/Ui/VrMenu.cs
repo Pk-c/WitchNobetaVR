@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using Il2CppInterop.Runtime;
@@ -222,6 +222,13 @@ namespace NobetaVR.Ui
                 Label = "Dodge",
                 Value = () => cfg.DodgeAlwaysBackstep.Value ? "Always hop" : "Game's choice",
                 Adjust = _ => cfg.DodgeAlwaysBackstep.Value = !cfg.DodgeAlwaysBackstep.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Grip pressure",
+                Value = () => $"{cfg.GripThreshold.Value * 100f:F0}%",
+                Adjust = d => cfg.GripThreshold.Value =
+                    Mathf.Clamp(cfg.GripThreshold.Value + d * 0.05f, 0.05f, 1f),
             });
 
             _items.Add(new Item { Label = "", IsHeading = true });
@@ -712,6 +719,7 @@ namespace NobetaVR.Ui
             foreach (var entry in new BepInEx.Configuration.ConfigEntryBase[]
                      {
                          cfg.SmoothTurn, cfg.SnapTurnDegrees, cfg.SmoothTurnSpeed,
+                         cfg.GripThreshold,
                          cfg.HeadOffsetX, cfg.HeadOffsetY, cfg.HeadOffsetZ,
                          cfg.HeadBobbing, cfg.HeadHideDistance,
                          cfg.ThirdPersonInCutscenes, cfg.DisableDepthOfField,

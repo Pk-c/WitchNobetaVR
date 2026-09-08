@@ -90,7 +90,7 @@ Touch-style controllers. Everything here is remappable from
 | Y, held two seconds | The game's pause menu |
 | Left trigger | Pray, to take her mana back |
 | Right trigger | Shoot |
-| Left grip | Step through the items |
+| Left grip | Step through the items — a tap is enough |
 | Right grip | Focus — the game's held shot |
 | Both grips together | Recentre: puts your head back on Nobeta |
 | Both sticks clicked | The mod's VR settings |
@@ -101,6 +101,11 @@ interact happens when you let go rather than when you press. The grips recentre 
 squeezed together — squeeze the second one later and it means what it says on its own, so
 you can reach for an item without losing your focus. And the right stick stops turning while
 the wheel is up, since that is the stick pointing around it.
+
+The grips are read off their own axis rather than from the runtime's grip button, which on
+Touch only registers when the squeeze is most of the way in. *Grip pressure* in the VR menu
+is where that threshold lives if a light squeeze is still not light enough, or if a resting
+finger is changing your item.
 
 In the game's own menus the buttons mean what they mean on a pad: the left stick moves,
 **A** confirms, **B** goes back, and the grips page left and right. Two more are worth

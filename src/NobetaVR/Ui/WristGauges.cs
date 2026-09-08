@@ -106,19 +106,30 @@ namespace NobetaVR.Ui
         // -- palette ---------------------------------------------------------------------
 
         /// <summary>
-        /// Blue, violet, red, stacked in that order down the arm.
+        /// Taken from Nobeta rather than from a colour wheel: soul blue, the deep purple of her
+        /// magic, and the red of her ribbon, stacked in that order down the arm.
         ///
-        /// The violet is the one that had to be chosen rather than given, and it is chosen for
-        /// distance from the blue it sits next to: light and leaning towards magenta, at an L*
-        /// of about 65 against the blue's 52 and the red's 35. Blue against violet is the
-        /// pairing here that gets closest — it is what red against green was in the previous
-        /// palette — and hue alone will not separate them at five millimetres across a room,
-        /// so the gap is carried in lightness, which survives peripheral vision, colour
-        /// blindness and the bloom a headset puts on a saturated colour.
+        /// <para>
+        /// The discipline behind it is what makes the bands readable rather than merely pretty.
+        /// Hue alone will not separate five millimetres of colour across a room — that is under
+        /// a degree of arc, where hue discrimination has largely given out — so the gap between
+        /// two bands is carried in lightness, which survives peripheral vision, colour blindness
+        /// and the bloom a headset puts on a saturated colour. Only the adjacent pairs have to
+        /// be told apart, since those are the two that are ever seen edge to edge.
+        /// </para>
+        ///
+        /// <para>
+        /// A deep purple is the darkest of the three by some way, at an L* of about 32, so it
+        /// is the band that sets what the other two have to do. Blue at 57 clears it by
+        /// twenty-five. The red had to come up to meet it: at the L* of 40 it was, purple
+        /// against red was two dark bands touching, separated by a hue difference this size of
+        /// mark cannot carry. At 51 it clears the purple by nineteen and reads as the same
+        /// ribbon red, only lit rather than deep.
+        /// </para>
         /// </summary>
-        private static readonly Color Mana = new(0.020f, 0.510f, 0.792f);     // #0582CA
-        private static readonly Color Stamina = new(0.780f, 0.490f, 1.000f);  // #C77DFF
-        private static readonly Color Health = new(0.639f, 0.086f, 0.129f);   // #A31621
+        private static readonly Color Mana = new(0.243f, 0.561f, 0.796f);     // #3E8FCB
+        private static readonly Color Stamina = new(0.416f, 0.173f, 0.569f);  // #6A2C91
+        private static readonly Color Health = new(0.878f, 0.220f, 0.298f);   // #E0384C
 
         /// <summary>
         /// The unlit channel each band runs in. Dark, and not black: an invisible trough shows
@@ -272,6 +283,16 @@ namespace NobetaVR.Ui
             if (_failed || _root == null) return;
             if (_drivenFrame >= Time.frameCount - 1) return;
 
+            // Kept on the wrist while they go out. Nothing is driving the placement any more,
+            // so the transform still holds the pose of the frame the hands were taken away on
+            // — and the fade is long enough to walk an arm out from under it, which reads as
+            // three lit bands left hanging in the air at the last place a hand was. Worse on
+            // the way back: a stage load moves the world underneath a set of bands that were
+            // never told, so they come back at a pose that has nothing to do with anywhere.
+            if (_alpha > Invisible
+             && VrHands.TryWristPose(UnityEngine.XR.XRNode.LeftHand, out var wrist, out var held))
+                Place(wrist, held);
+
             FadeTo(0f);
         }
 
@@ -279,8 +300,11 @@ namespace NobetaVR.Ui
         {
             if (_root == null && !Build()) return;
 
+            // No character to read: a stage load, or the gap between one body and the next.
+            // Placed anyway, for the reason in LateUpdate — the bands are on their way out,
+            // and they have to go out on the wrist rather than wherever they last were.
             var data = CharacterData();
-            if (data == null) { FadeTo(0f); return; }
+            if (data == null) { Place(handPosition, controllerRotation); FadeTo(0f); return; }
 
             Place(handPosition, controllerRotation);
             Read(data);
@@ -652,9 +676,9 @@ namespace NobetaVR.Ui
             _material.SetInt("unity_GUIZTestMode", (int)UnityEngine.Rendering.CompareFunction.LessEqual);
             _material.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.LessEqual);
 
-            // Blue, violet, red down the arm. Health is at the end of the run rather than the
-            // start of it, which puts the one you cannot afford to miss nearest your hand —
-            // and cool to warm reads as an ascending scale of how much it matters.
+            // Soul blue, deep purple, ribbon red down the arm. Health is at the end of the run
+            // rather than the start of it, which puts the one you cannot afford to miss nearest
+            // your hand — and cool to warm reads as an ascending scale of how much it matters.
             _bands[0] = MakeBand("Mana", new Bar
             {
                 Colour = Mana, Warned = Warn(Mana), Read = d => Fraction(d.GetMP(), d.GetMPMax()),

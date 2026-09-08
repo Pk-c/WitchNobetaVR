@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Unity.IL2CPP;
@@ -48,6 +48,7 @@ namespace NobetaVR
         internal ConfigEntry<float> SmoothTurnSpeed;
         internal ConfigEntry<float> PauseHoldSeconds;
         internal ConfigEntry<float> RecentreGripWindow;
+        internal ConfigEntry<float> GripThreshold;
         internal ConfigEntry<bool> ItemCycleForward;
         internal ConfigEntry<bool> RoomScale;
         internal ConfigEntry<float> RoomScaleMaxStep;
@@ -481,6 +482,15 @@ namespace NobetaVR
               + "press: until the button comes back up there is no telling which of the two you "
               + "meant.");
 
+            GripThreshold = Config.Bind(
+                "Controls", "GripThreshold", 0.35f,
+                "How far a grip must be squeezed before it counts as pressed, from 0 to 1. "
+              + "Read off the analog squeeze rather than from the runtime's own grip button, "
+              + "which on Touch does not register until the trigger is most of the way in - "
+              + "fine for grabbing something, and far too firm for a button you tap to step "
+              + "through your items. Lower is lighter; it releases at 60% of this, so a finger "
+              + "resting near the threshold cannot chatter through your item bar.");
+
             RecentreGripWindow = Config.Bind(
                 "Controls", "RecentreGripWindow", 0.2f,
                 "How close together the two grips must be squeezed to count as recentring "
@@ -642,30 +652,30 @@ namespace NobetaVR
               + "air where a hand is not would be worse than no bands at all.");
 
             WristGaugeRadius = Config.Bind(
-                "Interface", "WristGaugeRadius", 0.045f,
+                "Interface", "WristGaugeRadius", 0.0275f,
                 "How far the bands sit from the centre of your wrist, in metres. This is the "
               + "one to set first: it is the size of the wrist they are worn on, and the two "
               + "below are proportions of the band rather than of you.");
 
             WristGaugeThickness = Config.Bind(
-                "Interface", "WristGaugeThickness", 0.006f,
+                "Interface", "WristGaugeThickness", 0.0045f,
                 "How thick each band is, in metres — the radius of the tube, so a band stands "
               + "this far off your wrist and is twice this across.");
 
             WristGaugeSpacing = Config.Bind(
-                "Interface", "WristGaugeSpacing", 0.015f,
+                "Interface", "WristGaugeSpacing", 0.010f,
                 "Gap between one band and the next along your forearm, in metres. A negative "
               + "value stacks them the other way, which is the whole of the fix if they come "
               + "out with mana at your hand rather than at your elbow.");
 
             WristGaugeArc = Config.Bind(
-                "Interface", "WristGaugeArc", 200f,
+                "Interface", "WristGaugeArc", 160f,
                 "How far round your wrist a full band reaches, in degrees. Rather more than a "
               + "half turn by default: the part you cannot see is not wasted, it is what makes "
               + "a full gauge read as a closed band rather than as a strip that stops.");
 
             WristGaugeGlow = Config.Bind(
-                "Interface", "WristGaugeGlow", 1.6f,
+                "Interface", "WristGaugeGlow", 1.2f,
                 "How far past full brightness the lit part of a band is driven. There is no way "
               + "to ask the game's post-processing for bloom from here, so this is the nearest "
               + "honest thing: on a camera rendering to an HDR buffer a colour above 1 is "
@@ -674,7 +684,7 @@ namespace NobetaVR
               + "colours exactly as they are set.");
 
             WristGaugeOpacity = Config.Bind(
-                "Interface", "WristGaugeOpacity", 0.9f,
+                "Interface", "WristGaugeOpacity", 0.85f,
                 "How solid the wrist gauges are, from 0 to 1.");
 
             WristGaugeFillSpeed = Config.Bind(
@@ -694,16 +704,19 @@ namespace NobetaVR
                 "Offset of the wrist gauges up the panel, in metres.");
 
             WristGaugeOffsetZ = Config.Bind(
-                "Interface", "WristGaugeOffsetZ", 0f,
+                "Interface", "WristGaugeOffsetZ", -0.01f,
                 "Offset of the wrist gauges out of their own face, in metres. Positive lifts "
-              + "them off your wrist and towards you.");
+              + "them off your wrist and towards you; the default sits them a centimetre back, "
+              + "which is where the forearm is rather than where the grip is.");
 
             WristGaugePitch = Config.Bind(
                 "Interface", "WristGaugePitch", 0f,
                 "Tilt of the wrist gauges, in degrees, from how they sit by default. Zero is "
               + "upright on the wrist: the resting pose is measured on a real controller and "
               + "baked in, so all three angles here are small corrections rather than the thing "
-              + "carrying the whole orientation.");
+              + "carrying the whole orientation. Confirmed in the headset — with the bands hung "
+              + "off the controller's frame, where they were measured, all three want to be "
+              + "zero and the geometry above is the whole of the fit.");
 
             WristGaugeYaw = Config.Bind(
                 "Interface", "WristGaugeYaw", 0f,

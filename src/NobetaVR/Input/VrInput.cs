@@ -35,6 +35,13 @@ namespace NobetaVR.Input
         private const string Primary2DAxisClick = "Primary2DAxisClick";
         private const string TriggerButton = "TriggerButton";
         private const string GripButton = "GripButton";
+
+        /// <summary>
+        /// The squeeze as a number rather than as a verdict; see <see cref="Squeeze"/>.
+        /// Declared alongside the button in <see cref="Xr.XrActionSet"/>, on the same
+        /// <c>/input/squeeze/value</c> path, so both are already there to be read.
+        /// </summary>
+        private const string GripAxis = "Grip";
         private const string PrimaryButton = "PrimaryButton";
         private const string SecondaryButton = "SecondaryButton";
         private const string MenuButton = "MenuButton";
@@ -85,6 +92,12 @@ namespace NobetaVR.Input
                 if (Held(_left, _leftValid, usage)) held |= 1 << b;
                 if (Held(_right, _rightValid, usage)) held |= 1 << (b + Buttons);
             }
+
+            // The grip is settled from the analog squeeze rather than from the runtime's own
+            // button; see Squeeze. Before `_held` is replaced, because the hysteresis there
+            // reads the previous frame out of it.
+            held = Squeeze(held, _left, _leftValid, 0);
+            held = Squeeze(held, _right, _rightValid, Buttons);
 
             _held = held;
 
@@ -142,6 +155,45 @@ namespace NobetaVR.Input
             if (!valid) return Vector2.zero;
             return InputDevices.TryGetFeatureValue_Vector2f(device.deviceId, usage, out var v)
                 ? v : Vector2.zero;
+        }
+
+        /// <summary>
+        /// How far the squeeze falls back before the grip counts as released, as a fraction of
+        /// the press threshold. A single threshold chatters: a finger held near it crosses it
+        /// several times a second, and each crossing is a fresh press to everything reading an
+        /// edge — which on the left grip is an item change.
+        /// </summary>
+        private const float ReleaseFraction = 0.6f;
+
+        /// <summary>
+        /// Replaces one hand's grip bit with a verdict taken from the analog squeeze.
+        ///
+        /// <c>GripButton</c> is the runtime's own answer to the same question, and on Touch it
+        /// is a hard one: the press does not register until the squeeze is most of the way in,
+        /// which is fine for a grab and wrong for a button you tap to step through your items.
+        /// The axis underneath it is the same input without the verdict attached, so the
+        /// threshold becomes a setting instead of the runtime's business.
+        ///
+        /// <para>
+        /// The runtime's button is kept as a floor rather than discarded. A controller that
+        /// reports no analog squeeze at all — and the profile is suggested to runtimes that
+        /// remap it onto hardware we have never seen — would otherwise lose the grip
+        /// entirely, so the two are OR'd: a lighter threshold can only ever add presses.
+        /// </para>
+        /// </summary>
+        private int Squeeze(int held, InputDevice device, bool valid, int shift)
+        {
+            var bit = 1 << ((int)Button.Grip + shift);
+            if (!valid) return held & ~bit;
+
+            if (!InputDevices.TryGetFeatureValue_float(device.deviceId, GripAxis, out var pull))
+                return held;
+
+            var press = Mathf.Clamp(Plugin.Instance.GripThreshold.Value, 0.05f, 1f);
+            var down = (held & bit) != 0
+                    || pull >= ((_held & bit) != 0 ? press * ReleaseFraction : press);
+
+            return down ? held | bit : held & ~bit;
         }
 
         private static bool Held(InputDevice device, bool valid, string usage)
