@@ -46,7 +46,59 @@ namespace NobetaVR.Vr
             /// </summary>
             public Quaternion RestRelativeToBody = Quaternion.identity;
 
+            /// <summary>Whether <see cref="RestRelativeToBody"/> holds a real reading yet.</summary>
+            public bool RestTaken;
+
             public bool Valid => Upper != null && Fore != null && Hand != null;
+
+            /// <summary>
+            /// Whether this hand has been holding one pose long enough for the pose to be worth
+            /// calibrating on, and how long it has been asked. See <see cref="TakeRest"/>.
+            ///
+            /// Movement between consecutive frames rather than against the first reading: what
+            /// disqualifies a pose is that it is on its way somewhere, and an animation on its
+            /// way somewhere moves every frame. An idle does not — a breath at the wrist is a
+            /// fraction of a degree — so the threshold has a factor of several either side of
+            /// it rather than being a line drawn through the middle of the two cases.
+            /// </summary>
+            public bool HoldingStill(Quaternion measured, float now, out float waited, out float moved)
+            {
+                if (!_asked)
+                {
+                    _asked = true;
+                    _askedSince = now;
+                    _stillSince = now;
+                    _last = measured;
+                }
+
+                moved = Quaternion.Angle(_last, measured);
+                _last = measured;
+                if (moved > StillWithin) _stillSince = now;
+
+                waited = now - _askedSince;
+                return now - _stillSince >= StillFor;
+            }
+
+            public void ForgetStillness() => _asked = false;
+
+            private bool _asked;
+            private float _askedSince;
+            private float _stillSince;
+            private Quaternion _last = Quaternion.identity;
+
+            /// <summary>Degrees between frames a hand may move and still count as held.</summary>
+            private const float StillWithin = 1.5f;
+
+            /// <summary>How long it must stay within that, in seconds.</summary>
+            private const float StillFor = 0.3f;
+
+            /// <summary>
+            /// How long the calibration will wait for a hand that never holds still, in seconds,
+            /// before taking whatever pose it has. The hands are not drawn until it is taken, so
+            /// this cannot be allowed to wait forever — a reading late is a wrist a little off,
+            /// where no reading at all is no hands.
+            /// </summary>
+            public const float WaitAtMost = 3f;
         }
 
         private readonly Arm _left = new();
@@ -203,7 +255,8 @@ namespace NobetaVR.Vr
             // Settled before the bind rather than after it, because the bind is where the wrist
             // calibration is taken and that reading is only worth anything on a body the game
             // has finished doing things to; see TakeRest.
-            var hasControl = girl != null && PlayerHasControl(controls, girl);
+            var hasControl = girl != null && PlayerHasControl(controls, girl)
+                          && VrCamera.ViewIsYours;
 
             if (girl == null || !Bind(girl.transform, hasControl))
             {
@@ -387,6 +440,20 @@ namespace NobetaVR.Vr
         /// And a bound UI controller means a menu is up, which stops her without touching
         /// either of the other two.
         /// </summary>
+        /// <remarks>
+        /// The caller adds a fifth reading to this, <see cref="VrCamera.ViewIsYours"/>, and the
+        /// wrist calibration is why. Loading a save does not go through any of the states below:
+        /// she is `Normal` and reported controllable from the first frame of the stage while the
+        /// game is still placing her, waking her against the save pillar and standing her up —
+        /// her body was measured at 0 degrees on the frame this used to fire and at 225 by the
+        /// time she was on her feet. So the calibration was read off whatever the animator had
+        /// her wrists doing at a moment that comes out differently every launch: 38.2, 205.1,
+        /// 117.6 one run against 7.5, 179.7, 155.6 the next, on the same rig in the same stage.
+        /// It multiplies the hand's rotation, so the hand turned by the difference while the
+        /// wrist gauges — worn on the controller's own frame — stayed put, and the bands read as
+        /// having moved off the wrist. The view's own handover is the reading that covers it,
+        /// because it is the one that waits for a body the game has stopped moving.
+        /// </remarks>
         private static bool PlayerHasControl(VrControls controls, WizardGirlManage girl)
         {
             if (BodyFacing.Mode != PlayerCamera.CameraMode.Normal) return false;
@@ -518,7 +585,15 @@ namespace NobetaVR.Vr
         /// </summary>
         private bool Bind(Transform root, bool settled)
         {
-            if (ReferenceEquals(root, _boundRoot) && _left.Valid && _right.Valid) return true;
+            // Bound already — but the calibration may still be waiting for a hand that is
+            // holding still, and this early return is where that used to be lost. TakeRest ran
+            // once, from the full bind below, on the first frame the rig appeared; a stage that
+            // did not open with her already the player's therefore never calibrated at all, and
+            // an identity rest pose is a hand held at whatever angle the Biped bone happens to
+            // use. So the reading is retried here until it succeeds, which is also what lets it
+            // hold out for a pose worth reading.
+            if (ReferenceEquals(root, _boundRoot) && _left.Valid && _right.Valid)
+                return Calibrate(root, settled);
 
             // Anything that gets us here invalidates the cut-out hands, and only half of it was
             // being caught. A *new body* is the obvious half. The other is the same body with a
@@ -554,14 +629,14 @@ namespace NobetaVR.Vr
 
             var bones = root.GetComponentsInChildren<Transform>(true);
 
+            // A new rig is a new set of bones, so anything measured off the old ones goes with
+            // them — including how long the old hand had been holding still.
+            _left.RestTaken = _right.RestTaken = false;
+            _left.ForgetStillness();
+            _right.ForgetStillness();
+
             Resolve(_left, bones, "l hand", "lefthand", "l_hand", "l upperarm", "leftarm", "l_upperarm");
             Resolve(_right, bones, "r hand", "righthand", "r_hand", "r upperarm", "rightarm", "r_upperarm");
-
-            if (settled)
-            {
-                if (_left.Valid) TakeRest(_left, root);
-                if (_right.Valid) TakeRest(_right, root);
-            }
 
             if (!_reported)
             {
@@ -574,7 +649,23 @@ namespace NobetaVR.Vr
                                         + "the matcher needs widening for.");
             }
 
-            return _left.Valid && _right.Valid;
+            return _left.Valid && _right.Valid && Calibrate(root, settled);
+        }
+
+        /// <summary>
+        /// Both wrists calibrated, taking the reading now if this is a moment worth taking it
+        /// on. False until they are, which stands the hands down: a hand drawn on an identity
+        /// rest pose is worse than no hand, because it looks like a bug in the tracking rather
+        /// than like something the mod is still waiting for.
+        /// </summary>
+        private bool Calibrate(Transform root, bool settled)
+        {
+            // Both, every frame, rather than stopping at the first that is not ready: they are
+            // two independent readings and a hand that settles first should keep its reading
+            // rather than re-take it when the other one catches up.
+            var left = TakeRest(_left, root, settled);
+            var right = TakeRest(_right, root, settled);
+            return left && right;
         }
 
         /// <summary>
@@ -600,12 +691,29 @@ namespace NobetaVR.Vr
         /// held is still the first reading and the first reading was still whatever frame the
         /// bind caught. A stage opening is the worst possible moment to ask: she is being
         /// placed, faded in and walked onto a mark, and which of those the first bound frame
-        /// lands in is a race with the loader that comes out differently every launch. So the
-        /// measurement now waits for a body the game has finished doing things to — the same
-        /// "she is yours to move" test the hands themselves stand down on — and the pose it
-        /// reads is a gameplay idle rather than a stage entrance. The hands are not drawn
-        /// before that moment either, so nothing is waiting on a calibration that has not been
-        /// taken.
+        /// lands in is a race with the loader that comes out differently every launch.
+        /// </para>
+        ///
+        /// <para>
+        /// Waiting for "she is yours to move" was the first answer to that and was not enough:
+        /// loading a save satisfies every part of that test — `Normal`, `controllable`, none of
+        /// the respawn states — from the stage's first frame, while the game spends the next
+        /// few seconds waking her against a save pillar and standing her up. Two launches of
+        /// the same stage measured 38.2, 205.1, 117.6 and then 7.5, 179.7, 155.6, which is the
+        /// same race it always was. It reported as the *wrist gauges* having moved, since they
+        /// are hung off the controller frame and stayed exactly where they were while the hand
+        /// turned out from under them.
+        /// </para>
+        ///
+        /// <para>
+        /// So two readings gate it now, and neither alone would do. Being the player's says the
+        /// game has stopped *placing* her. The hand <b>holding still</b> — see
+        /// <see cref="Arm.HoldingStill"/> — says her animation has stopped *moving* her, which
+        /// is the part the flags cannot say and the part the measurement is actually about. It
+        /// is retried every frame until both are true rather than attempted once, with a
+        /// three-second cap so a hand that never settles gets a slightly wrong wrist instead of
+        /// no hands at all, and the log says which of the two happened. The hands are not drawn
+        /// until the reading is taken, so nothing is ever waiting on an identity rest pose.
         /// </para>
         ///
         /// <para>
@@ -619,31 +727,55 @@ namespace NobetaVR.Vr
         /// difference is the whole of the fault above and one line settles whether it is really
         /// what moved.
         /// </summary>
-        private static void TakeRest(Arm arm, Transform root)
+        private static bool TakeRest(Arm arm, Transform root, bool settled)
         {
-            var measured = Quaternion.Inverse(root.rotation) * arm.Hand.rotation;
+            if (arm.RestTaken) return true;
+
             var key = BonePath(arm.Hand);
+            var measured = Quaternion.Inverse(root.rotation) * arm.Hand.rotation;
 
-            if (!RestByRig.TryGetValue(key, out var held))
+            // A rig already calibrated this session keeps its first reading, and does not have
+            // to wait for anything to take it again. The drift line is only worth printing when
+            // this body is one the reading could have been taken on: a comparison against a
+            // hand mid-animation is a number with nothing in it.
+            if (RestByRig.TryGetValue(key, out var held))
             {
-                RestByRig[key] = measured;
-                arm.RestRelativeToBody = measured;
+                arm.RestRelativeToBody = held;
+                arm.RestTaken = true;
 
-                var angles = measured.eulerAngles;
-                Plugin.Log.LogInfo($"wrist calibration for {arm.Hand.name}: "
-                                 + $"{angles.x:F1}, {angles.y:F1}, {angles.z:F1} "
-                                 + "(relative to her body, taken once she was controllable)");
-                return;
+                var drift = Quaternion.Angle(held, measured);
+                if (settled && drift > 0.5f)
+                {
+                    Plugin.Log.LogInfo($"wrist calibration held for {arm.Hand.name}: this body "
+                                     + $"would have measured {drift:F1}° away from the first one.");
+                }
+                return true;
             }
 
-            arm.RestRelativeToBody = held;
+            if (!settled) return false;
 
-            var drift = Quaternion.Angle(held, measured);
-            if (drift > 0.5f)
-            {
-                Plugin.Log.LogInfo($"wrist calibration held for {arm.Hand.name}: this body would "
-                                 + $"have measured {drift:F1}° away from the first one.");
-            }
+            // Still, rather than merely allowed. Being the player's is what says the game is no
+            // longer *placing* her; it does not say her hands have stopped moving, and loading a
+            // save is where the two come apart — she is reported controllable from the stage's
+            // first frame and spends the next few seconds asleep against a pillar and then
+            // standing up out of it. A reading taken anywhere in there is a reading of an
+            // animation, which is why the same stage calibrated 38.2, 205.1, 117.6 one launch
+            // and 7.5, 179.7, 155.6 the next.
+            var still = arm.HoldingStill(measured, Time.unscaledTime, out var waited, out var moved);
+            if (!still && waited < Arm.WaitAtMost) return false;
+
+            RestByRig[key] = measured;
+            arm.RestRelativeToBody = measured;
+            arm.RestTaken = true;
+
+            var angles = measured.eulerAngles;
+            Plugin.Log.LogInfo($"wrist calibration for {arm.Hand.name}: "
+                             + $"{angles.x:F1}, {angles.y:F1}, {angles.z:F1} "
+                             + $"(relative to her body, taken {waited:F2}s after she became "
+                             + $"yours, on a hand moving {moved:F2}°/frame"
+                             + (still ? ")" : " — it never held still, so this is whatever it "
+                                             + "was doing when the wait ran out)"));
+            return true;
         }
 
         /// <summary>

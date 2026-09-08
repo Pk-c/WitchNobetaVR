@@ -112,6 +112,22 @@ namespace NobetaVR.Vr
             }
         }
 
+        /// <summary>
+        /// Whether she is the player's to drive this frame: an ordinary camera mode, the game's
+        /// own controllable flag, and none of the states the game holds her through.
+        ///
+        /// All three, because each is true on its own somewhere the other two are not. The mode
+        /// is `Normal` while she sits slumped against a save pillar; `controllable` is true
+        /// there as well, and false during a conversation the mode calls ordinary; and the state
+        /// machine is the only one of the three that can tell a scripted get-up from play.
+        /// Anything that turns her body or takes her facing wants all three answered at once,
+        /// which is why the question is asked here rather than assembled again at each caller.
+        /// </summary>
+        internal static bool YoursToDrive =>
+            BodyFacing.Mode == PlayerCamera.CameraMode.Normal
+            && Controllable
+            && !DownOrGettingUp;
+
         private static readonly HashSet<NobetaState> Seen = new();
 
         /// <summary>

@@ -505,11 +505,17 @@ namespace NobetaVR
 
             AlignViewToBodyOnSpawn = Config.Bind(
                 "Camera", "AlignViewToBodyOnSpawn", true,
-                "Points the view where Nobeta is facing when a stage opens. The game frames a "
-              + "new stage as it likes and does not always park the camera behind her, which on "
-              + "a monitor is a camera angle and in a headset means starting the level facing "
-              + "backwards. With the body following the view this cannot correct itself — she "
-              + "would just turn to match the wrong direction.");
+                "Points the view where Nobeta is facing for as long as the game is the one "
+              + "moving her, and hands the yaw over the moment she is yours and you have asked "
+              + "for something.\n"
+              + "The game frames a new stage as it likes and does not always park the camera "
+              + "behind her, which on a monitor is a camera angle and in a headset is the way "
+              + "your own body is pointing. Loading a save is the case that needs the whole of "
+              + "it: she comes back slumped against a save pillar and the get-up turns her as "
+              + "it goes, so one reading of her facing taken as the stage opens leaves you "
+              + "waking up looking at the pillar she has her back to. While this is running "
+              + "she is not turned towards the view, because during it the view is her own "
+              + "facing — turning her to face it would walk her round in a circle.");
 
             NeckModelDown = Config.Bind(
                 "Room scale", "NeckModelDown", 0.12f,

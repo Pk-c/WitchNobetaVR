@@ -47,7 +47,15 @@ namespace NobetaVR.Vr
             _comfortApplied = false;
             _eyeSeeded = false;
             _candidatesReported = false;
-            _aligned = false;
+
+            // A new stage is a new spawn, so the view goes back to riding her facing until she
+            // is the player's again — and what the player did in the stage before is not an
+            // answer to whether they have asked for anything in this one.
+            _viewIsYours = false;
+            _riding = false;
+            _lastHandle = float.NaN;
+            _atRestFor = 0;
+            Input.VrControls.ForgetPlayerAction();
         }
 
         /// <summary>
@@ -169,7 +177,6 @@ namespace NobetaVR.Vr
             if (head == null) return false;
 
             ApplyComfort();
-            AlignToBody();
 
             var cfg = Plugin.Instance;
 
@@ -179,7 +186,13 @@ namespace NobetaVR.Vr
             // looking up would pitch twice and the horizon would tilt with every camera shake.
             // Yaw alone keeps stick turning working while leaving the other two axes to the
             // only thing entitled to them.
-            rotation = Quaternion.Euler(0f, gameCameraRotation.eulerAngles.y, 0f);
+            //
+            // And whose yaw it is depends on whose body it is: while the game is still standing
+            // her up out of a save pillar the view rides her own facing instead, so that the
+            // get-up turns your head the way her head is turned. See RideHerFacing.
+            var gameYaw = gameCameraRotation.eulerAngles.y;
+            MeasureCameraYaw(gameYaw);
+            rotation = Quaternion.Euler(0f, RideHerFacing(gameYaw), 0f);
 
             // The bone gives a position; the direction to nudge it in comes from the view.
             //
@@ -284,41 +297,188 @@ namespace NobetaVR.Vr
         }
 
         /// <summary>
-        /// Points the view where Nobeta is facing, once, when a stage opens.
+        /// Points the view where Nobeta is facing, for as long as the game is the one moving
+        /// her.
         ///
-        /// The game is free to frame a new stage however it likes, and it does not always park
-        /// the camera behind her — so the first thing you see can be her spawn direction from
-        /// the wrong side, which in a headset means starting the level facing backwards. On a
-        /// monitor that is a camera angle; in VR it is where your body is pointing.
+        /// The game frames a new stage however it likes and does not always park the camera
+        /// behind her, so the first thing you see can be her spawn direction from the wrong
+        /// side — a camera angle on a monitor, and the way your own body is pointing in a
+        /// headset. Loading a save is the hardest case of it: she comes back slumped against a
+        /// save pillar and stands up out of it, and the get-up turns her as it goes. There is
+        /// therefore no single yaw at the top of the stage that is still the right one by the
+        /// time she is on her feet — which is why one shot of her facing, taken on the first
+        /// frame that had a head bone, could not work: you woke up looking at the pillar she
+        /// had her back to.
         ///
-        /// Now that the body follows the view, this cannot be left to correct itself: she would
-        /// simply turn to match the wrong direction and stay there. So the camera's own yaw is
-        /// set to hers, through the same `g_fX` the turn control writes, which keeps the view,
-        /// the movement frame and the game's idea of the camera as one value.
+        /// So the view rides her facing for every frame of it, and is handed over when she is:
+        /// the moment she is plainly the player's *and* the player has asked for something.
+        /// Waking against the pillar then looks like waking against the pillar — she turns, and
+        /// the view turns with her, because the view is her head.
+        ///
+        /// Two things have to hold or the handover is a jolt of its own. The yaw the view leaves
+        /// on has to be the yaw the game's camera is holding, and that is `g_fX` — see
+        /// <see cref="MeasureCameraYaw"/> for why her yaw is not simply written into it. And
+        /// nothing may turn her towards the view while this runs: the view *is* her facing with
+        /// the headset's own yaw on top, so turning her to face it would walk her round in a
+        /// slow circle. <see cref="BodyFacing"/> stands down on <see cref="ViewIsYours"/> for
+        /// exactly that reason.
         /// </summary>
-        private void AlignToBody()
+        private float RideHerFacing(float gameYaw)
         {
-            if (_aligned || !Plugin.Instance.AlignViewToBodyOnSpawn.Value) return;
-            if (_playerCamera == null) return;
+            if (ViewIsYours) return gameYaw;
 
             var girl = _playerCamera.wizardGirl;
-            if (girl == null) return;
-
-            _aligned = true;
+            if (girl == null) return gameYaw;
 
             var bodyYaw = girl.transform.eulerAngles.y;
-            Plugin.Log.LogInfo($"aligning view to body at spawn: g_fX {_playerCamera.g_fX:F1} -> {bodyYaw:F1}");
-            _playerCamera.g_fX = bodyYaw;
+
+            if (!_riding)
+            {
+                _riding = true;
+                _rodeFrom = bodyYaw;
+                _rodeSince = Time.unscaledTime;
+                Plugin.Log.LogInfo($"the view rides her facing from {bodyYaw:F1} deg until she "
+                                 + $"is yours (state {PlayerStatus.State?.ToString() ?? "<none>"}, "
+                                 + $"controllable {PlayerStatus.Controllable}, g_fX "
+                                 + $"{_playerCamera.g_fX:F1}, game camera {gameYaw:F1})");
+            }
+
+            // Kept under the view as it goes, rather than written once at the end. Movement is
+            // camera-relative and the game reads `g_fX` for it, so a `g_fX` that only catches up
+            // on the frame the player takes over is a first step in the wrong direction.
+            if (_cameraYawKnown) _playerCamera.g_fX = bodyYaw - _cameraYawOffset;
+
+            // Her holding still is *not* a second way out of this, which is worth writing down
+            // because it is the obvious one to reach for. She holds perfectly still for as long
+            // as she is asleep against the pillar: the game places her in the stage's opening
+            // frames and the get-up comes later, so "her yaw has not moved for a second" is true
+            // in the middle of exactly the sequence this exists for, and taking it would hand
+            // the turning back mid-animation and put her on her feet facing the pillar again.
+            // The player asking is the only reading that cannot happen before she is placed.
+            var waited = Time.unscaledTime - _rodeSince;
+            var asked = PlayerStatus.YoursToDrive && Input.VrControls.PlayerActed;
+
+            if (asked || waited > RidePatience)
+            {
+                _viewIsYours = true;
+                Plugin.Log.LogInfo($"the view is yours after {waited:F1}s "
+                                 + $"({(asked ? "you asked for it" : "nothing did, so the wait ran out")}): "
+                                 + $"her facing went {_rodeFrom:F1} -> {bodyYaw:F1} deg, "
+                                 + $"g_fX left at {_playerCamera.g_fX:F1}");
+            }
+
+            return bodyYaw;
         }
 
-        private bool _aligned;
+        /// <summary>How long the view rides her facing with nothing asking for it, in seconds.</summary>
+        private const float RidePatience = 20f;
+
+        private bool _viewIsYours;
+        private bool _riding;
+        private float _rodeFrom;
+        private float _rodeSince;
 
         /// <summary>
-        /// Re-arms the alignment so the next frame points the view at her again. Used by
-        /// recentring: "put my head back" means the direction as well as the place, and doing
-        /// only the position leaves you standing correctly but facing the wrong way.
+        /// Whether the view's yaw is the player's rather than Nobeta's own facing. False only
+        /// while <see cref="RideHerFacing"/> is running, and true throughout when the setting
+        /// that arms it is off.
         /// </summary>
-        public void RealignToBody() => _aligned = false;
+        public bool ViewIsYours =>
+            _viewIsYours || _playerCamera == null || !Plugin.Instance.AlignViewToBodyOnSpawn.Value;
+
+        /// <summary>
+        /// What `g_fX` does to the view, measured on the running game rather than assumed.
+        ///
+        /// `g_fX` is the value the turn control drives and the only handle there is on the
+        /// camera's yaw, but nothing says the number is the direction you are looking in: the
+        /// natural quantity for a third-person boom is where the camera sits *around* her, which
+        /// points the other way. Turning never had to care, because it adds to `g_fX` and any
+        /// fixed offset cancels — and the spawn alignment did care, wrote her yaw into it as
+        /// though the two were the same thing, and put the view out by whatever the difference
+        /// is. Opening a stage looking at what she has her back to is what that looks like.
+        ///
+        /// So the difference is read off the game: `g_fX` against the yaw the camera actually
+        /// ended up with. Only while `g_fX` has been at rest for long enough for the camera to
+        /// have caught up with it, because the camera lags it through the game's own smoothing
+        /// and a moving camera disagrees with `g_fX` for a reason that is not an offset — a
+        /// stage's opening frames are the case, where the boom is still swinging into place.
+        /// Quantised to a half turn, since that is the shape this answer can take and a degree
+        /// of residual lag should not become a degree of error — with the raw reading logged
+        /// beside it, so a third answer would be visible in the log rather than rounded away.
+        ///
+        /// Re-read for as long as the game runs rather than settled once. Nothing is riding on
+        /// it until the ride writes `g_fX`, which cannot happen before the first reading, and a
+        /// later one taken with the camera plainly at rest is worth more than the first: if the
+        /// two disagree, the log says so and says which the view was built on.
+        /// </summary>
+        private void MeasureCameraYaw(float gameYaw)
+        {
+            var handle = _playerCamera.g_fX;
+
+            // NaN on the first frame of a stage, and NaN compares false: one frame is skipped
+            // rather than measured against a value belonging to the camera before this one.
+            var atRest = Mathf.Abs(Mathf.DeltaAngle(handle, _lastHandle)) < 0.01f;
+            _lastHandle = handle;
+            _atRestFor = atRest ? _atRestFor + 1 : 0;
+            if (_atRestFor < RestFrames) return;
+
+            var raw = Mathf.DeltaAngle(handle, gameYaw);
+            var offset = Mathf.Round(raw / 180f) * 180f;
+
+            if (!_cameraYawKnown)
+            {
+                Plugin.Log.LogInfo($"g_fX {handle:F1} holds the game's camera at {gameYaw:F1} deg: "
+                                 + $"the yaw it means is {raw:F1} deg from the view, taken as "
+                                 + $"{offset:F0}");
+            }
+            else if (Mathf.Abs(Mathf.DeltaAngle(offset, _cameraYawOffset)) > 1f)
+            {
+                Plugin.Log.LogInfo($"g_fX offset re-measured: {_cameraYawOffset:F0} -> {offset:F0} "
+                                 + $"(raw {raw:F1}); the view's yaw was built on the old one.");
+            }
+
+            _cameraYawOffset = offset;
+            _cameraYawKnown = true;
+        }
+
+        /// <summary>
+        /// How long `g_fX` must have been still before the camera's yaw is worth reading, in
+        /// frames. A tenth of a second at the rates this runs at, which is longer than the
+        /// game's own camera smoothing takes to close on a value it is chasing.
+        /// </summary>
+        private const int RestFrames = 10;
+
+        private float _cameraYawOffset;
+        private bool _cameraYawKnown;
+        private float _lastHandle = float.NaN;
+        private int _atRestFor;
+
+        /// <summary>
+        /// Puts the view back on her facing at once, and leaves the yaw the player's.
+        ///
+        /// Used by recentring, which means the direction as well as the place: doing only the
+        /// position leaves you standing where she is and facing somewhere else. It does not
+        /// restart the ride above — a recentre is the player asking for something, and handing
+        /// the yaw straight back to them is the whole of what they asked for.
+        /// </summary>
+        public void RealignToBody()
+        {
+            var girl = _playerCamera != null ? _playerCamera.wizardGirl : null;
+            if (girl == null)
+            {
+                // Nothing to align to yet, so re-arm instead and let the first frame that has a
+                // body do it. That is what the ride is for.
+                _viewIsYours = false;
+                _riding = false;
+                return;
+            }
+
+            var bodyYaw = girl.transform.eulerAngles.y;
+            _playerCamera.g_fX = bodyYaw - (_cameraYawKnown ? _cameraYawOffset : 0f);
+            _viewIsYours = true;
+            _riding = false;
+            Plugin.Log.LogInfo($"recentre: the view goes back to her facing, {bodyYaw:F1} deg");
+        }
 
         private Vector3 _steadyLocal;
         private bool _steadySeeded;

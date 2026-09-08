@@ -112,6 +112,12 @@ namespace NobetaVR.Input
         /// released between two live reads used to read down for one of them and up for the
         /// other, and the pair of them is exactly how a one-shot edge is built.
         /// </summary>
+        /// <summary>
+        /// Whether anything at all is held, either hand. One test against the mask rather than
+        /// twelve calls, and it is only ever asked the once a frame.
+        /// </summary>
+        public bool AnyButton => _held != 0;
+
         public bool Pressed(Hand hand, Button button)
             => (_held & (1 << ((int)button + (hand == Hand.Left ? 0 : Buttons)))) != 0;
 

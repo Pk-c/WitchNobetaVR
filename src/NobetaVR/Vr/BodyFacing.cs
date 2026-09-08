@@ -72,7 +72,20 @@ namespace NobetaVR.Vr
             // Only while the player is the one driving. Cutscenes, death and the face-camera
             // mode all place her deliberately, and turning her to face the headset during any
             // of them would be the mod fighting the game over its own staging.
-            if (Mode != PlayerCamera.CameraMode.Normal) return;
+            //
+            // The camera mode alone does not cover it. Waking against a save pillar and standing
+            // up out of it both run in `Normal` with the game reporting her controllable, and
+            // the state machine is what holds her — so turning her there took the get-up over
+            // and left her facing the pillar she had her back to. `YoursToDrive` is all three
+            // readings at once; see PlayerStatus.
+            if (!PlayerStatus.YoursToDrive) return;
+
+            // And not while the view is her own facing rather than the player's. During the
+            // ride the two are one value plus whatever the headset adds, so turning her towards
+            // the view turns her towards herself and a little further every frame — a body that
+            // walks itself round in a slow circle while she is meant to be getting up. See
+            // FirstPerson.RideHerFacing.
+            if (!VrCamera.ViewIsYours) return;
 
             var move = controller.moveController;
             if (move == null) return;

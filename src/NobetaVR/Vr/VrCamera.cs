@@ -108,6 +108,19 @@ namespace NobetaVR.Vr
         /// <summary>Points the view back down Nobeta's forward on the next frame.</summary>
         internal static void RealignToBody() => Instance?._firstPerson.RealignToBody();
 
+        /// <summary>
+        /// Whether the view's yaw is the player's this frame rather than Nobeta's own facing.
+        ///
+        /// False only while the view is still riding her facing through a spawn or a get-up —
+        /// see <see cref="FirstPerson.RideHerFacing"/>. Anything that turns her towards the
+        /// view has to stand down while it is, because during it the view is her own facing and
+        /// turning her towards it closes a loop on itself.
+        ///
+        /// True when there is nothing to ask. No camera means no first person, so there is no
+        /// ride to be in the middle of and nothing for a caller to hold back for.
+        /// </summary>
+        internal static bool ViewIsYours => Instance?._firstPerson.ViewIsYours ?? true;
+
         [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         internal void Bind(XrLoader xr)
         {

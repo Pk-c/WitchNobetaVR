@@ -47,6 +47,27 @@ namespace NobetaVR.Input
         /// </summary>
         internal static bool Focusing { get; private set; }
 
+        /// <summary>
+        /// Whether the player has asked for anything since the stage opened: a stick past its
+        /// dead zone, or any button, on a frame the gameplay bindings actually had the
+        /// controllers.
+        ///
+        /// It exists for the one question a stage's first seconds turn on — whether the view is
+        /// still the game's to point or the player's — and the answer cannot come from the game,
+        /// which reports her controllable while it is standing her up against a save pillar. It
+        /// can only come from the player. Until they touch something there is nothing to
+        /// contradict, so the view rides her facing; the moment they do, it is theirs. See
+        /// <see cref="Vr.FirstPerson.RideHerFacing"/>.
+        ///
+        /// Noted where the gameplay frame is, below every gate, so a stick that was scrolling a
+        /// menu or a button pressed while the game had her is not the player asking to look
+        /// somewhere.
+        /// </summary>
+        internal static bool PlayerActed { get; private set; }
+
+        /// <summary>Forgets it, for a new stage: see <see cref="PlayerActed"/>.</summary>
+        internal static void ForgetPlayerAction() => PlayerActed = false;
+
         private readonly VrInput _input = new();
         private readonly Ui.GameUiInput _gameUi = new();
 
@@ -132,6 +153,8 @@ namespace NobetaVR.Input
             // which is the game and the player driving one body at once.
             if (Vr.PlayerStatus.DownOrGettingUp) { StandDown(); return "she is down"; }
 
+            NotePlayerAction();
+
             Grips();
             Move();
             if (!wheel) Turn();
@@ -147,6 +170,24 @@ namespace NobetaVR.Input
                             && Vr.PlayerStatus.Controllable);
 
             return wheel ? "magic wheel" : "gameplay";
+        }
+
+        /// <summary>
+        /// Notes that this frame carried an intention, for <see cref="PlayerActed"/>.
+        ///
+        /// The same dead zones the controls themselves use, so what counts as asking for
+        /// something is what counts as doing it — a thumb resting on a stick is neither.
+        /// </summary>
+        private void NotePlayerAction()
+        {
+            if (PlayerActed) return;
+
+            var cfg = Plugin.Instance;
+            if (_input.LeftStick.magnitude < cfg.MoveDeadzone.Value
+             && Mathf.Abs(_input.RightStick.x) < cfg.TurnDeadzone.Value
+             && !_input.AnyButton) return;
+
+            PlayerActed = true;
         }
 
         /// <summary>
