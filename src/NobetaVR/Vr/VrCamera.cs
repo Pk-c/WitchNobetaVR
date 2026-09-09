@@ -316,20 +316,19 @@ namespace NobetaVR.Vr
 
         /// <summary>
         /// Whether the view should stand back from her, from the moment she dies to the moment
-        /// she is yours again.
+        /// the respawn hands her back.
         ///
-        /// The camera mode opens this and does not close it. Dying is not one beat but four —
-        /// the fall, the stage reloading, her sitting slumped against the save statue, and her
-        /// standing up out of it — and only the first of them is `Dead`. The rest are `Normal`
-        /// with the game still holding her, so a gate on the mode alone would put the view back
-        /// inside her head to watch her own body get up from behind her eyes, which is both the
-        /// strangest part of it and the longest.
+        /// The camera mode opens this and does not close it. Dying is four beats and only the
+        /// first of them is `Dead`: the fall, the stage reloading, her slumped against the save
+        /// statue, and her standing up out of it. The reload has no character to ask about at
+        /// all, so a gate on the mode alone would put the view back into an empty head for the
+        /// length of a level load.
         ///
-        /// What closes it is the game saying she is controllable again, which is the same flag
-        /// the hands stand down on and means exactly "she is yours now". It fails open: if
-        /// there is no character to ask — a menu, the title screen, a stage that never finished
-        /// loading — the latch is dropped rather than held, because being stuck in third person
-        /// is a worse fault than a frame of it too few.
+        /// What closes it is the respawn: a character who exists, reads controllable, and is no
+        /// longer dying. It fails open: if there is no character to ask — a menu, the title
+        /// screen, a stage that never finished loading — the latch is held only until the
+        /// timeout below, because being stuck in third person is a worse fault than a frame of
+        /// it too few.
         /// </summary>
         private static bool DeathView()
         {
@@ -359,12 +358,22 @@ namespace NobetaVR.Vr
 
             if (!_deathLatch) return false;
 
-            // Closed by her being plainly the player's again: an ordinary state, an ordinary
-            // camera mode, and the game's own controllable flag. All three, because each of
-            // them is true on its own somewhere in the middle of this — she reads controllable
-            // while sitting against the save statue, and the camera is back to Normal long
-            // before she is on her feet.
-            if (!PlayerStatus.DownOrGettingUp
+            // Closed by the respawn itself, and deliberately not by her being on her feet.
+            //
+            // The get-up used to be inside this condition — the view stayed back until she was
+            // off the save statue and standing — and that made the respawn a race rather than a
+            // rule. The reload hands the mod a fresh character, and whether that character is
+            // seen in an ordinary state for a frame before the wake sequence claims her decided
+            // which of two very different respawns the player got: one watched from behind her
+            // for as long as the get-up takes, and one from her own eyes. The same respawn,
+            // twice, differing by a frame — which is what "sometimes I come back looking at her
+            // from behind" was.
+            //
+            // Her own eyes is also the better of the two, and it is already handled: the view
+            // rides her facing through the whole get-up and is handed over the moment the
+            // player asks for something, so waking against the pillar looks like waking against
+            // the pillar. See FirstPerson.RideHerFacing, which was written for this sequence.
+            if (!PlayerStatus.Dead
              && PlayerStatus.Controllable
              && mode == PlayerCamera.CameraMode.Normal)
             {

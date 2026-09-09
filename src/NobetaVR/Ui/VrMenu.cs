@@ -225,6 +225,15 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
+                Label = "Air jump",
+                Value = () => cfg.AirJumpKeepsJumpAnimation.Value
+                    ? "Same as the first"
+                    : "Game's flourish",
+                Adjust = _ => cfg.AirJumpKeepsJumpAnimation.Value =
+                    !cfg.AirJumpKeepsJumpAnimation.Value,
+            });
+            _items.Add(new Item
+            {
                 Label = "Grip pressure",
                 Value = () => $"{cfg.GripThreshold.Value * 100f:F0}%",
                 Adjust = d => cfg.GripThreshold.Value =
@@ -776,7 +785,8 @@ namespace NobetaVR.Ui
                          cfg.MeleeTrailSeconds, cfg.MeleeSwingVoice,
                          cfg.Haptics, cfg.HapticsHand, cfg.HapticsStrength,
                          cfg.HapticsMinAmplitude, cfg.HapticsMaxSeconds, cfg.HapticsFrequency,
-                         cfg.DodgeAlwaysBackstep, cfg.ThirdPersonOnDeath,
+                         cfg.DodgeAlwaysBackstep, cfg.AirJumpKeepsJumpAnimation,
+                         cfg.ThirdPersonOnDeath,
                          cfg.DeathViewRise,
                          cfg.HudDrawOnTop, cfg.HudFadeSpeed, cfg.HudFollowSpeed, cfg.VrFade,
                          cfg.TidyGameHud, cfg.HideHealthBars, cfg.HideChargeBar,

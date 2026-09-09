@@ -129,6 +129,7 @@ namespace NobetaVR
         internal ConfigEntry<float> HapticsMaxSeconds;
         internal ConfigEntry<float> HapticsFrequency;
         internal ConfigEntry<bool> DodgeAlwaysBackstep;
+        internal ConfigEntry<bool> AirJumpKeepsJumpAnimation;
         internal ConfigEntry<bool> ThirdPersonOnDeath;
         internal ConfigEntry<float> DeathViewRise;
 
@@ -939,6 +940,15 @@ namespace NobetaVR
               + "window, the same stamina, the same recovery. It is done by handing the game a "
               + "centred stick for the length of the dodge, so nothing is overridden and the "
               + "choice stays the game's own.");
+
+            AirJumpKeepsJumpAnimation = Config.Bind(
+                "Comfort", "AirJumpKeepsJumpAnimation", true,
+                "Gives the air jump the same animation as the one off the ground. The game has "
+              + "a separate flourish for the second jump and she turns over inside it, which "
+              + "reads as a double jump on a monitor and is your own head being rolled through "
+              + "it in a headset — over a gap, on a button pressed in a hurry, with nothing to "
+              + "brace against. Only the clip changes: the same jump force, the same air "
+              + "control, the same landing, and the hang from an air attack is untouched.");
 
             DeathViewRise = Config.Bind(
                 "Comfort", "DeathViewRise", 2f,

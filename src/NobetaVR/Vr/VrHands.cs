@@ -192,6 +192,23 @@ namespace NobetaVR.Vr
         private static readonly System.Collections.Generic.Dictionary<string, Quaternion> RestByRig = new();
 
         /// <summary>
+        /// The rigs whose bind pose could not be read, so the search is not repeated and the
+        /// line explaining why is not printed twice. See <see cref="BindPoseRest"/>.
+        /// </summary>
+        private static readonly System.Collections.Generic.HashSet<string> BindPoseRefused = new();
+
+        /// <summary>
+        /// The rigs whose calibration came from the bind pose rather than from a sample.
+        ///
+        /// Only the drift line reads this. "A second body would have measured this far away"
+        /// was the symptom of a calibration that could move between bodies, and against a bind
+        /// pose it is measuring something else entirely — how far her arm happens to be from
+        /// the modelled rest pose right now, which is a number with no fault in it and would
+        /// read as a warning about nothing.
+        /// </summary>
+        private static readonly System.Collections.Generic.HashSet<string> FromBindPose = new();
+
+        /// <summary>
         /// Whether she is the player's to move this frame.
         ///
         /// Read by anything that has to stand down with the hands — the aim reticle, so
@@ -669,10 +686,29 @@ namespace NobetaVR.Vr
         }
 
         /// <summary>
-        /// The wrist calibration, taken once per rig and then held.
+        /// The wrist calibration: the rig's own rest pose, read out of the bind pose.
         ///
-        /// It is read off the animated skeleton, which means it is read off whatever pose the
-        /// character happened to be in on the frame the mod bound to her. That was fine while
+        /// <para>
+        /// A skinned mesh carries the pose it was authored in. <c>Mesh.bindposes[i]</c> is the
+        /// matrix that took the renderer's local space into bone <c>i</c>'s at bind time, so
+        /// its inverse is that bone laid out in the renderer's space -- the rest pose, as
+        /// modelled, with no animation anywhere in it. Carried out through the renderer's own
+        /// transform and back into the body's frame, that is exactly the quantity this needs,
+        /// and it is the same number on every launch, in every stage, for every body: model
+        /// geometry rather than a moment. The offsets a player tunes against it stay tuned.
+        /// </para>
+        ///
+        /// <para>
+        /// The renderer's transform is a plain mesh object rather than a bone, so its rotation
+        /// in the body's frame is a constant too -- and that is checked rather than assumed.
+        /// See <see cref="BindPoseRest"/>.
+        /// </para>
+        ///
+        /// <para>
+        /// Everything from here down is the fallback for a rig that cannot answer, and the
+        /// history is worth keeping because it is the argument for the paragraphs above.
+        /// Sampling the animated skeleton reads off whatever pose the character happened to be
+        /// in on the frame the mod bound to her. That was fine while
         /// there was one body per session. Dying reloads the stage — the log goes
         /// <c>Dead</c>, <c>Loader</c>, the act again — so a new <c>WizardGirl_Nonota(Clone)</c>
         /// arrives, the bind runs a second time, and the second reading is taken from a
@@ -734,6 +770,35 @@ namespace NobetaVR.Vr
             var key = BonePath(arm.Hand);
             var measured = Quaternion.Inverse(root.rotation) * arm.Hand.rotation;
 
+            // The rig's own answer, and it waits for nothing: a bind pose is not a frame, so
+            // there is no moment to hold out for and the hands can be drawn at once.
+            //
+            // Asked once per rig either way. A rig that cannot answer is remembered as such,
+            // because this runs every frame until the fallback below finds a pose worth taking
+            // — and a search through every renderer under her, with a line in the log to say it
+            // failed, is not something to do sixty times a second for three seconds.
+            if (!RestByRig.ContainsKey(key) && !BindPoseRefused.Contains(key))
+            {
+                if (BindPoseRest(arm.Hand, root, out var authored))
+                {
+                    RestByRig[key] = authored;
+                    FromBindPose.Add(key);
+                    arm.RestRelativeToBody = authored;
+                    arm.RestTaken = true;
+
+                    var rest = authored.eulerAngles;
+                    Plugin.Log.LogInfo($"wrist calibration for {arm.Hand.name}: "
+                                     + $"{rest.x:F1}, {rest.y:F1}, {rest.z:F1} "
+                                     + $"(the rig's bind pose, so the same on every launch; the "
+                                     + $"animated wrist is "
+                                     + $"{Quaternion.Angle(authored, measured):F1}° from it "
+                                     + $"just now)");
+                    return true;
+                }
+
+                BindPoseRefused.Add(key);
+            }
+
             // A rig already calibrated this session keeps its first reading, and does not have
             // to wait for anything to take it again. The drift line is only worth printing when
             // this body is one the reading could have been taken on: a comparison against a
@@ -744,7 +809,7 @@ namespace NobetaVR.Vr
                 arm.RestTaken = true;
 
                 var drift = Quaternion.Angle(held, measured);
-                if (settled && drift > 0.5f)
+                if (settled && drift > 0.5f && !FromBindPose.Contains(key))
                 {
                     Plugin.Log.LogInfo($"wrist calibration held for {arm.Hand.name}: this body "
                                      + $"would have measured {drift:F1}° away from the first one.");
@@ -777,6 +842,85 @@ namespace NobetaVR.Vr
                                              + "was doing when the wait ran out)"));
             return true;
         }
+
+        /// <summary>
+        /// The hand bone's rest orientation in the body's frame, taken from the bind pose of
+        /// whatever skinned mesh the bone belongs to. False when the rig cannot answer.
+        ///
+        /// Every renderer under her that skins this bone is asked, and they have to agree to
+        /// within <see cref="BindPoseAgreement"/>. Agreement is what checks the one assumption
+        /// this rests on: the readings can differ only through the transforms between each
+        /// renderer and the body, so two renderers agreeing on a bone says neither of those
+        /// chains is being animated. A disagreement is reported and the reading refused rather
+        /// than averaged -- half of a wrong wrist is still a wrong wrist, and the animated
+        /// fallback is at least honest about what it is.
+        ///
+        /// The mod's own cut-out hands cannot be picked up here: they hang off the camera
+        /// rather than off her, so they are not under <paramref name="root"/> at all.
+        /// </summary>
+        private static bool BindPoseRest(Transform hand, Transform root, out Quaternion rest)
+        {
+            rest = Quaternion.identity;
+
+            var inverseBody = Quaternion.Inverse(root.rotation);
+            var found = 0;
+            var fromRenderer = string.Empty;
+
+            foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (skin == null) continue;
+
+                var mesh = skin.sharedMesh;
+                var bones = skin.bones;
+                if (mesh == null || bones == null) continue;
+
+                var poses = mesh.bindposes;
+                if (poses == null || poses.Length != bones.Length) continue;
+
+                for (var b = 0; b < bones.Length; b++)
+                {
+                    if (bones[b] != hand) continue;
+
+                    // bindposes[b] takes the renderer's space into the bone's; inverted, it is
+                    // the bone in the renderer's space, as modelled. The renderer's own
+                    // rotation carries that into the world, and the body's takes it back out.
+                    var candidate = inverseBody * skin.transform.rotation
+                                  * poses[b].inverse.rotation;
+
+                    if (found == 0)
+                    {
+                        rest = candidate;
+                        fromRenderer = skin.name;
+                    }
+                    else if (Quaternion.Angle(rest, candidate) > BindPoseAgreement)
+                    {
+                        Plugin.Log.LogWarning(
+                            $"wrist calibration: '{skin.name}' and '{fromRenderer}' disagree by "
+                          + $"{Quaternion.Angle(rest, candidate):F1}° about {hand.name}'s rest "
+                          + $"pose, so one of them hangs off something animated. Sampling the "
+                          + $"animated wrist instead.");
+                        return false;
+                    }
+
+                    found++;
+                    break;
+                }
+            }
+
+            if (found > 0) return true;
+
+            Plugin.Log.LogInfo($"wrist calibration: no skinned mesh under '{root.name}' carries "
+                             + $"{hand.name} among its bones, so the rest pose has to be "
+                             + $"sampled off the animation.");
+            return false;
+        }
+
+        /// <summary>
+        /// How far two renderers may disagree about one bone's rest pose and still be believed,
+        /// in degrees. Tight on purpose: they are reading one authored pose out of one rig, so
+        /// anything above rounding is a chain that moves.
+        /// </summary>
+        private const float BindPoseAgreement = 1f;
 
         /// <summary>
         /// A bone's path from the scene root, which is what makes "the same rig" a question with

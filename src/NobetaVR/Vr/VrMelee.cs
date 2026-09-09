@@ -168,22 +168,63 @@ namespace NobetaVR.Vr
             => cfg.MeleeFreeSwingOnGround.Value && Grounded(girl);
 
         /// <summary>
-        /// The game's own footing, not the CharacterController's.
+        /// The states in which she is off the ground, whatever any footing flag says.
         ///
-        /// <c>MoveController.isGrounded</c> is what the state machine acts on, so it is what
-        /// "in the air" has to mean here: reading the controller directly would disagree with
-        /// the game on exactly the frames that matter, at the top of a step or the lip of a
-        /// slope, and disagreeing there means a ground swing on the frame she counts as
-        /// airborne — the one case that must not happen, since it is the air attack's hang
-        /// that is being protected.
+        /// The state machine is the one reading that cannot be momentarily wrong: it is what
+        /// decides which attack a button press turns into, so a swing judged by it can never
+        /// disagree with the attack it produces.
+        /// </summary>
+        private static readonly System.Collections.Generic.HashSet<NobetaState> InTheAir = new()
+        {
+            NobetaState.Air,
+            NobetaState.Jump,
+            NobetaState.AirAttack,
+            NobetaState.AirAim,
+            NobetaState.AirChargeShot,
+            NobetaState.AirDodge,
+            NobetaState.AirDamaged,
+            NobetaState.AirDamagedFly,
+            NobetaState.AirSlip,
+            NobetaState.DamagedFly,
+        };
+
+        /// <summary>
+        /// The game's own footing.
+        ///
+        /// <c>MoveController.isGrounded</c> was the first answer and it is the wrong one. It is
+        /// a per-frame contact test, and a per-frame contact test says "airborne" for a frame
+        /// at the top of every step, on the lip of every slope and in the middle of an ordinary
+        /// run — so a swing that happened to fire on one of those frames took the air branch
+        /// and came out as the game's own attack, animation and all. That is exactly the fault
+        /// the free swing exists to remove, arriving at random on maybe one swing in several,
+        /// which is why it read as "free mode does not work" rather than as a footing bug.
+        ///
+        /// So the state machine is asked instead, and then <c>NobetaRuntimeData.isSky</c>, the
+        /// flag the state machine itself runs on. The game maintains that one deliberately —
+        /// <c>PlayerController.UpdateSkyState</c> keeps it, with <c>fallTimer</c> beside it —
+        /// rather than sampling it, so it reads as "she is in the air" rather than as "nothing
+        /// was under her this frame". Both go true the moment she jumps, so the air attack and
+        /// the hang it carries are still reached on the first airborne frame.
+        ///
+        /// If a swing still comes out animated on the ground, <see cref="ReportAnimated"/> puts
+        /// all three readings in the log side by side and says which one called it.
+        ///
+        /// The contact test stays as the last resort, for a character that has neither.
         /// </summary>
         private static bool Grounded(WizardGirlManage girl)
         {
+            var controller = girl.playerController;
+
+            if (controller != null && InTheAir.Contains(controller.state)) return false;
+
+            var runtime = controller != null ? controller.runtimeData : null;
+            if (runtime != null) return !runtime.isSky;
+
             var move = girl.GetMoveController();
             if (move != null) return move.isGrounded;
 
-            var controller = girl.characterController;
-            return controller == null || controller.isGrounded;
+            var character = girl.characterController;
+            return character == null || character.isGrounded;
         }
 
         /// <summary>
@@ -388,8 +429,42 @@ namespace NobetaVR.Vr
         {
             if (free && FreeSwing(girl, cfg)) return;
 
+            ReportAnimated(girl, cfg, free);
             controls.InputController.Attack();
         }
+
+        /// <summary>
+        /// Says, the first few times it happens, why a swing came out animated while the free
+        /// swing was asked for.
+        ///
+        /// There are only two ways it can: she was judged airborne, or there was no range to
+        /// open. From inside a headset the two are one symptom — she plays the attack and takes
+        /// your arm with her — and nothing else in the log distinguishes them. Bounded, because
+        /// this fires on a swing and swings come in flurries.
+        /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
+        private void ReportAnimated(WizardGirlManage girl, Plugin cfg, bool free)
+        {
+            if (!cfg.MeleeFreeSwingOnGround.Value) return;
+            if (_animatedReported >= AnimatedReportLimit) return;
+            _animatedReported++;
+
+            var controller = girl.playerController;
+            var runtime = controller != null ? controller.runtimeData : null;
+            var move = girl.GetMoveController();
+
+            Plugin.Log.LogInfo(
+                $"melee: swing came out animated — "
+              + $"{(free ? $"no range to open (range '{RangeName(cfg) ?? "none"}')" : "she was in the air")}"
+              + $" [state {(controller != null ? controller.state.ToString() : "<none>")}, "
+              + $"isSky {(runtime != null ? runtime.isSky.ToString() : "<none>")}, "
+              + $"isGrounded {(move != null ? move.isGrounded.ToString() : "<none>")}]");
+        }
+
+        private int _animatedReported;
+
+        /// <summary>How many animated swings the log will explain before it stops.</summary>
+        private const int AnimatedReportLimit = 8;
 
         /// <summary>
         /// The ground swing: the hitbox, the sound, the voice and the trail, and no animation.
