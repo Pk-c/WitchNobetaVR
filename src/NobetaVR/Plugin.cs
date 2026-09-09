@@ -74,6 +74,7 @@ namespace NobetaVR
         internal ConfigEntry<float> AimReticleGap;
         internal ConfigEntry<float> AimReticleFocusGap;
         internal ConfigEntry<bool> HideGameCrosshair;
+        internal ConfigEntry<bool> HideAimOverlay;
         internal ConfigEntry<bool> HudEnabled;
         internal ConfigEntry<float> HudDistance;
         internal ConfigEntry<float> HudSize;
@@ -372,6 +373,15 @@ namespace NobetaVR
               + "magic's colour, and that information has nowhere else to go yet. Turn it on "
               + "once the world reticle is doing the aiming and the one that never moves has "
               + "become a smudge on the lens.");
+
+            HideAimOverlay = Config.Bind("Aim", "HideAimOverlay", true,
+                "Stops the game drawing the bracketed border it puts around the picture while "
+              + "you hold focus. It is a border on the edge of a screen, and a headset has no "
+              + "edge: the sprites are bolted to the camera, so the frame hangs in the room a "
+              + "short way in front of your eyes with the world carrying on past it, and "
+              + "turning your head takes it with you. Nothing else about focus changes — the "
+              + "renderers are told not to draw, the switch the game uses to raise and lower "
+              + "them is left alone, and turning this off gives the frame straight back.");
 
             HandRotationYaw = Config.Bind("Hands", "HandRotationYaw", 0f,
                 "Wrist yaw adjustment, in degrees.");

@@ -369,6 +369,12 @@ namespace NobetaVR.Ui
                 Value = () => cfg.HideGameCrosshair.Value ? "Hidden" : "Shown",
                 Adjust = _ => cfg.HideGameCrosshair.Value = !cfg.HideGameCrosshair.Value,
             });
+            _items.Add(new Item
+            {
+                Label = "Focus frame",
+                Value = () => cfg.HideAimOverlay.Value ? "Hidden" : "Shown",
+                Adjust = _ => cfg.HideAimOverlay.Value = !cfg.HideAimOverlay.Value,
+            });
 
             _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "INTERFACE", IsHeading = true });
@@ -759,7 +765,7 @@ namespace NobetaVR.Ui
                          cfg.AimPitchOffset, cfg.AimYawOffset, cfg.AimRollOffset,
                          cfg.ShowAimReticle, cfg.AimReticleSize,
                          cfg.AimReticleGap, cfg.AimReticleFocusGap,
-                         cfg.HideGameCrosshair,
+                         cfg.HideGameCrosshair, cfg.HideAimOverlay,
                          cfg.Melee, cfg.MeleeSpeed, cfg.MeleeDistance,
                          cfg.MeleeReleaseSpeed, cfg.MeleeCooldown,
                          cfg.MeleeHitboxReach, cfg.MeleeShowHitbox,

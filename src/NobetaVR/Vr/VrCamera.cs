@@ -184,6 +184,9 @@ namespace NobetaVR.Vr
 
             _firstPerson.Rebind(instance);
 
+            // The game's focus frame hangs off this camera, so it is rebuilt with it.
+            Ui.AimFrame.Rebind(_target);
+
             // A new stage means a new body somewhere else entirely. Carrying the room offset
             // across would replay it as one enormous walk the moment the level loads.
             HeadPose.Forget();

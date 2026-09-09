@@ -74,6 +74,10 @@ namespace NobetaVR.Diagnostics
             // the view the way the fade is -- it only has to happen once a frame, somewhere.
             Vr.FocusBlur.Tick();
 
+            // The same shape of job, and here for the same reason: it needs a frame and a
+            // camera that has already been bound, and nothing else.
+            Ui.AimFrame.Tick();
+
             // Cheap, and it saves wiring an il2cpp delegate onto sceneLoaded just to learn
             // which of level0..level14 is which. The build index is only asked for on the
             // frame the name changed, since that is the only frame anything says it.
