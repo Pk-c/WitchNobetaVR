@@ -17,7 +17,7 @@ namespace NobetaVR
         public const string Guid = "fr.chromatic.nobetavr";
         public const string Version = "0.1.0";
 
-        internal static ManualLogSource Log { get; private set; }
+        internal static new ManualLogSource Log { get; private set; }
         internal static Plugin Instance { get; private set; }
 
         internal ConfigEntry<bool> Enabled;
@@ -279,7 +279,7 @@ namespace NobetaVR
               + "two are kept because this is the kind of claim that should be checkable from "
               + "inside the headset rather than argued.");
 
-            HandSteadiness = Config.Bind("Hands", "HandSteadiness", 0.5f,
+            HandSteadiness = Config.Bind("Hands", "HandSteadiness", 0.6f,
                 "How much tremor is taken out of the controllers, from 0 to 1. Zero is "
               + "off. The hands never looked like they were shaking; the reticle did, and "
               + "that is the same tremor seen through a lever — a tenth of a degree at "
@@ -316,18 +316,18 @@ namespace NobetaVR
               + "are not being drawn — menus, cutscenes, and any moment she is not "
               + "yours to move.");
 
-            AimPitchOffset = Config.Bind("Aim", "AimPitchOffset", 10f,
+            AimPitchOffset = Config.Bind("Aim", "AimPitchOffset", 40f,
                 "Angle between the controller and where the wand points, in degrees. A Touch "
               + "controller is gripped at an angle rather than in line with what it is aiming, so "
               + "its own forward points somewhat below the wand.");
 
-            AimYawOffset = Config.Bind("Aim", "AimYawOffset", 15f,
+            AimYawOffset = Config.Bind("Aim", "AimYawOffset", 0f,
                 "Sideways angle between the controller and where the wand points, in "
               + "degrees. Zero unless a grip is habitually turned in or out; with the pitch "
               + "above it covers every direction the wand can be sent, which is why the roll "
               + "below is a refinement rather than a third axis.");
 
-            AimRollOffset = Config.Bind("Aim", "AimRollOffset", 0f,
+            AimRollOffset = Config.Bind("Aim", "AimRollOffset", -10f,
                 "Which way round the controller the pitch and yaw above are applied, in "
               + "degrees about the controller's own forward axis. It cannot send the wand "
               + "anywhere those two cannot — turning a direction about itself leaves it "
@@ -369,12 +369,12 @@ namespace NobetaVR
               + "a word or a number for it. Set it equal to the gap above for a reticle that "
               + "never moves.");
 
-            HideGameCrosshair = Config.Bind("Aim", "HideGameCrosshair", false,
-                "Switches off the game's centred crosshair. Off by default, because that mark "
-              + "is not only a crosshair — it grows with the charge and carries the "
-              + "magic's colour, and that information has nowhere else to go yet. Turn it on "
-              + "once the world reticle is doing the aiming and the one that never moves has "
-              + "become a smudge on the lens.");
+            HideGameCrosshair = Config.Bind("Aim", "HideGameCrosshair", true,
+                "Switches off the game's centred crosshair. On by default: the world reticle "
+              + "is doing the aiming, and a mark fixed at the centre of the screen is neither "
+              + "the wand nor your gaze — it is a smudge on the lens. Turning it back on "
+              + "returns the one thing it carried that has nowhere else to go yet: it grows "
+              + "with the charge and carries the magic's colour.");
 
             HideAimOverlay = Config.Bind("Aim", "HideAimOverlay", true,
                 "Stops the game drawing the bracketed border it puts around the picture while "
@@ -387,14 +387,14 @@ namespace NobetaVR
 
             HandRotationYaw = Config.Bind("Hands", "HandRotationYaw", 0f,
                 "Wrist yaw adjustment, in degrees.");
-            HandRotationRoll = Config.Bind("Hands", "HandRotationRoll", -25f,
+            HandRotationRoll = Config.Bind("Hands", "HandRotationRoll", -80f,
                 "Wrist roll adjustment, in degrees. Not zero, because the rest orientation "
               + "taken from the rig only accounts for how the hand bone sits on the body — "
               + "not for how a Touch controller is gripped, which is turned about its own "
               + "axis relative to what it points at. This is that difference, measured.");
 
             HeadHideDistance = Config.Bind(
-                "Camera", "HeadHideDistance", 0.35f,
+                "Camera", "HeadHideDistance", 0.6f,
                 "How close the camera has to get to the head bone, in metres, before her head is "
               + "hidden. The head is only a problem while your eyes are inside the mesh, and is "
               + "wanted the rest of the time — when a cutscene pulls back, or an animation "
@@ -410,7 +410,7 @@ namespace NobetaVR
             HeadOffsetX = Config.Bind("Camera", "HeadOffsetX", 0f,
                 "Your own adjustment to the eye position, sideways, in metres. Separate from the "
               + "eye offsets above, which are the model's geometry rather than your preference.");
-            HeadOffsetY = Config.Bind("Camera", "HeadOffsetY", 0.23f, "Your own adjustment, up, in metres.");
+            HeadOffsetY = Config.Bind("Camera", "HeadOffsetY", 0.15f, "Your own adjustment, up, in metres.");
             HeadOffsetZ = Config.Bind("Camera", "HeadOffsetZ", 0f, "Your own adjustment, forward, in metres.");
 
             MenuDistance = Config.Bind("Interface", "MenuDistance", 1.2f,
@@ -479,7 +479,7 @@ namespace NobetaVR
               + "makes holding it over give one turn instead of a spin.");
 
             SnapTurnDegrees = Config.Bind(
-                "Controls", "SnapTurnDegrees", 45f,
+                "Controls", "SnapTurnDegrees", 55f,
                 "Degrees per snap turn step.");
 
             SmoothTurn = Config.Bind(
@@ -599,7 +599,7 @@ namespace NobetaVR
                 "Raises or lowers the panel relative to eye level, in metres.");
 
             HudFollowSpeed = Config.Bind(
-                "Interface", "HudFollowSpeed", 6f,
+                "Interface", "HudFollowSpeed", 2f,
                 "How quickly the panel catches up with your head. The lag is deliberate: a panel "
               + "welded to the head is hard to read and makes the world feel strapped to your "
               + "face. Higher is tighter; very high is uncomfortable.");
@@ -716,7 +716,7 @@ namespace NobetaVR
               + "colours exactly as they are set.");
 
             WristGaugeOpacity = Config.Bind(
-                "Interface", "WristGaugeOpacity", 0.85f,
+                "Interface", "WristGaugeOpacity", 0.5f,
                 "How solid the wrist gauges are, from 0 to 1.");
 
             WristGaugeFillSpeed = Config.Bind(
@@ -747,11 +747,12 @@ namespace NobetaVR
               + "upright on the wrist: the resting pose is measured on a real controller and "
               + "baked in, so all three angles here are small corrections rather than the thing "
               + "carrying the whole orientation. Confirmed in the headset — with the bands hung "
-              + "off the controller's frame, where they were measured, all three want to be "
-              + "zero and the geometry above is the whole of the fit.");
+              + "off the controller's frame, where they were measured, pitch and roll both want "
+              + "to be zero and the geometry above is the whole of the fit. Only the yaw is "
+              + "turned, to bring the bands round to where they are read from.");
 
             WristGaugeYaw = Config.Bind(
-                "Interface", "WristGaugeYaw", 0f,
+                "Interface", "WristGaugeYaw", -35f,
                 "Turn of the wrist gauges about their own up axis, in degrees.");
 
             WristGaugeRoll = Config.Bind(
@@ -775,14 +776,14 @@ namespace NobetaVR
               + "wrist without every reach for a door counting as an attack.");
 
             MeleeDistance = Config.Bind(
-                "Melee", "MeleeDistance", 0.27f,
+                "Melee", "MeleeDistance", 0.15f,
                 "How far your hand must travel, in metres, while above MeleeSpeed, before the "
               + "swing lands. This is the half that tells a swing from a twitch: a hand can "
               + "cross any speed you like for a single frame, and only a deliberate movement "
-              + "keeps going for a quarter of a metre.");
+              + "keeps going for fifteen centimetres.");
 
             MeleeReleaseSpeed = Config.Bind(
-                "Melee", "MeleeReleaseSpeed", 0.7f,
+                "Melee", "MeleeReleaseSpeed", 0.3f,
                 "How slowly your hand must be moving, in metres per second, before the next "
               + "swing can begin. Below MeleeSpeed on purpose: a real swing slows at both ends "
               + "of its arc without ever stopping, and one release speed set equal to the "
@@ -799,7 +800,7 @@ namespace NobetaVR
 
 
             MeleeHitboxReach = Config.Bind(
-                "Melee", "MeleeHitboxReach", 0.5f,
+                "Melee", "MeleeHitboxReach", 0.29f,
                 "Where the middle of the hitbox sits, in metres along the wand from your hand. "
               + "It rides the same line the shot goes down, so the wand pitch and yaw offsets "
               + "under Aim point both at once; this is only how far up that line the business "
@@ -830,7 +831,7 @@ namespace NobetaVR
               + "air she always keeps the game's attack whatever this says — see below.");
 
             MeleeHitboxRadius = Config.Bind(
-                "Melee", "MeleeHitboxRadius", 0.25f,
+                "Melee", "MeleeHitboxRadius", 0.1f,
                 "How thick the hitbox is, in metres. The game's own radius is 0.30 m and this "
               + "replaces it outright rather than scaling it, because a blow has no other "
               + "dimension to trade against: her attack ranges carry no collider and all share "
@@ -847,7 +848,7 @@ namespace NobetaVR
               + "end.");
 
             MeleeHitboxPitch = Config.Bind(
-                "Melee", "MeleeHitboxPitch", 0f,
+                "Melee", "MeleeHitboxPitch", -20f,
                 "Tilt of the hitbox away from the wand line, in degrees, positive nose-down. "
               + "It turns about the capsule's base, so the near end stays exactly where "
               + "MeleeHitboxReach and MeleeHitboxLength put it and only the far end swings — and "
@@ -910,7 +911,7 @@ namespace NobetaVR
               + "Right put everything in one hand.");
 
             HapticsStrength = Config.Bind(
-                "Haptics", "HapticsStrength", 1f,
+                "Haptics", "HapticsStrength", 2f,
                 "Multiplier on every rumble. One plays the game's own levels as they are. Zero "
               + "is silence, and means it whatever the floor below is set to.");
 

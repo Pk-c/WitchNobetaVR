@@ -38,6 +38,17 @@ namespace NobetaVR.Vr
         private bool _retargeted;
 
         /// <summary>
+        /// The last root searched and found to carry no trails, and when it was searched.
+        /// </summary>
+        private Transform _barrenRoot;
+        private float _barrenAt;
+
+        /// <summary>
+        /// How long a barren root is left alone before it is searched again, in seconds.
+        /// </summary>
+        private const float BarrenRetrySeconds = 1f;
+
+        /// <summary>
         /// Drives the trail along the wand for this frame, taking it over the first time.
         /// </summary>
         public void Follow(Transform root, Vector3 origin, Vector3 direction, float fallbackReach)
@@ -235,6 +246,14 @@ namespace NobetaVR.Vr
             if (root == null) return false;
             if (ReferenceEquals(root, _boundRoot) && Live()) return true;
 
+            // A root already searched and found barren. The search walks the whole rig, so
+            // repeating it every frame is not free, and the answer only changes when the
+            // effect objects under the root are rebuilt -- a costume, or the story skin a
+            // cutscene puts on. Retried on a timer rather than abandoned, so a trail that
+            // does turn up later is still taken over.
+            if (ReferenceEquals(root, _barrenRoot)
+                && Time.unscaledTime - _barrenAt < BarrenRetrySeconds) return false;
+
             Release();
             _boundRoot = root;
 
@@ -252,10 +271,21 @@ namespace NobetaVR.Vr
             _originalEnd = new Transform[_trails.Length];
 
             if (_trails.Length == 0)
-                Plugin.Log.LogWarning("wand trail: no XWeaponTrail on this character; the swing "
-                                    + "trail will stay wherever the rig puts it.");
+            {
+                // Said once per body rather than once per frame. A character the trail cannot
+                // be moved onto is worth one line; the same line four thousand times is a log
+                // nobody can read at all.
+                if (!ReferenceEquals(root, _barrenRoot))
+                    Plugin.Log.LogWarning("wand trail: no XWeaponTrail on this character; the "
+                                        + "swing trail will stay wherever the rig puts it.");
 
-            return _trails.Length > 0;
+                _barrenRoot = root;
+                _barrenAt = Time.unscaledTime;
+                return false;
+            }
+
+            _barrenRoot = null;
+            return true;
         }
 
         /// <summary>

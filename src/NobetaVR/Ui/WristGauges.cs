@@ -544,6 +544,7 @@ namespace NobetaVR.Ui
         /// so the end inset is that distance turned into an angle at this radius.
         /// </para>
         /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private void Shape(Band band, int index, float radius, float thickness, float spacing,
                            float arc, float glow, float pulse, Vector3 viewer, bool facingKnown,
                            bool moveVertices, bool repaint)
@@ -752,6 +753,7 @@ namespace NobetaVR.Ui
         /// one another with identical centres, so the sort had nothing to work with and the
         /// bands drew in whatever order they were created in.
         /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private Band MakeBand(string name, Bar bar)
         {
             var go = new GameObject(name);

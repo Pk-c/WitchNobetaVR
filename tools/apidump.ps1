@@ -8,13 +8,18 @@
 #>
 [CmdletBinding()]
 param(
-    [string] $GameDir = 'H:\Steam\steamapps\common\Little Witch Nobeta',
+    [string] $GameDir,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]] $Names
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
+
+if (-not $GameDir) {
+    $GameDir = & (Join-Path $PSScriptRoot 'Find-GameDir.ps1')
+    if (-not $GameDir) { throw 'Could not find the game through Steam. Pass -GameDir.' }
+}
 $dll  = Join-Path $root 'build\apidump\apidump.dll'
 
 if (-not (Test-Path $dll) -or

@@ -217,28 +217,6 @@ namespace NobetaVR.Ui
                 Value = () => $"{cfg.SmoothTurnSpeed.Value:F0}°/s",
                 Adjust = d => cfg.SmoothTurnSpeed.Value = Mathf.Clamp(cfg.SmoothTurnSpeed.Value + d * 10f, 20f, 360f),
             });
-            _items.Add(new Item
-            {
-                Label = "Dodge",
-                Value = () => cfg.DodgeAlwaysBackstep.Value ? "Always hop" : "Game's choice",
-                Adjust = _ => cfg.DodgeAlwaysBackstep.Value = !cfg.DodgeAlwaysBackstep.Value,
-            });
-            _items.Add(new Item
-            {
-                Label = "Air jump",
-                Value = () => cfg.AirJumpKeepsJumpAnimation.Value
-                    ? "Same as the first"
-                    : "Game's flourish",
-                Adjust = _ => cfg.AirJumpKeepsJumpAnimation.Value =
-                    !cfg.AirJumpKeepsJumpAnimation.Value,
-            });
-            _items.Add(new Item
-            {
-                Label = "Grip pressure",
-                Value = () => $"{cfg.GripThreshold.Value * 100f:F0}%",
-                Adjust = d => cfg.GripThreshold.Value =
-                    Mathf.Clamp(cfg.GripThreshold.Value + d * 0.05f, 0.05f, 1f),
-            });
 
             _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "HEAD", IsHeading = true });
@@ -252,12 +230,6 @@ namespace NobetaVR.Ui
                 Label = "Head bobbing",
                 Value = () => cfg.HeadBobbing.Value ? "On" : "Off",
                 Adjust = _ => cfg.HeadBobbing.Value = !cfg.HeadBobbing.Value,
-            });
-            _items.Add(new Item
-            {
-                Label = "Recentre on title",
-                Value = () => cfg.RecentreOnTitle.Value ? "On" : "Off",
-                Adjust = _ => cfg.RecentreOnTitle.Value = !cfg.RecentreOnTitle.Value,
             });
             _items.Add(new Item
             {
@@ -299,47 +271,6 @@ namespace NobetaVR.Ui
             });
 
             _items.Add(new Item { Label = "", IsHeading = true });
-            _items.Add(new Item { Label = "HANDS", IsHeading = true });
-
-            _items.Add(new Item
-            {
-                Label = "Hands placed",
-                Value = () => cfg.HandPlacement.Value switch
-                {
-                    0 => "At LateUpdate",
-                    2 => "At the render",
-                    _ => "With the camera",
-                },
-                Adjust = d => cfg.HandPlacement.Value =
-                    ((cfg.HandPlacement.Value + (d > 0 ? 1 : 2)) % 3),
-            });
-            _items.Add(new Item
-            {
-                Label = "Hand steadiness",
-                Value = () => cfg.HandSteadiness.Value <= 0.001f
-                    ? "Off"
-                    : $"{cfg.HandSteadiness.Value:F2}",
-                Adjust = d => cfg.HandSteadiness.Value =
-                    Mathf.Clamp(cfg.HandSteadiness.Value + d * 0.05f, 0f, 1f),
-            });
-            _items.Add(Degrees("Hand pitch", () => cfg.HandRotationPitch));
-            _items.Add(Degrees("Hand yaw", () => cfg.HandRotationYaw));
-            _items.Add(Degrees("Hand roll", () => cfg.HandRotationRoll));
-            _items.Add(new Item
-            {
-                Label = "Wand steadied",
-                Value = () => cfg.HoldWandStill.Value ? "On" : "Off",
-                Adjust = _ => cfg.HoldWandStill.Value = !cfg.HoldWandStill.Value,
-            });
-            _items.Add(new Item
-            {
-                Label = "Wand follow speed",
-                Value = () => $"{cfg.WandFollowSpeed.Value:F1}/s",
-                Adjust = d => cfg.WandFollowSpeed.Value =
-                    Mathf.Clamp(cfg.WandFollowSpeed.Value + d * 0.5f, 0.5f, 30f),
-            });
-
-            _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "AIM", IsHeading = true });
 
             _items.Add(new Item
@@ -351,45 +282,6 @@ namespace NobetaVR.Ui
             _items.Add(Degrees("Wand pitch", () => cfg.AimPitchOffset));
             _items.Add(Degrees("Wand yaw", () => cfg.AimYawOffset));
             _items.Add(Degrees("Wand roll", () => cfg.AimRollOffset));
-            _items.Add(new Item
-            {
-                Label = "Reticle",
-                Value = () => cfg.ShowAimReticle.Value ? "On" : "Off",
-                Adjust = _ => cfg.ShowAimReticle.Value = !cfg.ShowAimReticle.Value,
-            });
-            _items.Add(new Item
-            {
-                Label = "Reticle size",
-                Value = () => $"{cfg.AimReticleSize.Value * 100f:F1}",
-                Adjust = d => cfg.AimReticleSize.Value =
-                    Mathf.Clamp(cfg.AimReticleSize.Value + d * 0.002f, 0.004f, 0.06f),
-            });
-            _items.Add(new Item
-            {
-                Label = "Reticle gap",
-                Value = () => $"{cfg.AimReticleGap.Value * 100f:F0}",
-                Adjust = d => cfg.AimReticleGap.Value =
-                    Mathf.Clamp(cfg.AimReticleGap.Value + d * 0.01f, 0f, 0.8f),
-            });
-            _items.Add(new Item
-            {
-                Label = "Gap when focusing",
-                Value = () => $"{cfg.AimReticleFocusGap.Value * 100f:F0}",
-                Adjust = d => cfg.AimReticleFocusGap.Value =
-                    Mathf.Clamp(cfg.AimReticleFocusGap.Value + d * 0.01f, 0f, 0.8f),
-            });
-            _items.Add(new Item
-            {
-                Label = "Game crosshair",
-                Value = () => cfg.HideGameCrosshair.Value ? "Hidden" : "Shown",
-                Adjust = _ => cfg.HideGameCrosshair.Value = !cfg.HideGameCrosshair.Value,
-            });
-            _items.Add(new Item
-            {
-                Label = "Focus frame",
-                Value = () => cfg.HideAimOverlay.Value ? "Hidden" : "Shown",
-                Adjust = _ => cfg.HideAimOverlay.Value = !cfg.HideAimOverlay.Value,
-            });
 
             _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "INTERFACE", IsHeading = true });
@@ -479,64 +371,6 @@ namespace NobetaVR.Ui
                 Value = () => cfg.VrFade.Value ? "Whole view" : "On the panel",
                 Adjust = _ => cfg.VrFade.Value = !cfg.VrFade.Value,
             });
-
-            _items.Add(new Item { Label = "", IsHeading = true });
-            _items.Add(new Item { Label = "WRIST GAUGES", IsHeading = true });
-
-            _items.Add(new Item
-            {
-                Label = "Wrist gauges",
-                Value = () => cfg.WristGauges.Value ? "On" : "Off",
-                Adjust = _ => cfg.WristGauges.Value = !cfg.WristGauges.Value,
-            });
-            _items.Add(new Item
-            {
-                Label = "Wrist radius",
-                Value = () => $"{cfg.WristGaugeRadius.Value * 100f:F1} cm",
-                Adjust = d => cfg.WristGaugeRadius.Value =
-                    Mathf.Clamp(cfg.WristGaugeRadius.Value + d * 0.0025f, 0.01f, 0.15f),
-            });
-            _items.Add(new Item
-            {
-                Label = "Band thickness",
-                Value = () => $"{cfg.WristGaugeThickness.Value * 1000f:F1} mm",
-                Adjust = d => cfg.WristGaugeThickness.Value =
-                    Mathf.Clamp(cfg.WristGaugeThickness.Value + d * 0.0005f, 0.001f, 0.03f),
-            });
-            _items.Add(new Item
-            {
-                Label = "Band spacing",
-                Value = () => $"{cfg.WristGaugeSpacing.Value * 1000f:F0} mm",
-                Adjust = d => cfg.WristGaugeSpacing.Value =
-                    Mathf.Clamp(cfg.WristGaugeSpacing.Value + d * 0.001f, -0.06f, 0.06f),
-            });
-            _items.Add(new Item
-            {
-                Label = "Band wrap",
-                Value = () => $"{cfg.WristGaugeArc.Value:F0}°",
-                Adjust = d => cfg.WristGaugeArc.Value =
-                    Mathf.Clamp(cfg.WristGaugeArc.Value + d * 10f, 30f, 350f),
-            });
-            _items.Add(new Item
-            {
-                Label = "Band glow",
-                Value = () => $"×{cfg.WristGaugeGlow.Value:F1}",
-                Adjust = d => cfg.WristGaugeGlow.Value =
-                    Mathf.Clamp(cfg.WristGaugeGlow.Value + d * 0.1f, 1f, 4f),
-            });
-            _items.Add(new Item
-            {
-                Label = "Gauge opacity",
-                Value = () => $"{cfg.WristGaugeOpacity.Value:F2}",
-                Adjust = d => cfg.WristGaugeOpacity.Value =
-                    Mathf.Clamp(cfg.WristGaugeOpacity.Value + d * 0.05f, 0.1f, 1f),
-            });
-            _items.Add(Axis("Gauge offset X", () => cfg.WristGaugeOffsetX));
-            _items.Add(Axis("Gauge offset Y", () => cfg.WristGaugeOffsetY));
-            _items.Add(Axis("Gauge offset Z", () => cfg.WristGaugeOffsetZ));
-            _items.Add(Degrees("Gauge pitch", () => cfg.WristGaugePitch));
-            _items.Add(Degrees("Gauge yaw", () => cfg.WristGaugeYaw));
-            _items.Add(Degrees("Gauge roll", () => cfg.WristGaugeRoll));
 
             _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "MELEE", IsHeading = true });
@@ -763,53 +597,57 @@ namespace NobetaVR.Ui
             Adjust = d => entry().Value = Mathf.Clamp(entry().Value + d * 0.01f, -0.5f, 0.5f),
         };
 
+        /// <summary>
+        /// The settings a reset leaves alone. Not preferences, any of them: the master
+        /// switch, the diagnostics, and the four that name something about this machine --
+        /// a runtime path, a bone, a range, a latch. Anyone who had to set one of those set
+        /// it to make the mod work at all, and a button that quietly undoes that is a button
+        /// that takes the headset away.
+        ///
+        /// Named rather than spelled, so renaming a setting breaks the build here instead of
+        /// dropping it out of this list in silence.
+        /// </summary>
+        private static readonly HashSet<string> NeverReset = new()
+        {
+            nameof(Plugin.Enabled),
+            nameof(Plugin.OpenXrRuntimeJson),
+            nameof(Plugin.SubmitDepth),
+            nameof(Plugin.LateLatchPose),
+            nameof(Plugin.HeadBoneName),
+            nameof(Plugin.MeleeRangeName),
+            nameof(Plugin.VerboseStartupReport),
+            nameof(Plugin.LogCutsceneState),
+            nameof(Plugin.LogPoseLatch),
+        };
+
+        /// <summary>
+        /// Puts every setting back to the value it was born with.
+        ///
+        /// Read off the plugin's own fields rather than from a list written here. The list
+        /// this replaced had drifted: thirty-one settings had been added since it was
+        /// written and none of them were in it, so a reset left the dead zones, the panel
+        /// and the room-scale settings exactly as they were while saying it had reset them.
+        /// A list that has to be extended by hand whenever a setting is added is a list
+        /// that will be wrong again by the next release.
+        /// </summary>
         private void ResetToDefault()
         {
             var cfg = Plugin.Instance;
-            foreach (var entry in new BepInEx.Configuration.ConfigEntryBase[]
-                     {
-                         cfg.SmoothTurn, cfg.SnapTurnDegrees, cfg.SmoothTurnSpeed,
-                         cfg.GripThreshold,
-                         cfg.HeadOffsetX, cfg.HeadOffsetY, cfg.HeadOffsetZ,
-                         cfg.HeadBobbing, cfg.HeadHideDistance,
-                         cfg.ThirdPersonInCutscenes, cfg.DisableDepthOfField,
-                         cfg.HandPlacement, cfg.HandSteadiness,
-                         cfg.HandRotationPitch, cfg.HandRotationYaw, cfg.HandRotationRoll,
-                         cfg.HoldWandStill, cfg.WandFollowSpeed,
-                         cfg.AimFromHand,
-                         cfg.AimPitchOffset, cfg.AimYawOffset, cfg.AimRollOffset,
-                         cfg.ShowAimReticle, cfg.AimReticleSize,
-                         cfg.AimReticleGap, cfg.AimReticleFocusGap,
-                         cfg.HideGameCrosshair, cfg.HideAimOverlay,
-                         cfg.Melee, cfg.MeleeSpeed, cfg.MeleeDistance,
-                         cfg.MeleeReleaseSpeed, cfg.MeleeCooldown,
-                         cfg.MeleeHitboxReach, cfg.MeleeShowHitbox,
-                         cfg.MeleeFreeSwingOnGround,
-                         cfg.MeleeHitboxRadius, cfg.MeleeHitboxLength,
-                         cfg.MeleeHitboxPitch, cfg.MeleeHitboxYaw,
-                         cfg.MeleeRequireWand,
-                         cfg.MeleeTrailSeconds, cfg.MeleeSwingVoice,
-                         cfg.Haptics, cfg.HapticsHand, cfg.HapticsStrength,
-                         cfg.HapticsMinAmplitude, cfg.HapticsMaxSeconds, cfg.HapticsFrequency,
-                         cfg.DodgeAlwaysBackstep, cfg.AirJumpKeepsJumpAnimation,
-                         cfg.ThirdPersonOnDeath,
-                         cfg.DeathViewRise,
-                         cfg.HudDrawOnTop, cfg.HudFadeSpeed, cfg.HudFollowSpeed, cfg.VrFade,
-                         cfg.TidyGameHud, cfg.HideHealthBars, cfg.HideChargeBar,
-                         cfg.HideSoulCounter, cfg.HideItemBar, cfg.HideCutsceneBars,
-                         cfg.MoneyShowSeconds, cfg.ItemBarShowSeconds, cfg.MenuDeadzone,
-                         cfg.WristGauges, cfg.WristGaugeOpacity,
-                         cfg.WristGaugeRadius, cfg.WristGaugeThickness,
-                         cfg.WristGaugeSpacing, cfg.WristGaugeArc, cfg.WristGaugeGlow,
-                         cfg.WristGaugeFillSpeed,
-                         cfg.WristGaugeOffsetX, cfg.WristGaugeOffsetY, cfg.WristGaugeOffsetZ,
-                         cfg.WristGaugePitch, cfg.WristGaugeYaw, cfg.WristGaugeRoll,
-                         cfg.ShowFpsCounter, cfg.FrameRateLimit,
-                     })
+            var reset = 0;
+
+            foreach (var field in typeof(Plugin).GetFields(
+                         System.Reflection.BindingFlags.Instance
+                       | System.Reflection.BindingFlags.Public
+                       | System.Reflection.BindingFlags.NonPublic))
             {
+                if (NeverReset.Contains(field.Name)) continue;
+                if (field.GetValue(cfg) is not BepInEx.Configuration.ConfigEntryBase entry) continue;
+
                 entry.BoxedValue = entry.DefaultValue;
+                reset++;
             }
-            Plugin.Log.LogInfo("VR menu reset to defaults");
+
+            Plugin.Log.LogInfo($"VR menu reset {reset} settings to their defaults");
         }
 
         // -- drawing -------------------------------------------------------------------

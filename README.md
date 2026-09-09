@@ -58,8 +58,12 @@ Requires the .NET SDK and an install of the game.
 ```powershell
 .\deploy.ps1 -Loader     # once per game install: unpacks BepInEx into the game folder
 .\deploy.ps1             # build the plugin and install it
+.\deploy.ps1 -Package    # build dist\NobetaVR-<version>.zip, the archive above
 .\deploy.ps1 -Uninstall  # remove every file the mod added
 ```
+
+The game folder is found through Steam itself, libraries on other drives included. Pass
+`-GameDir` for a copy Steam has never heard of.
 
 The first launch after `-Loader` generates `BepInEx\interop` from the game's own binary —
 the proxy assemblies the plugin is compiled against. It takes about fifteen seconds and
@@ -74,13 +78,14 @@ explained where they live.
 
 ## Controls
 
-Touch-style controllers. Everything here is remappable from
-`BepInEx/config/fr.chromatic.nobetavr.cfg`.
+Touch-style controllers. The buttons themselves are fixed; how they behave is tunable from
+`BepInEx/config/fr.chromatic.nobetavr.cfg` — the dead zones, the snap angle, the grip
+threshold, and which way the left grip steps through the items.
 
 | Input | Action |
 | --- | --- |
 | Left stick | Move — forward, back and strafe, relative to where you are looking |
-| Right stick | Turn — snap by default, 45° a step; smooth is a setting |
+| Right stick | Turn — snap by default, 55° a step; smooth is a setting |
 | Left stick click | Run |
 | Right stick click, held | The magic wheel; point at an arcane with the same stick and let go |
 | A | Jump; in a conversation, the next line |
@@ -105,11 +110,11 @@ the wheel is up, since that is the stick pointing around it.
 The title screen recentres itself, half a second after it comes up and behind the fade. It is
 the one screen with nothing to point you at — no Nobeta to face, no camera whose yaw is the
 answer — so which way you face there is whichever way you were standing when the runtime fixed
-its tracking origin, or wherever you had turned to in the stage you just left. *Recentre on
-title* in the VR menu, `RecentreOnTitle` in the config, turns it off.
+its tracking origin, or wherever you had turned to in the stage you just left.
+`RecentreOnTitle` in the config turns it off.
 
 The grips are read off their own axis rather than from the runtime's grip button, which on
-Touch only registers when the squeeze is most of the way in. *Grip pressure* in the VR menu
+Touch only registers when the squeeze is most of the way in. `GripThreshold` in the config
 is where that threshold lives if a light squeeze is still not light enough, or if a resting
 finger is changing your item.
 
@@ -126,7 +131,7 @@ Walking physically moves Nobeta, through the game's own collision. She turns to 
 you look, including when you turn on the spot.
 
 Melee has no button. Swinging your right hand fast enough and far enough — 3 m/s held for
-27 cm, both settings — swings the wand. The thresholds are measured relative to your own head,
+15 cm, both settings — swings the wand. The thresholds are measured relative to your own head,
 so walking and turning do not count as swings.
 
 What that swing does depends on your feet. **In the air** it is the game's own attack,

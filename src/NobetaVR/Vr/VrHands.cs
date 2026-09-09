@@ -1019,6 +1019,7 @@ namespace NobetaVR.Vr
         /// the whole point — you reach for something and the hand is there, with nothing in
         /// between that could be off.
         /// </summary>
+        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         private void PlaceDetached(Input.VrInput input, Arm arm, XRNode node, bool left)
         {
             if (arm.Hand == null) return;
