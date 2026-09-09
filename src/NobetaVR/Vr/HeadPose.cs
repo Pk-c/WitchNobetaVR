@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.XR;
 
 namespace NobetaVR.Vr
@@ -26,6 +26,26 @@ namespace NobetaVR.Vr
 
         /// <summary>Headset rotation. Never recentred: turning physically must turn the view.</summary>
         public static Quaternion Rotation { get; private set; } = Quaternion.identity;
+
+        /// <summary>
+        /// The yaw the last recentre took out of the headset, as a rotation to put in front of
+        /// it.
+        ///
+        /// <see cref="Rotation"/> above is right that the headset's own yaw is never taken
+        /// away: in a stage the view's direction belongs to the game's camera, the turn control
+        /// drives that, and subtracting a yaw here would fight both. But that owner has to
+        /// exist. On the title screen and any other screen with no <c>PlayerCamera</c> the view
+        /// is the scene's own camera with the headset laid straight on top, so which way you
+        /// face is decided by which way you happened to be standing when the runtime came up —
+        /// which is how you arrive at the menu looking off to one side with nothing that puts
+        /// it right, since recentring there has no body to align to either.
+        ///
+        /// This is that missing owner, and only there. <see cref="VrCamera"/> applies it on the
+        /// frames nothing else claims the yaw, so a recentre means "straight ahead" on a menu
+        /// and "back on Nobeta" in a stage, which is the same request answered by whatever the
+        /// screen has to offer.
+        /// </summary>
+        public static Quaternion MenuYaw { get; private set; } = Quaternion.identity;
 
         /// <summary>Eye position relative to the last recentre.</summary>
         public static Vector3 Position { get; private set; }
@@ -137,9 +157,11 @@ namespace NobetaVR.Vr
         /// <summary>
         /// Puts the head back on Nobeta.
         ///
-        /// Position only. Recentring the yaw as well would fight the game's camera, which is
-        /// what the view's yaw comes from and what the turn control drives; the head's rotation
-        /// is added on top of that and has no origin of its own to reset.
+        /// Position, and the yaw only where nothing else owns it. Recentring the headset's yaw
+        /// in a stage would fight the game's camera, which is what the view's yaw comes from
+        /// and what the turn control drives. On a menu there is no such camera and no body
+        /// either, so the yaw is recorded in <see cref="MenuYaw"/> for the view to subtract
+        /// there and nowhere else.
         /// </summary>
         public static void Recenter()
         {
@@ -149,6 +171,14 @@ namespace NobetaVR.Vr
             Position = Vector3.zero;
             Neck = Vector3.zero;
             RoomScale.Reset();
+
+            // The yaw for the screens with no body to face. Taken from where you are looking
+            // now, so that whatever the scene's camera was framing is what you are pointed at
+            // once this is subtracted. Kept across a stage, because it is not read there and
+            // the value the player last asked for is the better answer than identity if the
+            // automatic recentre on the way back to the title is switched off.
+            var forward = Ui.ViewAnchor.YawForward(Rotation, Vector3.forward);
+            MenuYaw = Quaternion.Inverse(Quaternion.LookRotation(forward, Vector3.up));
 
             // Direction as well as place. Recentring the position alone leaves you standing
             // where Nobeta is but facing wherever you happened to be looking.

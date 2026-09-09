@@ -255,6 +255,12 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
+                Label = "Recentre on title",
+                Value = () => cfg.RecentreOnTitle.Value ? "On" : "Off",
+                Adjust = _ => cfg.RecentreOnTitle.Value = !cfg.RecentreOnTitle.Value,
+            });
+            _items.Add(new Item
+            {
                 Label = "Head hide distance",
                 Value = () => $"{cfg.HeadHideDistance.Value:F2} m",
                 Adjust = d => cfg.HeadHideDistance.Value =

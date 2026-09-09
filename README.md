@@ -92,7 +92,7 @@ Touch-style controllers. Everything here is remappable from
 | Right trigger | Shoot |
 | Left grip | Step through the items — a tap is enough |
 | Right grip | Focus — the game's held shot |
-| Both grips together | Recentre: puts your head back on Nobeta |
+| Both grips together | Recentre: puts your head back on Nobeta, or straight ahead on a menu |
 | Both sticks clicked | The mod's VR settings |
 | Swinging the wand | Melee — no button; see below |
 
@@ -101,6 +101,12 @@ interact happens when you let go rather than when you press. The grips recentre 
 squeezed together — squeeze the second one later and it means what it says on its own, so
 you can reach for an item without losing your focus. And the right stick stops turning while
 the wheel is up, since that is the stick pointing around it.
+
+The title screen recentres itself, half a second after it comes up and behind the fade. It is
+the one screen with nothing to point you at — no Nobeta to face, no camera whose yaw is the
+answer — so which way you face there is whichever way you were standing when the runtime fixed
+its tracking origin, or wherever you had turned to in the stage you just left. *Recentre on
+title* in the VR menu, `RecentreOnTitle` in the config, turns it off.
 
 The grips are read off their own axis rather than from the runtime's grip button, which on
 Touch only registers when the squeeze is most of the way in. *Grip pressure* in the VR menu

@@ -106,6 +106,7 @@ namespace NobetaVR
         internal ConfigEntry<float> WristGaugeYaw;
         internal ConfigEntry<float> WristGaugeRoll;
         internal ConfigEntry<bool> AlignViewToBodyOnSpawn;
+        internal ConfigEntry<bool> RecentreOnTitle;
         internal ConfigEntry<bool> Melee;
         internal ConfigEntry<float> MeleeSpeed;
         internal ConfigEntry<float> MeleeDistance;
@@ -531,6 +532,16 @@ namespace NobetaVR
               + "waking up looking at the pillar she has her back to. While this is running "
               + "she is not turned towards the view, because during it the view is her own "
               + "facing — turning her to face it would walk her round in a circle.");
+
+            RecentreOnTitle = Config.Bind(
+                "Camera", "RecentreOnTitle", true,
+                "Recentres you a moment after the title screen appears, so the menu is in "
+              + "front of you however you were standing when it came up.\n"
+              + "The title is the one screen with nothing to point you at: there is no Nobeta "
+              + "to face and no camera whose yaw is the answer, so which way you face there is "
+              + "decided by where the runtime happened to fix its tracking origin, or by "
+              + "wherever you had turned to in the stage you just left. It is taken behind the "
+              + "fade, and both grips together do the same thing by hand at any time.");
 
             NeckModelDown = Config.Bind(
                 "Room scale", "NeckModelDown", 0.12f,

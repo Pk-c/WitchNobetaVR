@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using NobetaVR.Xr;
 using UnityEngine;
 using UnityEngine.XR;
@@ -220,6 +220,11 @@ namespace NobetaVR.Vr
             if (_xr is not { CurrentState: XrLoader.State.Running }) return;
 
             ConfigureTrackingOrigin();
+
+            // Before the early return below, and so on every frame XR is up rather than only
+            // on the menu frames this reaches the end of. It watches for the scene changing,
+            // and a watcher that skips every frame of a stage never sees the stage.
+            TitleRecentre.Tick();
 
             // While a PlayerCamera is driving, the pose is applied from the postfix that runs
             // straight after the game's own camera update. Doing it here as well would be at
@@ -501,6 +506,22 @@ namespace NobetaVR.Vr
                 viewPos = fpPos;
                 viewRot = fpRot;
                 inHead = true;
+            }
+            // A screen with no PlayerCamera at all — the title, and the menus that hang off it.
+            // Nothing here owns the view's direction: the scene's camera is fixed, no turn
+            // control moves it, and there is no body to face. So the recentre's own yaw stands
+            // in as that owner, and taking it out of the headset is what points a player who
+            // was standing sideways at the front of the menu. Only on this branch: the one
+            // above has a game camera whose yaw is the answer, and the frames where that camera
+            // exists but her head bone has not loaded yet must keep it rather than be turned by
+            // a value meant for a screen without one.
+            //
+            // Tested on the PlayerCamera rather than on the scene name, because it is the
+            // camera's absence that makes the yaw unowned. Unity's null covers the object being
+            // destroyed on the way out of a stage, which is exactly when this becomes true.
+            else if (_playerCamera == null)
+            {
+                viewRot = _gameRot * HeadPose.MenuYaw;
             }
 
             ViewYaw = viewRot;

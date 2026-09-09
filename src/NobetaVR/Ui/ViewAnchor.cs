@@ -29,10 +29,21 @@ namespace NobetaVR.Ui
         /// never. Pass the direction already in use, so a bad frame holds rather than jumps.
         /// </param>
         public static Vector3 YawForward(Transform view, Vector3 fallback)
-        {
-            var f = view.forward;
-            var u = view.up;
+            => YawForward(view.forward, view.up, fallback);
 
+        /// <summary>
+        /// The same question asked of a bare rotation rather than of a transform.
+        ///
+        /// Recentring wants it: the yaw to take out of the headset is the yaw of a reading that
+        /// belongs to no transform, and taking it from the flattened forward alone would answer
+        /// a player who recentres while looking at the floor with whatever roll their neck
+        /// happened to be carrying.
+        /// </summary>
+        public static Vector3 YawForward(Quaternion rotation, Vector3 fallback)
+            => YawForward(rotation * Vector3.forward, rotation * Vector3.up, fallback);
+
+        private static Vector3 YawForward(Vector3 f, Vector3 u, Vector3 fallback)
+        {
             // The flattened gaze is worth (1 - |f.y|) and the flattened head-up is worth -f.y.
             // Signed, so the second term points along the gaze whether the head is pitched down
             // or up, and is worth nothing at all while the gaze is level.
