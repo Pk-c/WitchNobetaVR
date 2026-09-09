@@ -80,7 +80,7 @@ namespace NobetaVR.Ui
         private const float MinorSpan = 110f;
 
         private const int Bands = 3;
-        private const int Rings = 3;   // trough, ghost, lit — concentric, in that order
+        private const int Rings = 3;   // trough, ghost, lit — nested, in that order
         private const int RingVertices = (MajorSegments + 1) * (MinorSegments + 1);
 
         /// <summary>Below this fraction a gauge pulses, the way the game's own bars do.</summary>
@@ -106,8 +106,8 @@ namespace NobetaVR.Ui
         // -- palette ---------------------------------------------------------------------
 
         /// <summary>
-        /// Taken from Nobeta rather than from a colour wheel: soul blue, the deep purple of her
-        /// magic, and the red of her ribbon, stacked in that order down the arm.
+        /// The three channels: mana blue, stamina amber, health red, stacked in that order
+        /// down the arm.
         ///
         /// <para>
         /// The discipline behind it is what makes the bands readable rather than merely pretty.
@@ -119,23 +119,25 @@ namespace NobetaVR.Ui
         /// </para>
         ///
         /// <para>
-        /// A deep purple is the darkest of the three by some way, at an L* of about 32, so it
-        /// is the band that sets what the other two have to do. Blue at 57 clears it by
-        /// twenty-five. The red had to come up to meet it: at the L* of 40 it was, purple
-        /// against red was two dark bands touching, separated by a hue difference this size of
-        /// mark cannot carry. At 51 it clears the purple by nineteen and reads as the same
-        /// ribbon red, only lit rather than deep.
+        /// Amber is the lightest of the three at an L* of about 81 and red the darkest at 55,
+        /// with stamina between the two, so it is the pair mana makes with amber that is the
+        /// tightest on the arm: blue at 70 clears the amber above it by ten and is cleared by
+        /// the red below it by twenty-six. Ten is a narrower step than the rest of this ladder
+        /// wants, so that one pair leans on hue to finish the job — and blue against amber is
+        /// the hue pair that survives nearly every form of colour blindness, which is the right
+        /// place to be spending hue if it is to be spent anywhere.
         /// </para>
         /// </summary>
-        private static readonly Color Mana = new(0.243f, 0.561f, 0.796f);     // #3E8FCB
-        private static readonly Color Stamina = new(0.416f, 0.173f, 0.569f);  // #6A2C91
-        private static readonly Color Health = new(0.878f, 0.220f, 0.298f);   // #E0384C
+        private static readonly Color Mana = new(0.157f, 0.722f, 0.961f);     // #28B8F5
+        private static readonly Color Stamina = new(1.000f, 0.745f, 0.094f);  // #FFBE18
+        private static readonly Color Health = new(0.941f, 0.267f, 0.267f);   // #F04444
 
         /// <summary>
-        /// The unlit channel each band runs in. Dark, and not black: an invisible trough shows
-        /// you what you have and not what you are missing, which is half of what a gauge is for.
+        /// The unlit channel each band runs in, and the rim it shows past them. Dark, and not
+        /// black: an invisible trough shows you what you have and not what you are missing,
+        /// which is half of what a gauge is for.
         /// </summary>
-        private static readonly Color TroughPaint = new(0.16f, 0.15f, 0.14f);
+        private static readonly Color TroughPaint = new(0.125f, 0.137f, 0.153f);  // #202327
 
         /// <summary>How solid each ring is, before the whole thing is faded.</summary>
         private static readonly float[] RingAlpha = { 0.55f, 0.85f, 1f };
@@ -149,6 +151,28 @@ namespace NobetaVR.Ui
         /// millimetre costs nothing to be certain of.
         /// </summary>
         private const float RingStep = 0.02f;
+
+        /// <summary>
+        /// How much narrower than its trough the two rings it carries are, as a fraction of the
+        /// tube's thickness, so that the trough shows as a rim all the way round a full band
+        /// rather than being covered to the millimetre by it.
+        ///
+        /// <para>
+        /// Taken off the fill rather than added to the trough, because the trough is what makes
+        /// the band's silhouette: a rim added on the outside would grow every band by twice this
+        /// and eat the gap between them, which at the default spacing of ten millimetres against
+        /// a thickness of four and a half is only one millimetre wide to begin with. Taken off
+        /// the inside, a band occupies exactly what the thickness setting says it does, and the
+        /// rim comes out of the fill, which has it to spare.
+        /// </para>
+        ///
+        /// <para>
+        /// Eight per cent of the tube is about a third of a millimetre at the default
+        /// thickness, which at arm's length is a few minutes of arc: enough to read as an edge,
+        /// not enough to read as a border.
+        /// </para>
+        /// </summary>
+        private const float TroughRim = 0.08f;
 
         /// <summary>
         /// The tube's cross-section, worked out once.
@@ -511,6 +535,14 @@ namespace NobetaVR.Ui
         /// so a full band wraps the whole sweep and an empty one is nothing. A zero-length arc
         /// collapses to coincident vertices and draws nothing, which is why there is no special
         /// case for it: degenerate triangles are free and a branch here would not be.
+        ///
+        /// <para>
+        /// The trough takes the whole of the arc and the whole of the thickness; the two rings
+        /// it carries are inset from both by <see cref="TroughRim"/>, which is what leaves the
+        /// trough showing as a rim round a band that is completely full. The inset is one
+        /// distance rather than two — the same rim across the tube and off each end of the arc —
+        /// so the end inset is that distance turned into an angle at this radius.
+        /// </para>
         /// </summary>
         private void Shape(Band band, int index, float radius, float thickness, float spacing,
                            float arc, float glow, float pulse, Vector3 viewer, bool facingKnown,
@@ -521,14 +553,21 @@ namespace NobetaVR.Ui
             // Negative spacing stacks them the other way, which is the whole of the fix if
             // they come out with mana at the hand rather than at the elbow.
             var along = (1 - index) * spacing;
-            var start = -arc * 0.5f;
             var v = 0;
+
+            // The rim, and the same rim in degrees at this radius. Capped against the arc
+            // because the settings can ask for a thick band on a small wrist over a short
+            // sweep, and two rims that met in the middle would leave nothing to fill.
+            var rim = thickness * TroughRim;
+            var ends = Mathf.Min(rim * Mathf.Rad2Deg / radius, arc * 0.2f);
 
             for (var ring = 0; ring < Rings; ring++)
             {
                 var paint = Paint(ring, band.Bar, pulse, glow);
                 var alpha = RingAlpha[ring];
+                var ringThickness = ring == 0 ? thickness : thickness - rim;
 
+                var start = 0f;
                 var sweep = 0f;
                 var ringRadius = 0f;
 
@@ -538,7 +577,10 @@ namespace NobetaVR.Ui
                                  : ring == 1 ? band.Bar.Lost
                                  : band.Bar.Shown;
 
-                    sweep = arc * Mathf.Clamp01(fraction);
+                    var span = ring == 0 ? arc : arc - 2f * ends;
+
+                    start = -span * 0.5f;
+                    sweep = span * Mathf.Clamp01(fraction);
                     ringRadius = radius + thickness * RingStep * ring;
                 }
 
@@ -561,8 +603,8 @@ namespace NobetaVR.Ui
                             var cos = MinorCos[j];
                             var sin = MinorSin[j];
 
-                            position = outward * (ringRadius + thickness * cos)
-                                     + Vector3.up * (along + thickness * sin);
+                            position = outward * (ringRadius + ringThickness * cos)
+                                     + Vector3.up * (along + ringThickness * sin);
                             normal = outward * cos + Vector3.up * sin;
 
                             band.Vertices[v] = position;
@@ -676,7 +718,7 @@ namespace NobetaVR.Ui
             _material.SetInt("unity_GUIZTestMode", (int)UnityEngine.Rendering.CompareFunction.LessEqual);
             _material.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.LessEqual);
 
-            // Soul blue, deep purple, ribbon red down the arm. Health is at the end of the run
+            // Mana blue, stamina amber, health red down the arm. Health is at the end of the run
             // rather than the start of it, which puts the one you cannot afford to miss nearest
             // your hand — and cool to warm reads as an ascending scale of how much it matters.
             _bands[0] = MakeBand("Mana", new Bar
