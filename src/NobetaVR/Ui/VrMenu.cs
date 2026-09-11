@@ -213,6 +213,13 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
+                Label = "Spell wheel speed",
+                Value = () => $"×{cfg.SpellWheelSpeed.Value:F1}",
+                Adjust = d => cfg.SpellWheelSpeed.Value =
+                    Mathf.Clamp(cfg.SpellWheelSpeed.Value + d * 0.5f, 0.25f, 8f),
+            });
+            _items.Add(new Item
+            {
                 Label = "Smooth turn speed",
                 Value = () => $"{cfg.SmoothTurnSpeed.Value:F0}°/s",
                 Adjust = d => cfg.SmoothTurnSpeed.Value = Mathf.Clamp(cfg.SmoothTurnSpeed.Value + d * 10f, 20f, 360f),
@@ -262,6 +269,12 @@ namespace NobetaVR.Ui
                 Label = "Cutscenes",
                 Value = () => cfg.ThirdPersonInCutscenes.Value ? "Third person" : "Stay in her head",
                 Adjust = _ => cfg.ThirdPersonInCutscenes.Value = !cfg.ThirdPersonInCutscenes.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Cutscene framing",
+                Value = () => cfg.AlignCutscenesToView.Value ? "In front of you" : "As authored",
+                Adjust = _ => cfg.AlignCutscenesToView.Value = !cfg.AlignCutscenesToView.Value,
             });
             _items.Add(new Item
             {

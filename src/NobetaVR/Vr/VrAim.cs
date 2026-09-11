@@ -33,7 +33,18 @@ namespace NobetaVR.Vr
             Target = null;
             if (playerCamera == null || view == null) return;
 
-            if (!Plugin.Instance.AimFromView.Value)
+            // Not ours to place while the game has her, and that is not only a question of
+            // where a shot would go: the game's IK turns her head and chest towards this
+            // target, so writing it during a cutscene drags her about by the player's gaze
+            // while the scene is trying to act with her. From inside the headset that is the
+            // character following your head instead of playing her part, which is the other
+            // half of "she should not be movable or follow the camera during cutscenes" —
+            // standing the controls down stops her walking, and this stops her looking.
+            //
+            // It is left where the game put it rather than restored, because the game is
+            // placing it itself on exactly these frames: it is the third-person camera's aim
+            // target, and a scene owns that camera.
+            if (!Plugin.Instance.AimFromView.Value || !PlayerStatus.YoursToDrive)
             {
                 // Not ours to place — but still worth reading back, so the reticle marks
                 // where the game is aiming whether or not the mod moved it.

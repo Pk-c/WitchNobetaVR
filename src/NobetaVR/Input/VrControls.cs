@@ -19,7 +19,7 @@ namespace NobetaVR.Input
     ///
     /// <list type="table">
     /// <item><term>Left stick</term><description>move; click to run</description></item>
-    /// <item><term>Right stick</term><description>turn; click and hold for the magic wheel</description></item>
+    /// <item><term>Right stick</term><description>turn; click for the spell wheel, then point with it</description></item>
     /// <item><term>A / B</term><description>jump / dodge</description></item>
     /// <item><term>X</term><description>use item</description></item>
     /// <item><term>Y</term><description>interact; held, the pause menu</description></item>
@@ -28,9 +28,10 @@ namespace NobetaVR.Input
     /// </list>
     ///
     /// Three of those share a control with something else — Y with the pause menu, the grips
-    /// with recentring, the right stick with turning — and each of the three is resolved here
+    /// with recentring, the right stick with turning — and each of the three is resolved
     /// rather than by asking the player to be careful. See <see cref="Interact"/>,
-    /// <see cref="Grips"/> and <see cref="MagicWheel"/>.
+    /// <see cref="Grips"/> and <see cref="MagicWheel"/>, which owns the last of them because
+    /// the stick's click and the stick's push cannot be given at once by one thumb.
     /// </summary>
     public sealed class VrControls : MonoBehaviour
     {
@@ -70,6 +71,7 @@ namespace NobetaVR.Input
 
         private readonly VrInput _input = new();
         private readonly Ui.GameUiInput _gameUi = new();
+        private readonly MagicWheel _wheel = new();
 
         /// <summary>The controllers, for anything else that needs to read them.</summary>
         [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
@@ -103,7 +105,8 @@ namespace NobetaVR.Input
         private float _leftGripAt, _rightGripAt;
         private bool _gripsConsumed, _cyclePending;
 
-        private bool _wheelOpen;
+        // Both grips again, for the one thing they can still mean while the game has her.
+        private bool _realignHeld;
 
         private void Awake() => Instance = this;
 
@@ -113,6 +116,11 @@ namespace NobetaVR.Input
             Vr.HeadPose.Sample();
 
             _input.Poll();
+
+            // The other end of the same controllers, and the only per-frame work the haptics
+            // have: a rumble the game set as a level rather than as an event has to be kept
+            // alive until it is cleared. See VrHaptics.Tick.
+            Vr.VrHaptics.Tick();
 
             // Which of the gates below the frame took is the one thing a stuck cutscene cannot
             // be told from inside the headset, and every one of them is silent. See
@@ -138,20 +146,41 @@ namespace NobetaVR.Input
             // stick both walks Nobeta and scrolls the menu she is standing in.
             if (Ui.VrMenu.Instance != null && Ui.VrMenu.Instance.IsOpen) { StandDown(); return "vr menu"; }
 
+            // Whether she is the player's to drive at all this frame, asked once and used
+            // twice: the wheel may not be opened during a moment she is not, and everything
+            // below stands down for it.
+            var hers = Vr.PlayerStatus.YoursToDrive;
+
             // The wheel is held open by us rather than by the game's menu stack, so it is
-            // settled before that gate rather than behind it. Were it behind, anything binding
-            // a UI controller while the wheel was up would leave it open with nothing left able
-            // to close it.
-            var wheel = MagicWheel();
+            // settled before the menu gate rather than behind it. Were it behind, anything
+            // binding a UI controller while the wheel was up would leave it open with nothing
+            // left able to close it. It is handed the menu's state all the same, because a
+            // menu already up has to stop the wheel from opening over it — the wheel takes the
+            // stick that would otherwise navigate that menu. See MagicWheel.
+            var wheel = _wheel.Update(_input, InputController, hers, _gameUi.MenuOpen);
 
             if (!wheel && _gameUi.Update(_input)) { StandDown(); return "game menu"; }
 
-            // Dying, waking at a save point and getting back to her feet are the game's to
-            // drive, and it does not stop reporting her controllable through them — it holds
-            // her with the state machine instead. Without this the player can spin the world
-            // and wave her hands about while she is still sitting slumped against the statue,
-            // which is the game and the player driving one body at once.
-            if (Vr.PlayerStatus.DownOrGettingUp) { StandDown(); return "she is down"; }
+            // Every moment the game has her rather than the player, whether it says so with
+            // the camera, with `controllable`, or with the state machine alone.
+            //
+            // Each of the three catches something the others do not — see
+            // PlayerStatus.YoursToDrive — and the mod used to gate only on the last of them.
+            // The other two are just as much the game driving her: during a cutscene the
+            // trigger still fired her magic, the stick still walked her off the mark the scene
+            // had placed her on, and the right stick still turned a camera the scene was
+            // authoring. None of that is a control the player is meant to have while somebody
+            // else is filming, and all of it is invisible from the game's side, which holds
+            // her by refusing her input rather than by telling the mod to stop sending it.
+            //
+            // The two readings are still told apart for the log, because "she is down" and "a
+            // scene is playing" send an investigation to opposite ends of the mod.
+            if (!hers)
+            {
+                StandDown();
+                RealignOrRecentre();
+                return Vr.PlayerStatus.DownOrGettingUp ? "she is down" : "the game has her";
+            }
 
             NotePlayerAction();
 
@@ -159,15 +188,13 @@ namespace NobetaVR.Input
             Move();
             if (!wheel) Turn();
             Actions();
-            // Room-scale only while she is plainly the player's. A cutscene places her on a
-            // mark and then acts around it, so a physical step slides her off it and the scene
-            // plays out with her in the wrong place — and nothing in the scene will put her
-            // back. The camera mode catches the staged moments and `controllable` catches the
-            // rest of them: conversations, doors, pickups. Standing down still calls through,
-            // because the offset has to be absorbed rather than banked; see RoomScale.Apply.
-            Vr.RoomScale.Apply(Camera != null ? Camera.wizardGirl : null, Vr.VrCamera.ViewYaw,
-                               Vr.BodyFacing.Mode == PlayerCamera.CameraMode.Normal
-                            && Vr.PlayerStatus.Controllable);
+            // Room-scale only while she is plainly the player's, which the gate above has
+            // already established for every line down here. A cutscene places her on a mark
+            // and then acts around it, so a physical step slides her off it and the scene plays
+            // out with her in the wrong place — and nothing in the scene will put her back.
+            // The frames that stand down still call through, from StandDown, because the offset
+            // has to be absorbed rather than banked; see RoomScale.Apply.
+            Vr.RoomScale.Apply(Camera != null ? Camera.wizardGirl : null, Vr.VrCamera.ViewYaw, true);
 
             return wheel ? "magic wheel" : "gameplay";
         }
@@ -206,16 +233,17 @@ namespace NobetaVR.Input
             // becomes a way to store up a step and cash it in on the way out.
             Vr.RoomScale.Apply(Camera != null ? Camera.wizardGirl : null, Vr.VrCamera.ViewYaw, false);
 
+            _wheel.StandDown(InputController);
+
             if (InputController != null)
             {
                 if (_shootHeld) InputController.Shoot(false);
                 if (_runHeld) InputController.Dash(false);
                 if (_aimHeld) InputController.Aim(false);
-                if (_wheelOpen) InputController.AppearMagicMenu(false);
                 if (_wasMoving) InputController.Move(Vector2.zero);
             }
 
-            _shootHeld = _runHeld = _aimHeld = _wheelOpen = _wasMoving = false;
+            _shootHeld = _runHeld = _aimHeld = _wasMoving = false;
             Focusing = false;
             _snapArmed = true;
 
@@ -233,33 +261,32 @@ namespace NobetaVR.Input
         }
 
         /// <summary>
-        /// The magic wheel, on a held right stick click, pointed at with the same stick.
+        /// Both grips while the game has her, which is the same gesture that recentres during
+        /// play and cannot mean quite the same thing here.
         ///
-        /// The game's own wheel works exactly this way — <c>AppearMagicMenu</c> takes a held
-        /// flag and <c>MoveMenuPointer</c> takes the stick — so there is nothing to rebuild,
-        /// only somewhere to send it. Turning stands down while it is up, since the stick that
-        /// opened the wheel is the stick that has to point around it.
+        /// Recentring writes the camera's own yaw — <c>g_fX</c>, through
+        /// <see cref="Vr.FirstPerson.RealignToBody"/> — and during a staged shot that yaw is
+        /// the game's, being authored frame by frame. So while the view stands back from her
+        /// the gesture retakes <see cref="Vr.ShotFacing"/>'s alignment instead, which is the
+        /// same request answered with the half of it that is ours to give: the shot goes back
+        /// in front of you. While the view is still in her head — a conversation, a door — a
+        /// recentre is exactly what it always was, and it stays that.
         ///
-        /// A right click with the left one already down is the mod's own settings menu opening,
-        /// not the wheel. That is checked here rather than by update order, because VrMenu is a
-        /// separate component and Unity's order between the two is not ours to decide.
+        /// It has its own edge rather than going through <see cref="Grips"/>, because the rest
+        /// of that method is focus and item cycling, neither of which she is available for.
         /// </summary>
-        private bool MagicWheel()
+        private void RealignOrRecentre()
         {
-            if (InputController == null) return false;
+            var both = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Grip)
+                    && _input.Pressed(VrInput.Hand.Right, VrInput.Button.Grip);
 
-            var open = _input.Pressed(VrInput.Hand.Right, VrInput.Button.StickClick)
-                    && !_input.Pressed(VrInput.Hand.Left, VrInput.Button.StickClick);
-
-            if (open != _wheelOpen)
+            if (both && !_realignHeld)
             {
-                _wheelOpen = open;
-                InputController.AppearMagicMenu(open);
+                if (Vr.VrCamera.ViewStandsBack) Vr.ShotFacing.Realign();
+                else Vr.HeadPose.Recenter();
             }
 
-            if (_wheelOpen) InputController.MoveMenuPointer(_input.RightStick);
-
-            return _wheelOpen;
+            _realignHeld = both;
         }
 
         /// <summary>

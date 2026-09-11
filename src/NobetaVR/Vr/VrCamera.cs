@@ -491,11 +491,19 @@ namespace NobetaVR.Vr
             // room-scale all already stand down whenever the camera is not in Normal.
             ViewStandsBack = ThirdPersonView();
 
+            // The shot's own yaw is not enough on its own: the headset's yaw is an offset the
+            // player accumulates over a stage, and adding it to an authored angle presents the
+            // shot over their shoulder. See ShotFacing, which takes that offset off at every
+            // cut. Asked on the frames the view is hers again as well, so a cutscene always
+            // opens on a freshly taken alignment.
+            if (ViewStandsBack) ShotFacing.Update(_gameRot, _gamePos, headRot);
+            else ShotFacing.Forget();
+
             var inHead = false;
 
             if (ViewStandsBack)
             {
-                viewRot = Quaternion.Euler(0f, _gameRot.eulerAngles.y, 0f);
+                viewRot = Quaternion.Euler(0f, _gameRot.eulerAngles.y, 0f) * ShotFacing.Yaw;
                 viewPos += Vector3.up * DeathRise();
             }
             // If the head bone is not loaded yet, first person declines and the boom pose

@@ -127,7 +127,125 @@ namespace NobetaVR.Vr
             var longest = Mathf.Max(MinSeconds, cfg.HapticsMaxSeconds.Value);
             var duration = Mathf.Clamp(seconds, MinSeconds, longest);
 
-            switch (cfg.HapticsHand.Value)
+            Emit(low, high, duration);
+            Trace("event", seconds, low, high);
+        }
+
+        /// <summary>
+        /// A rumble the game set as a level rather than as an event, kept running until it is
+        /// cleared.
+        ///
+        /// <c>EnableVibration</c> is not the only way the game rumbles. Underneath it,
+        /// <c>GamepadVibration.SetFrequency</c> sets the two motors and nothing else: no
+        /// duration, no end, just a level that stands until something sets another one. A pad
+        /// is happy with that — a motor holds whatever speed it was given — and an OpenXR
+        /// impulse is the opposite, a burst of a stated length that is over when it is over.
+        /// So a rumble authored as a level reached the pad on the desk and nothing at all in
+        /// the hands, which is what "during cutscenes the haptics play on the gamepad and not
+        /// on my controllers" was: the scenes hold their rumble rather than firing it.
+        ///
+        /// <para>
+        /// The level is therefore held here and re-sent as overlapping impulses by
+        /// <see cref="Tick"/> for as long as it stands. Only changes are acted on, because a
+        /// level is a state rather than an event and a game is free to restate it every frame
+        /// — and a zero is the end of the rumble, which is the one the pad's coroutine sends
+        /// when a timed event runs out.
+        /// </para>
+        /// </summary>
+        public static void Level(float lowMotor, float highMotor)
+        {
+            var low = Mathf.Clamp01(lowMotor);
+            var high = Mathf.Clamp01(highMotor);
+
+            if (low <= 0f && high <= 0f)
+            {
+                _sustaining = false;
+                Stop();
+                return;
+            }
+
+            var cfg = Plugin.Instance;
+            if (cfg == null || !cfg.Haptics.Value || !GameVibrationOn()) return;
+
+            // A level restated unchanged is the same rumble, not a new one.
+            if (_sustaining && low == _levelLow && high == _levelHigh) return;
+
+            _levelLow = low;
+            _levelHigh = high;
+            _sustaining = true;
+            _sustainedSince = Time.unscaledTime;
+            _refreshAt = Time.unscaledTime + RefreshEvery;
+
+            Emit(low, high, ImpulseSeconds);
+            Trace("level", 0f, low, high);
+        }
+
+        /// <summary>
+        /// Keeps a held level alive, once a frame.
+        ///
+        /// The impulses overlap on purpose: each is asked for rather more than the gap between
+        /// them, so the actuator is handed its next burst before the last has finished and the
+        /// rumble has no seam in it. Re-sending to a running actuator replaces what it is doing
+        /// rather than queueing behind it, which is what makes that safe.
+        ///
+        /// <para>
+        /// The cap is a safety rail and not a tuning knob. A level that is never cleared is a
+        /// rumble with nothing left to end it — a scene interrupted, a stage unloaded mid-event
+        /// — and in the hand that is indistinguishable from the mod having broken. It says so
+        /// in the log rather than going quiet, because a rumble that stopped early and one that
+        /// was never sent read exactly alike.
+        /// </para>
+        /// </summary>
+        public static void Tick()
+        {
+            if (!_sustaining) return;
+
+            var cfg = Plugin.Instance;
+            if (cfg == null || !cfg.Haptics.Value || !GameVibrationOn())
+            {
+                _sustaining = false;
+                Stop();
+                return;
+            }
+
+            if (Time.unscaledTime - _sustainedSince > SustainMax)
+            {
+                _sustaining = false;
+                Stop();
+                Plugin.Log.LogWarning($"haptics: a held rumble ran for {SustainMax:F0}s with "
+                                    + "nothing clearing it, so it was stopped here. The game "
+                                    + "sets a level and clears it; a level that outlives that "
+                                    + "means the call that clears it never arrived.");
+                return;
+            }
+
+            if (Time.unscaledTime < _refreshAt) return;
+            _refreshAt = Time.unscaledTime + RefreshEvery;
+
+            Emit(_levelLow, _levelHigh, ImpulseSeconds);
+        }
+
+        /// <summary>How often a held level is re-sent, in seconds.</summary>
+        private const float RefreshEvery = 0.08f;
+
+        /// <summary>
+        /// And how long each of those bursts asks for. Longer than the gap above, so they
+        /// overlap rather than stutter.
+        /// </summary>
+        private const float ImpulseSeconds = 0.2f;
+
+        /// <summary>Longest a held level is kept alive with nothing clearing it, in seconds.</summary>
+        private const float SustainMax = 30f;
+
+        private static bool _sustaining;
+        private static float _levelLow, _levelHigh;
+        private static float _sustainedSince;
+        private static float _refreshAt;
+
+        /// <summary>One rumble out to whichever hands the setting asks for.</summary>
+        private static void Emit(float low, float high, float duration)
+        {
+            switch (Plugin.Instance.HapticsHand.Value)
             {
                 case HapticsHands.Motors:
                     Send(LeftSide, Amplitude(low), duration);
@@ -148,8 +266,6 @@ namespace NobetaVR.Vr
                     Send(RightSide, both, duration);
                     break;
             }
-
-            Trace(seconds, low, high);
         }
 
         /// <summary>
@@ -170,9 +286,21 @@ namespace NobetaVR.Vr
         /// </summary>
         public static void Stop()
         {
+            _sustaining = false;
+
+            // Nothing was playing, so there is nothing to stop. The game clears its motors
+            // rather more often than it sets them — a zero level is how a timed event ends, and
+            // a game is free to restate that every frame — and each stop is two native calls a
+            // hand that would otherwise be paid for a rumble that finished long ago.
+            if (!_running) return;
+            _running = false;
+
             StopOne(LeftSide);
             StopOne(RightSide);
         }
+
+        /// <summary>Whether anything has been sent that has not since been stopped.</summary>
+        private static bool _running;
 
         /// <summary>
         /// A pad motor is an eccentric mass and a Touch controller is a linear actuator, so the
@@ -197,7 +325,10 @@ namespace NobetaVR.Vr
 
             if (side.Legacy
                 && InputDevices.SendHapticImpulse(side.Device.deviceId, 0, amplitude, duration))
+            {
+                _running = true;
                 return;
+            }
 
             if (!side.Provider) return;
 
@@ -206,6 +337,7 @@ namespace NobetaVR.Vr
                 Native.SendHapticImpulse(side.ProviderDevice, side.Action, amplitude,
                                          Mathf.Max(0f, Plugin.Instance.HapticsFrequency.Value),
                                          duration);
+                _running = true;
             }
             catch (Exception e)
             {
@@ -342,12 +474,18 @@ namespace NobetaVR.Vr
         /// nowhere and the mapping above assumes 0 to 1; eight lines in the log settle that from
         /// the game itself, once, without turning a fight into a running commentary.
         /// </summary>
-        private static void Trace(float seconds, float low, float high)
+        private static void Trace(string kind, float seconds, float low, float high)
         {
             if (_traced >= 8) return;
             _traced++;
 
-            Plugin.Log.LogInfo($"haptics: {seconds:F2}s low={low:F2} high={high:F2}");
+            // The kind matters as much as the numbers. An event and a held level arrive by
+            // different routes through the game, and which of the two a given moment uses is
+            // not readable from an IL2CPP build — so the first eight lines say which route the
+            // game actually took, and a scene whose rumble is missing from the hands can be
+            // told apart from one whose rumble never fired at all.
+            var length = seconds > 0f ? $"{seconds:F2}s" : "held";
+            Plugin.Log.LogInfo($"haptics: {kind} {length} low={low:F2} high={high:F2}");
         }
     }
 }

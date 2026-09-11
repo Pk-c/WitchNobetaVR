@@ -35,9 +35,15 @@ are redistributed.
 - **Comfort measures for the moments the game takes the camera** — cutscenes step you back
   out of her head to the game's own camera, so a sweep is a camera moving through a room
   rather than your own head being turned for you, and the scene is framed as it was authored;
-  the camera's breathing sway and combat shake are switched off; dying does the same and
-  returns when she is yours again; and the dodge is always the backward hop, because the roll
-  it would otherwise pick takes the camera over with her
+  each shot is turned to where you are already looking, at the start and again at every cut,
+  so it plays in front of you rather than over your shoulder; the camera's breathing sway and
+  combat shake are switched off; dying does the same and returns when she is yours again; and
+  the dodge is always the backward hop, because the roll it would otherwise pick takes the
+  camera over with her
+- **Her scenes are hers** — while the game is framing one, the controls stand down: the
+  trigger does not fire her magic, the stick does not walk her off the mark the scene put her
+  on, the right stick does not turn a camera the scene is authoring, and her head is not
+  dragged around by where you happen to be looking. Everything comes back the moment she does
 - **Fades that actually fade** — the game hides its transitions behind a full-screen black
   image, which in a headset is a black rectangle hanging in front of you with the level still
   visible around it. The game's own timing drives a real fade of the whole view instead
@@ -80,14 +86,15 @@ explained where they live.
 
 Touch-style controllers. The buttons themselves are fixed; how they behave is tunable from
 `BepInEx/config/fr.chromatic.nobetavr.cfg` — the dead zones, the snap angle, the grip
-threshold, and which way the left grip steps through the items.
+threshold, how fast the spell wheel moves, and which way the left grip steps through the
+items.
 
 | Input | Action |
 | --- | --- |
 | Left stick | Move — forward, back and strafe, relative to where you are looking |
 | Right stick | Turn — snap by default, 55° a step; smooth is a setting |
 | Left stick click | Run |
-| Right stick click, held | The magic wheel; point at an arcane with the same stick and let go |
+| Right stick click | The spell wheel; push the same stick towards an arcane and let go |
 | A | Jump; in a conversation, the next line |
 | B | Dodge — the backward hop, never the roll; in a conversation, the skip menu |
 | X | Use the selected item |
@@ -97,7 +104,7 @@ threshold, and which way the left grip steps through the items.
 | Right trigger | Shoot |
 | Left grip | Step through the items — a tap is enough |
 | Right grip | Focus — the game's held shot |
-| Both grips together | Recentre: puts your head back on Nobeta, or straight ahead on a menu |
+| Both grips together | Recentre: puts your head back on Nobeta, straight ahead on a menu, or the shot back in front of you during a cutscene |
 | Both sticks clicked | The mod's VR settings |
 | Swinging the wand | Melee — no button; see below |
 
@@ -106,6 +113,18 @@ interact happens when you let go rather than when you press. The grips recentre 
 squeezed together — squeeze the second one later and it means what it says on its own, so
 you can reach for an item without losing your focus. And the right stick stops turning while
 the wheel is up, since that is the stick pointing around it.
+
+The wheel is the third and the awkward one, because a thumb pressing a stick down cannot then
+push it sideways. So the click is read like Y: hold it and the wheel behaves as the game's own
+does, closing when you let go; tap it — including the tap a hold becomes the moment your thumb
+rolls off — and the wheel stays up with the stick free. Either way you finish the same, by
+pushing towards a spell and letting the stick come home. A tap with nothing chosen closes on a
+second tap.
+
+The wheel also moves quicker than the game makes it. Its pointer, arrow and icons all ease
+towards the stick rather than following it, which is polish on a monitor and lag in a headset,
+where the whole interaction is one push and a release. `SpellWheelSpeed` multiplies the game's
+own rate — three by default, and it goes both ways.
 
 The title screen recentres itself, half a second after it comes up and behind the fade. It is
 the one screen with nothing to point you at — no Nobeta to face, no camera whose yaw is the

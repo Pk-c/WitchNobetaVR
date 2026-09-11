@@ -40,6 +40,7 @@ namespace NobetaVR
         internal ConfigEntry<bool> DisableRespiration;
         internal ConfigEntry<bool> DisableCameraShake;
         internal ConfigEntry<bool> ThirdPersonInCutscenes;
+        internal ConfigEntry<bool> AlignCutscenesToView;
         internal ConfigEntry<bool> DisableDepthOfField;
         internal ConfigEntry<float> MoveDeadzone;
         internal ConfigEntry<float> TurnDeadzone;
@@ -50,6 +51,7 @@ namespace NobetaVR
         internal ConfigEntry<float> RecentreGripWindow;
         internal ConfigEntry<float> GripThreshold;
         internal ConfigEntry<bool> ItemCycleForward;
+        internal ConfigEntry<float> SpellWheelSpeed;
         internal ConfigEntry<bool> RoomScale;
         internal ConfigEntry<float> RoomScaleMaxStep;
         internal ConfigEntry<float> NeckModelDown;
@@ -416,6 +418,16 @@ namespace NobetaVR
             MenuDistance = Config.Bind("Interface", "MenuDistance", 1.2f,
                 "How far in front of you the mod's own settings panel sits, in metres.");
 
+            SpellWheelSpeed = Config.Bind(
+                "Controls", "SpellWheelSpeed", 3f,
+                "How much quicker the spell wheel moves than the game makes it. Its pointer, "
+              + "its arrow and its icons all ease towards where the stick is rather than "
+              + "snapping there, which is polish on a monitor — the wheel is held open for as "
+              + "long as you like — and lag in a headset, where the whole interaction is one "
+              + "push and a release. One plays it at the game's own rate; the game's rate is "
+              + "read off the running build and multiplied, so this can be turned down as well "
+              + "as up. Clamped to between a quarter and eight.");
+
             MenuDeadzone = Config.Bind("Interface", "MenuDeadzone", 0.65f,
                 "How far the stick must move to step through a menu -- the game's menus and the "
               + "mod's own panel alike. Higher than a walking dead zone on purpose: a menu step "
@@ -466,6 +478,21 @@ namespace NobetaVR
               + "the view, so it is a step back rather than the camera taking over. It applies "
               + "to every moment the game stages her, but not to the face-camera mode, which "
               + "you asked for yourself.");
+
+            AlignCutscenesToView = Config.Bind(
+                "Comfort", "AlignCutscenesToView", true,
+                "Turns each shot the game frames to where you are already looking. The view's "
+              + "direction in a stage is the game camera's yaw with your headset's own added "
+              + "on top, and that is right while you own both halves — a physical turn turns "
+              + "the headset and she follows it. It also means your headset's yaw is an offset "
+              + "you accumulate as you play, and half a turn of it is an ordinary way to be "
+              + "standing. A cutscene then arrives with an angle authored for a screen and "
+              + "gets that offset as well, so the shot is framed exactly as intended and "
+              + "presented over your shoulder. This takes the offset off, at the start of the "
+              + "scene and again at every cut, which is the one moment a yaw snap costs "
+              + "nothing because the image is being replaced anyway. Your head still moves the "
+              + "view throughout; it is an alignment rather than a lock, and both grips retake "
+              + "it by hand.");
 
             MoveDeadzone = Config.Bind(
                 "Controls", "MoveDeadzone", 0.15f,
