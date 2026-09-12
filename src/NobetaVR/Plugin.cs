@@ -28,6 +28,7 @@ namespace NobetaVR
         internal ConfigEntry<string> OpenXrRuntimeJson;
         internal ConfigEntry<bool> SubmitDepth;
         internal ConfigEntry<float> HeadHideDistance;
+        internal ConfigEntry<bool> HideBody;
         internal ConfigEntry<bool> HeadBobbing;
         internal ConfigEntry<bool> LateLatchPose;
         internal ConfigEntry<bool> LogPoseLatch;
@@ -402,6 +403,19 @@ namespace NobetaVR
               + "wanted the rest of the time — when a cutscene pulls back, or an animation "
               + "carries her head away from the view. Raise it if you catch sight of the inside "
               + "of her face; lower it if her head vanishes when it should not.");
+
+            HideBody = Config.Bind(
+                "Camera", "HideBody", false,
+                "Hides the rest of her as well, not only her head, while you are inside her. "
+              + "Her head is a problem your eyes are literally inside, which is why it is hidden "
+              + "by distance and needs no switch; her shoulders, skirt and cape are never inside "
+              + "your eyes, they are simply there below the view doing what the animation says "
+              + "rather than what your own body is doing — and whether that reads as inhabiting "
+              + "her or as wearing someone else is a taste, so it is yours to set. She is whole "
+              + "again the moment the view steps back out of her, which by default is every shot "
+              + "the game frames: cutscenes and death play with her body as they were authored. "
+              + "The wand stays in either case — it is the sight, and it is held by your own "
+              + "hand rather than by her.");
 
             HeadBobbing = Config.Bind(
                 "Camera", "HeadBobbing", false,

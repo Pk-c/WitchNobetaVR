@@ -226,7 +226,7 @@ namespace NobetaVR.Ui
             });
 
             _items.Add(new Item { Label = "", IsHeading = true });
-            _items.Add(new Item { Label = "HEAD", IsHeading = true });
+            _items.Add(new Item { Label = "HEAD & BODY", IsHeading = true });
 
             _items.Add(Axis("Head offset X", () => cfg.HeadOffsetX));
             _items.Add(Axis("Head offset Y", () => cfg.HeadOffsetY));
@@ -244,6 +244,12 @@ namespace NobetaVR.Ui
                 Value = () => $"{cfg.HeadHideDistance.Value:F2} m",
                 Adjust = d => cfg.HeadHideDistance.Value =
                     Mathf.Clamp(cfg.HeadHideDistance.Value + d * 0.01f, 0f, 1f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Her body",
+                Value = () => cfg.HideBody.Value ? "Hidden" : "Visible",
+                Adjust = _ => cfg.HideBody.Value = !cfg.HideBody.Value,
             });
 
             _items.Add(new Item { Label = "", IsHeading = true });
