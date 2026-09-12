@@ -85,7 +85,7 @@ namespace NobetaVR.Vr
         /// <summary>
         /// The props riding on the right hand — the wand, on this character. Exposed because
         /// anything that has to know how long the wand is has to measure the object that is
-        /// actually being held, not the one the rig left behind; see <see cref="WandTrail"/>.
+        /// actually being held, not the one the rig left behind.
         /// </summary>
         public Transform[] RightAttachments => _right != null ? _right.Attachments : null;
 

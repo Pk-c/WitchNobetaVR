@@ -36,7 +36,7 @@ namespace NobetaVR.Vr
     /// <c>OpenAttackCollision</c> the animation events call. Nothing else is given up by doing
     /// it that way: the damage, the element and the knockback are authored on the range object
     /// itself as an <c>AttackData</c>, the hit effects and hit sounds come out of the collision
-    /// code, and the swing sound, the voice and the wand trail are the game's own calls, made
+    /// code, and the swing sound and the voice are the game's own calls, made
     /// here instead of by an animation event. See <see cref="FreeSwing"/>.
     ///
     /// **Where the blow lands.** On the wand, always. The game's melee hitboxes are ordinary
@@ -117,7 +117,6 @@ namespace NobetaVR.Vr
         private bool _wandWarned;
 
         private readonly MeleeGizmo _gizmo = new();
-        private readonly WandTrail _trail = new();
 
         private void LateUpdate()
         {
@@ -467,7 +466,7 @@ namespace NobetaVR.Vr
         private const int AnimatedReportLimit = 8;
 
         /// <summary>
-        /// The ground swing: the hitbox, the sound, the voice and the trail, and no animation.
+        /// The ground swing: the hitbox, the sound and the voice, and no animation.
         ///
         /// <c>OpenAttackCollision</c> is the call the attack animations make through an
         /// animation event, so this is the game's own melee arriving by its own path, only
@@ -476,9 +475,10 @@ namespace NobetaVR.Vr
         /// <c>AttackData</c> — strength, element, knockback — and the collision code raises the
         /// impact effect and the hit sound out of the pools on <c>AnimAttackCollisionData</c>.
         ///
-        /// The three calls after it are the ones an attack animation would have fired as
-        /// separate events, made here because there is no animation to fire them. They are the
-        /// difference between a swing that connects and a swing that feels like one.
+        /// The voice after it is one an attack animation would have fired as a separate event,
+        /// made here because there is no animation to fire it. It is the difference between a
+        /// swing that connects and a swing that feels like one. The swing trail was a third
+        /// such call and is gone; see <see cref="WandTrailPatches"/>.
         ///
         /// Returns false if there is no range to open, so the caller can fall back to the
         /// game's attack rather than swinging at nothing.
@@ -498,9 +498,6 @@ namespace NobetaVR.Vr
             // land on nothing for reasons nothing on screen could explain.
             girl.CancelAttackCollision();
             girl.OpenAttackCollision(range);
-
-            var trail = cfg.MeleeTrailSeconds.Value;
-            if (trail > 0f) girl.OpenWTrail(trail);
 
             if (!cfg.MeleeSwingVoice.Value) return true;
 
@@ -575,23 +572,14 @@ namespace NobetaVR.Vr
         private void PlaceHitbox(WizardGirlManage girl, Plugin cfg)
         {
             var collision = girl.g_AttackCollision;
-            if (collision == null) { _gizmo.Hide(); Restore(); _trail.Release(); return; }
+            if (collision == null) { _gizmo.Hide(); Restore(); return; }
 
             if (!Bind(collision)) { _gizmo.Hide(); return; }
 
-            if (!VrHands.AimOrigin.HasValue) { _gizmo.Hide(); Restore(); _trail.Release(); return; }
+            if (!VrHands.AimOrigin.HasValue) { _gizmo.Hide(); Restore(); return; }
 
             var forward = VrHands.AimDirection;
             var line = forward.sqrMagnitude > 1e-6f ? forward.normalized : Vector3.forward;
-
-            // The swing trail rides the wand line itself, for the same reason the hitbox hangs
-            // off it: there is one wand, and everything that claims to be on it has to come
-            // from one place. The tilt below is the hitbox's own and stops here.
-            if (cfg.MeleeTrailSeconds.Value > 0f)
-                _trail.Follow(girl, VrHands.AimOrigin.Value, forward,
-                              cfg.MeleeHitboxReach.Value);
-            else
-                _trail.Release();
 
             var radius = Mathf.Max(0.01f, cfg.MeleeHitboxRadius.Value);
             var half = Mathf.Max(0f, cfg.MeleeHitboxLength.Value) * 0.5f;

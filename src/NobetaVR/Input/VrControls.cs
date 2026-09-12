@@ -91,6 +91,10 @@ namespace NobetaVR.Input
         private bool _snapArmed = true;
         private bool _wasMoving;
 
+        // Set whenever something other than turning owned the right stick this frame; cleared
+        // by the stick coming home. See TurnHeldBack.
+        private bool _turnLocked;
+
         // Held state from the previous frame, so a press can be told from a hold. Actions that
         // fire once need the edge; actions the game tracks itself need the level.
         private bool _jumpHeld, _dodgeHeld, _useItemHeld, _chantHeld;
@@ -144,7 +148,12 @@ namespace NobetaVR.Input
             // Our own menu reads the controllers itself, and a game menu takes them over while
             // it is up. Either way the gameplay bindings stand down: without this the same
             // stick both walks Nobeta and scrolls the menu she is standing in.
-            if (Ui.VrMenu.Instance != null && Ui.VrMenu.Instance.IsOpen) { StandDown(); return "vr menu"; }
+            if (Ui.VrMenu.Instance != null && Ui.VrMenu.Instance.IsOpen)
+            {
+                StandDown();
+                _turnLocked = true;
+                return "vr menu";
+            }
 
             // Whether she is the player's to drive at all this frame, asked once and used
             // twice: the wheel may not be opened during a moment she is not, and everything
@@ -158,8 +167,14 @@ namespace NobetaVR.Input
             // menu already up has to stop the wheel from opening over it — the wheel takes the
             // stick that would otherwise navigate that menu. See MagicWheel.
             var wheel = _wheel.Update(_input, InputController, hers, _gameUi.MenuOpen);
+            if (wheel) _turnLocked = true;
 
-            if (!wheel && _gameUi.Update(_input)) { StandDown(); return "game menu"; }
+            if (!wheel && _gameUi.Update(_input))
+            {
+                StandDown();
+                _turnLocked = true;
+                return "game menu";
+            }
 
             // Every moment the game has her rather than the player, whether it says so with
             // the camera, with `controllable`, or with the state machine alone.
@@ -186,7 +201,7 @@ namespace NobetaVR.Input
 
             Grips();
             Move();
-            if (!wheel) Turn();
+            if (!wheel && !TurnHeldBack()) Turn();
             Actions();
             // Room-scale only while she is plainly the player's, which the gate above has
             // already established for every line down here. A cutscene places her on a mark
@@ -550,6 +565,38 @@ namespace NobetaVR.Input
             // Rescale past the dead zone so the first millimetre of travel is not a full step.
             var scaled = stick.normalized * Mathf.InverseLerp(dead, 1f, stick.magnitude);
             InputController.Move(scaled);
+        }
+
+        /// <summary>
+        /// Whether the right stick is still finishing a gesture that belonged to something
+        /// else, and must not be read as a turn.
+        ///
+        /// The spell wheel is the case that made this necessary. Both of its gestures end with
+        /// the stick pushed at a spell: the hold ends when the click comes up, the tap-latched
+        /// one when the stick starts coming home. Either way the wheel closes on a frame where
+        /// the thumb is still over — so the very next frame handed that same deflection to the
+        /// turn control, and choosing a spell also spun the player round. The stick was doing
+        /// one thing throughout; only its owner changed.
+        ///
+        /// <para>
+        /// So a gesture has to end before turning begins, and the end of a gesture is the stick
+        /// coming home — not a timer, which would either cut a slow thumb off or let a fast one
+        /// through. The same lock is taken by the two menus for the same reason: a menu closed
+        /// with the stick over is a stick nobody has let go of yet.
+        /// </para>
+        ///
+        /// Snap turn is re-armed on the way out rather than left as it was found, because the
+        /// press that would have armed it is the press this withheld.
+        /// </summary>
+        private bool TurnHeldBack()
+        {
+            if (!_turnLocked) return false;
+
+            if (Mathf.Abs(_input.RightStick.x) >= Plugin.Instance.TurnDeadzone.Value) return true;
+
+            _turnLocked = false;
+            _snapArmed = true;
+            return false;
         }
 
         /// <summary>

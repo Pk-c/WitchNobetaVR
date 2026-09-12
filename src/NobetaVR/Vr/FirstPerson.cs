@@ -53,7 +53,9 @@ namespace NobetaVR.Vr
             // answer to whether they have asked for anything in this one.
             _viewIsYours = false;
             _riding = false;
+            _wroteHandle = null;
             _lastHandle = float.NaN;
+            _lastGameYaw = float.NaN;
             _atRestFor = 0;
             Input.VrControls.ForgetPlayerAction();
         }
@@ -357,7 +359,16 @@ namespace NobetaVR.Vr
             // Kept under the view as it goes, rather than written once at the end. Movement is
             // camera-relative and the game reads `g_fX` for it, so a `g_fX` that only catches up
             // on the frame the player takes over is a first step in the wrong direction.
-            if (_cameraYawKnown) _playerCamera.g_fX = bodyYaw - _cameraYawOffset;
+            //
+            // Written whether or not the offset has been measured yet, with the same fallback
+            // <see cref="RealignToBody"/> has always used. Waiting for a measurement was the
+            // worse of the two failures: the handle then keeps whatever the stage load left in
+            // it for the whole ride, and the view is handed over to a camera that was never
+            // asked to point anywhere — which at a save statue is the camera the wake framed her
+            // face with, half a turn from the way she is standing up.
+            TraceRide(bodyYaw, gameYaw);
+            _wroteHandle = bodyYaw - (_cameraYawKnown ? _cameraYawOffset : 0f);
+            _playerCamera.g_fX = _wroteHandle.Value;
 
             // Her holding still is *not* a second way out of this, which is worth writing down
             // because it is the obvious one to reach for. She holds perfectly still for as long
@@ -372,6 +383,7 @@ namespace NobetaVR.Vr
             if (asked || waited > RidePatience)
             {
                 _viewIsYours = true;
+                _wroteHandle = null;
                 Plugin.Log.LogInfo($"the view is yours after {waited:F1}s "
                                  + $"({(asked ? "you asked for it" : "nothing did, so the wait ran out")}): "
                                  + $"her facing went {_rodeFrom:F1} -> {bodyYaw:F1} deg, "
@@ -388,6 +400,56 @@ namespace NobetaVR.Vr
         private bool _riding;
         private float _rodeFrom;
         private float _rodeSince;
+        private float _nextRideLog;
+
+        /// <summary>
+        /// What the ride last wrote into `g_fX`, or null when it has not written yet. Kept so
+        /// the next frame can tell the handle it left behind from one something else has moved.
+        /// </summary>
+        private float? _wroteHandle;
+
+        /// <summary>
+        /// One line a second while the view rides her facing, and one the moment `g_fX` is found
+        /// holding a value this did not put there.
+        ///
+        /// The spawn at a save statue is the sequence that cannot be watched from outside: it
+        /// runs for as long as the get-up takes, it ends on the player's first input, and what
+        /// is being reported about it — "the camera comes back the wrong way round, but not
+        /// every time" — is a statement about three yaws that nobody can read from inside a
+        /// headset. So they go in the log, and they separate the causes rather than confirming
+        /// one. Her facing against the camera's says whether the ride is pointing the view the
+        /// wrong way itself; the handle against the camera's says whether the game's camera is
+        /// following the handle at all while she is down; and the handle against the value
+        /// written on the previous frame says whether the game is writing it too — its own
+        /// reset-to-front is the obvious candidate for a half turn that arrives some spawns and
+        /// not others, and from in here it would be invisible.
+        /// </summary>
+        private void TraceRide(float bodyYaw, float gameYaw)
+        {
+            var handle = _playerCamera.g_fX;
+
+            // Before the rate limit: a handle moved under us is an event, not a status, and it
+            // is the one reading here that may not be sampled once a second and missed.
+            if (_wroteHandle.HasValue)
+            {
+                var moved = Mathf.DeltaAngle(_wroteHandle.Value, handle);
+                if (Mathf.Abs(moved) > 0.5f)
+                {
+                    Plugin.Log.LogInfo($"ride: g_fX moved {moved:F1} deg under us, to {handle:F1} "
+                                     + $"(we left {_wroteHandle.Value:F1}); the game is writing it too");
+                }
+            }
+
+            if (Time.unscaledTime < _nextRideLog) return;
+            _nextRideLog = Time.unscaledTime + 1f;
+
+            Plugin.Log.LogInfo($"ride: she faces {bodyYaw:F1}, the camera {gameYaw:F1} "
+                             + $"({Mathf.DeltaAngle(bodyYaw, gameYaw):F1} apart), g_fX {handle:F1} "
+                             + $"+ offset {(_cameraYawKnown ? _cameraYawOffset.ToString("F0") : "unmeasured")}, "
+                             + $"mode {BodyFacing.Mode}, state "
+                             + $"{PlayerStatus.State?.ToString() ?? "<none>"}, standsBack "
+                             + $"{VrCamera.ViewStandsBack}");
+        }
 
         /// <summary>
         /// Whether the view's yaw is the player's rather than Nobeta's own facing. False only
@@ -409,27 +471,52 @@ namespace NobetaVR.Vr
         /// is. Opening a stage looking at what she has her back to is what that looks like.
         ///
         /// So the difference is read off the game: `g_fX` against the yaw the camera actually
-        /// ended up with. Only while `g_fX` has been at rest for long enough for the camera to
-        /// have caught up with it, because the camera lags it through the game's own smoothing
-        /// and a moving camera disagrees with `g_fX` for a reason that is not an offset — a
-        /// stage's opening frames are the case, where the boom is still swinging into place.
-        /// Quantised to a half turn, since that is the shape this answer can take and a degree
-        /// of residual lag should not become a degree of error — with the raw reading logged
-        /// beside it, so a third answer would be visible in the log rather than rounded away.
+        /// ended up with. Only while the player is driving both and both have come to rest,
+        /// which is the whole of what makes the two comparable — see the gate below for the
+        /// spawn that taught it that. Quantised to a half turn, since that is the shape this
+        /// answer can take and a degree of residual lag should not become a degree of error —
+        /// with the raw reading logged beside it, so a third answer would be visible in the log
+        /// rather than rounded away.
         ///
-        /// Re-read for as long as the game runs rather than settled once. Nothing is riding on
-        /// it until the ride writes `g_fX`, which cannot happen before the first reading, and a
-        /// later one taken with the camera plainly at rest is worth more than the first: if the
-        /// two disagree, the log says so and says which the view was built on.
+        /// Re-read for as long as the game runs rather than settled once, and zero until the
+        /// first reading lands. Zero is what <see cref="RealignToBody"/> has always assumed and
+        /// what the game has measured as every time it has been asked; a later reading taken
+        /// with both ends plainly at rest is worth more than an early one, and if they disagree
+        /// the log says so and says which the view was built on.
         /// </summary>
         private void MeasureCameraYaw(float gameYaw)
         {
+            // Only while the player is driving both, which `g_fX` holding still does not show
+            // and at a save statue actively hides. Nothing moves the handle while she sits
+            // against the pillar — the player has no controls yet — so the stillest reading in
+            // the game is taken from the one camera in it that owes the handle nothing: the
+            // wake's own framing, pointed at her. Quantised to the nearest half turn, a camera
+            // looking at her face rather than along her back reads as an offset of 180, the ride
+            // writes that half turn into `g_fX`, and she stands up with the camera behind her
+            // face instead of her back. Which spawn gets it depends on where the stage's camera
+            // happened to be sitting when the tenth frame came round, and that is the "sometimes"
+            // in the report.
+            //
+            // In `Normal`, with her the player's to move and the view already handed over, the
+            // camera's yaw is the handle plus the constant this is after and nothing else.
+            if (!ViewIsYours || !PlayerStatus.YoursToDrive)
+            {
+                _atRestFor = 0;
+                return;
+            }
+
             var handle = _playerCamera.g_fX;
 
+            // Both ends still, not just the handle. The camera lags it through the game's own
+            // smoothing, so a handle at rest for a tenth of a second is not yet a camera that
+            // has arrived — and the difference between the two is read here as an offset.
+            //
             // NaN on the first frame of a stage, and NaN compares false: one frame is skipped
             // rather than measured against a value belonging to the camera before this one.
-            var atRest = Mathf.Abs(Mathf.DeltaAngle(handle, _lastHandle)) < 0.01f;
+            var atRest = Mathf.Abs(Mathf.DeltaAngle(handle, _lastHandle)) < 0.01f
+                      && Mathf.Abs(Mathf.DeltaAngle(gameYaw, _lastGameYaw)) < 0.1f;
             _lastHandle = handle;
+            _lastGameYaw = gameYaw;
             _atRestFor = atRest ? _atRestFor + 1 : 0;
             if (_atRestFor < RestFrames) return;
 
@@ -462,6 +549,7 @@ namespace NobetaVR.Vr
         private float _cameraYawOffset;
         private bool _cameraYawKnown;
         private float _lastHandle = float.NaN;
+        private float _lastGameYaw = float.NaN;
         private int _atRestFor;
 
         /// <summary>
@@ -481,6 +569,7 @@ namespace NobetaVR.Vr
                 // body do it. That is what the ride is for.
                 _viewIsYours = false;
                 _riding = false;
+                _wroteHandle = null;
                 return;
             }
 
@@ -488,6 +577,7 @@ namespace NobetaVR.Vr
             _playerCamera.g_fX = bodyYaw - (_cameraYawKnown ? _cameraYawOffset : 0f);
             _viewIsYours = true;
             _riding = false;
+            _wroteHandle = null;
             Plugin.Log.LogInfo($"recentre: the view goes back to her facing, {bodyYaw:F1} deg");
         }
 

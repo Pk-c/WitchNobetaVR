@@ -141,13 +141,20 @@ is where that threshold lives if a light squeeze is still not light enough, or i
 finger is changing your item.
 
 In the game's own menus the buttons mean what they mean on a pad: the left stick moves,
-**A** confirms, **B** goes back, and the grips page left and right. Two more are worth
+**A** confirms, **B** goes back, and the triggers page left and right. Two more are worth
 knowing, because neither has an equivalent on the gameplay side:
 
 | Input | In a menu |
 | --- | --- |
-| Right trigger, **held** | Spend souls — levelling up at a statue, and trading. The game counts them out for as long as you hold it |
-| Left trigger | The special action a screen offers, where one does |
+| Left trigger | Previous page |
+| Right trigger | Next page |
+| Right grip, **held** | Spend souls — levelling up at a statue, and trading. The game counts them out for as long as you hold it |
+| Left grip | The special action a screen offers, where one does |
+
+The page turn is on the triggers because it is the one thing you do repeatedly while reading a
+menu, and the grips take what the triggers were doing: spending souls is a hold, and a squeeze
+is a better shape for a hold than a trigger kept pulled. The mod's own settings panel pages the
+same way, by section.
 
 Walking physically moves Nobeta, through the game's own collision. She turns to face wherever
 you look, including when you turn on the spot.
@@ -160,7 +167,7 @@ What that swing does depends on your feet. **In the air** it is the game's own a
 animation and all, because attacking in mid-air is also how you hang there and that hang is
 only available through the game's own call. **On the ground** the animation would plant your
 feet and swing the wand for you, so it is skipped: the hitbox opens on its own and the swing
-sound, the voice, the wand trail, the impact effect and the damage are all still the game's.
+sound, the voice, the impact effect and the damage are all still the game's.
 
 The hitbox is a capsule lying on the wand either way, on the same line the shot goes down.
 `MeleeHitboxReach` is where its middle sits along the wand, `MeleeHitboxLength` is how far it
@@ -184,6 +191,23 @@ tags: enemies first, then breakables, then everything else.
 away when her animations have no use for it, and a hitbox that stays live through that is a
 blow struck with an empty hand; with this on, the ranges go back to the character until the
 wand is out again.
+
+The swing trail is not drawn at all. It is an `XWeaponTrail`, which does not follow an object:
+it samples two transforms every frame and draws a ribbon between where they were and where they
+are, and those two live on an arm this mod has collapsed into the shoulder — so the ribbon was
+drawn correctly along a line with no wand on it. Moving it onto the wand was tried and
+abandoned: the two points were replaced with two of the mod's own on the known wand line, then
+made settable when that came out wrong, and the instrumentation showed all of it working — the
+game never took the points back, all four ribbons lit up on them, the segment ran from the hand
+out along the wand — with the ribbon still not where it belonged. So it is switched off, at
+`WizardGirlManage.OpenWTrail` and `PlayerEffectPlay.SetWTrailActive`, which are the two calls
+that raise it deliberately. Both are hers by type, so no enemy loses the weapon trail that
+tells you it is swinging.
+
+That alone did not hold it. A costume change destroys her effect objects and instantiates new
+ones, and a fresh `XWeaponTrail` comes up through its own `OnEnable` without any of her calls
+being made — so her four are also re-read whenever the set underneath changes, and the
+component is disabled outright, with its mesh object switched off behind it.
 
 ## When the headset stays black
 

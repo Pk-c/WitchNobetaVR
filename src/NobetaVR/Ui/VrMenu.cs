@@ -102,17 +102,26 @@ namespace NobetaVR.Ui
             var both = controls.Input.Pressed(VrInput.Hand.Left, VrInput.Button.StickClick)
                     && controls.Input.Pressed(VrInput.Hand.Right, VrInput.Button.StickClick);
 
-            if (both && !_toggleHeld) Toggle();
+            if (both && !_toggleHeld) Toggle(controls);
             _toggleHeld = both;
         }
 
-        private void Toggle()
+        private void Toggle(VrControls controls)
         {
             if (!_open && _root == null && !Build()) return;
 
             _open = !_open;
             if (_root != null) _root.SetActive(_open);
-            if (_open) Redraw();
+
+            // A trigger already held when the panel comes up is not a page turn on it. The same
+            // seeding the game's own menus do, for the same reason.
+            if (_open)
+            {
+                _pageLeftHeld = controls.Input.Pressed(VrInput.Hand.Left, VrInput.Button.Trigger);
+                _pageRightHeld = controls.Input.Pressed(VrInput.Hand.Right, VrInput.Button.Trigger);
+                _activateHeld = controls.Input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
+                Redraw();
+            }
             Plugin.Log.LogInfo(_open ? "VR menu opened" : "VR menu closed");
         }
 
@@ -140,9 +149,53 @@ namespace NobetaVR.Ui
             if (controls.Input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary) && !_activateHeld)
                 _items[_selected].Activate?.Invoke();
             _activateHeld = controls.Input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
+
+            // The triggers turn pages, as they do in the game's own menus. This list has no
+            // pages of its own, so its sections are the pages: they are what the list is
+            // already divided into, and jumping by a screenful instead would put you somewhere
+            // with nothing on screen saying which setting you had landed among.
+            var left = controls.Input.Pressed(VrInput.Hand.Left, VrInput.Button.Trigger);
+            var right = controls.Input.Pressed(VrInput.Hand.Right, VrInput.Button.Trigger);
+
+            if (left && !_pageLeftHeld) Page(-1);
+            if (right && !_pageRightHeld) Page(1);
+
+            _pageLeftHeld = left;
+            _pageRightHeld = right;
         }
 
         private bool _activateHeld;
+        private bool _pageLeftHeld, _pageRightHeld;
+
+        /// <summary>The rows the titled headings sit on: where each section starts.</summary>
+        private readonly List<int> _sections = new();
+
+        /// <summary>
+        /// Moves to the first setting of the section before or after this one.
+        ///
+        /// The heading is put at the top of the window rather than the selection being scrolled
+        /// to with its usual margin, so a page turn reads as a page: you land on the first
+        /// setting of the section with its title above it saying where you are.
+        /// </summary>
+        private void Page(int delta)
+        {
+            if (_sections.Count == 0) return;
+
+            var current = 0;
+            for (var i = 0; i < _sections.Count; i++)
+                if (_sections[i] <= _selected) current = i;
+
+            var heading = _sections[(current + delta + _sections.Count) % _sections.Count];
+
+            _selected = heading;
+            for (var i = 0; i < _items.Count; i++)
+            {
+                _selected = (_selected + 1) % _items.Count;
+                if (!_items[_selected].IsHeading) break;
+            }
+
+            _scroll = Mathf.Clamp(heading, 0, Mathf.Max(0, _items.Count - VisibleRows));
+        }
 
         private bool Repeat(Vector2 stick)
         {
@@ -558,7 +611,27 @@ namespace NobetaVR.Ui
                 Activate = ResetToDefault,
             });
 
+            CollectSections();
+
             MoveSelection(1);   // land on the first real item rather than a heading
+        }
+
+        /// <summary>
+        /// Where each section starts, for the page turn.
+        ///
+        /// A titled heading is a section; the blank ones are the space above it and belong to
+        /// nothing. Collected once with the list rather than searched for on every page turn,
+        /// and from the list itself rather than written out beside it, so a section added to
+        /// <see cref="BuildItems"/> is a section the triggers reach without anything else being
+        /// remembered.
+        /// </summary>
+        private void CollectSections()
+        {
+            _sections.Clear();
+
+            for (var i = 0; i < _items.Count; i++)
+                if (_items[i].IsHeading && !string.IsNullOrEmpty(_items[i].Label))
+                    _sections.Add(i);
         }
 
         /// <summary>

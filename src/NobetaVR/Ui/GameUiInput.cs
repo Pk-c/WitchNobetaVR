@@ -25,7 +25,7 @@ namespace NobetaVR.Ui
     {
         private GameInputManager _manager;
 
-        private bool _submitHeld, _cancelHeld, _leftHeld, _rightHeld;
+        private bool _submitHeld, _cancelHeld, _pageLeftHeld, _pageRightHeld;
         private bool _nextHeld, _skipHeld, _specialHeld;
         private bool _storyReported;
 
@@ -71,6 +71,7 @@ namespace NobetaVR.Ui
                 _holdTarget = System.IntPtr.Zero;
                 _holdSent = false;
 
+                SeedMenuEdges(input);
                 Dialogue(input);
                 return false;
             }
@@ -120,6 +121,25 @@ namespace NobetaVR.Ui
                  ref _nextHeld, story.NextDialogue);
             Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary),
                  ref _skipHeld, story.SkipMenu);
+        }
+
+        /// <summary>
+        /// Holds the menu buttons at whatever they are actually doing while no menu is up, so
+        /// one already down when a menu opens is not read as a fresh press on it.
+        ///
+        /// The triggers are the reason this is needed at all now they page: the left one is
+        /// pray and the right one is shoot, so a menu that opens under a finger — a statue, a
+        /// conversation walked into mid-cast — would have turned a page before it was on screen.
+        /// The hold has a guard of its own, in <see cref="Holding"/>, because it has to survive
+        /// one menu handing over to the next rather than only the gap before the first.
+        /// </summary>
+        private void SeedMenuEdges(VrInput input)
+        {
+            _submitHeld = input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
+            _cancelHeld = input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary);
+            _pageLeftHeld = input.Pressed(VrInput.Hand.Left, VrInput.Button.Trigger);
+            _pageRightHeld = input.Pressed(VrInput.Hand.Right, VrInput.Button.Trigger);
+            _specialHeld = input.Pressed(VrInput.Hand.Left, VrInput.Button.Grip);
         }
 
         /// <summary>
@@ -217,15 +237,25 @@ namespace NobetaVR.Ui
             ui.Move(direction);
         }
 
+        /// <summary>
+        /// The buttons, with the page turn on the triggers.
+        ///
+        /// Paging is a trigger and not a grip because a page is the one thing in these menus you
+        /// do repeatedly while reading, and the trigger is the control a finger already rests
+        /// on. The grips take what the triggers were doing, which is the other half of the same
+        /// decision rather than a consequence of it: spending souls is a hold, held for as long
+        /// as the count runs, and a grip is a squeeze — a better shape for a hold than a trigger
+        /// pulled and kept pulled.
+        /// </summary>
         private void Buttons(IUIController ui, VrInput input)
         {
             Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary), ref _submitHeld, ui.Submit);
             Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary), ref _cancelHeld, ui.Cancel);
-            Edge(input.Pressed(VrInput.Hand.Left, VrInput.Button.Grip), ref _leftHeld, ui.SwitchLeftward);
-            Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Grip), ref _rightHeld, ui.SwitchRightward);
-            Edge(input.Pressed(VrInput.Hand.Left, VrInput.Button.Trigger), ref _specialHeld, ui.SpecialAction);
+            Edge(input.Pressed(VrInput.Hand.Left, VrInput.Button.Trigger), ref _pageLeftHeld, ui.SwitchLeftward);
+            Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Trigger), ref _pageRightHeld, ui.SwitchRightward);
+            Edge(input.Pressed(VrInput.Hand.Left, VrInput.Button.Grip), ref _specialHeld, ui.SpecialAction);
 
-            Holding(ui, input.Pressed(VrInput.Hand.Right, VrInput.Button.Trigger));
+            Holding(ui, input.Pressed(VrInput.Hand.Right, VrInput.Button.Grip));
         }
 
         /// <summary>

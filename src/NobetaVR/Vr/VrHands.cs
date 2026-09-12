@@ -169,9 +169,7 @@ namespace NobetaVR.Vr
         internal static Vector3 AimDirection { get; private set; } = Vector3.forward;
 
         /// <summary>
-        /// The props riding on the wand hand, or null when the hands are not out. Published for
-        /// <see cref="WandTrail"/>, which has to measure the wand that is actually in her hand
-        /// rather than the one the rig left behind.
+        /// The props riding on the wand hand, or null when the hands are not out.
         /// </summary>
         [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         internal static Transform[] WandProps =>
@@ -265,6 +263,10 @@ namespace NobetaVR.Vr
             var girl = controls != null && controls.Camera != null
                 ? controls.Camera.wizardGirl
                 : null;
+
+            // Before every gate below, because the frame this matters most on is a costume
+            // change, and she is not the player's to move while one is being put on.
+            WandTrailOff.Tick(girl);
 
             // No character to put hands on at all: the title screen, a loading screen, the
             // gap between stages. Said out loud rather than returned quietly, because
@@ -387,6 +389,7 @@ namespace NobetaVR.Vr
             PlaceDetached(controls.Input, _left, XRNode.LeftHand, true);
             PlaceDetached(controls.Input, _right, XRNode.RightHand, false);
         }
+
 
         /// <summary>
         /// Puts one controller reading into the world, against the view the camera on screen

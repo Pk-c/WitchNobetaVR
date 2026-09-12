@@ -101,7 +101,7 @@ namespace NobetaVR.Vr
         /// <summary>
         /// The skinned meshes she is made of, collected rather than re-walked.
         ///
-        /// Three things force a fresh walk, the same three <see cref="WandTrail"/> answers to. A
+        /// Three things force a fresh walk, and each catches a case the other two miss. A
         /// different character root is a different body. A destroyed renderer in the set is the
         /// skin having been swapped underneath us — a costume and the story outfit both do that,
         /// and both keep the root they hang from. And a timer covers whatever neither noticed,

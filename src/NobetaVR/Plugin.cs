@@ -123,7 +123,6 @@ namespace NobetaVR
         internal ConfigEntry<float> MeleeHitboxPitch;
         internal ConfigEntry<float> MeleeHitboxYaw;
         internal ConfigEntry<bool> MeleeRequireWand;
-        internal ConfigEntry<float> MeleeTrailSeconds;
         internal ConfigEntry<bool> MeleeSwingVoice;
         internal ConfigEntry<string> MeleeRangeName;
         internal ConfigEntry<bool> Haptics;
@@ -870,7 +869,7 @@ namespace NobetaVR
               + "middle of your own swing. Nothing else is given up: the damage, the element "
               + "and the knockback are authored on the hitbox rather than on the animation, the "
               + "impact effect and hit sound come from the game's collision code, and the swing "
-              + "sound, the voice and the wand trail are its own calls made from here. In the "
+              + "sound and the voice are its own calls made from here. In the "
               + "air she always keeps the game's attack whatever this says — see below.");
 
             MeleeHitboxRadius = Config.Bind(
@@ -914,12 +913,6 @@ namespace NobetaVR
               + "this on, a swing made with no wand out does nothing and the hitbox goes back "
               + "where the game had it. Turn it off if a stowed wand is stopping swings you "
               + "meant to land.");
-
-            MeleeTrailSeconds = Config.Bind(
-                "Melee", "MeleeTrailSeconds", 0.35f,
-                "How long the wand trail is drawn for on a ground swing, in seconds. Zero turns "
-              + "it off. The animation would normally start this; with no animation there is "
-              + "nothing to say a swing happened at all when it misses.");
 
             MeleeSwingVoice = Config.Bind(
                 "Melee", "MeleeSwingVoice", true,
