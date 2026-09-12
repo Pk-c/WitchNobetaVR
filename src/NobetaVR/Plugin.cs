@@ -420,13 +420,15 @@ namespace NobetaVR
 
             SpellWheelSpeed = Config.Bind(
                 "Controls", "SpellWheelSpeed", 3f,
-                "How much quicker the spell wheel moves than the game makes it. Its pointer, "
-              + "its arrow and its icons all ease towards where the stick is rather than "
-              + "snapping there, which is polish on a monitor — the wheel is held open for as "
-              + "long as you like — and lag in a headset, where the whole interaction is one "
-              + "push and a release. One plays it at the game's own rate; the game's rate is "
-              + "read off the running build and multiplied, so this can be turned down as well "
-              + "as up. Clamped to between a quarter and eight.");
+                "How hard the stick is pushed at the spell wheel, which is not the same thing "
+              + "as where it is pushed: this scales a vector, so the angle the wheel is handed "
+              + "is always the angle your thumb is holding. The wheel eases towards what it is "
+              + "given rather than following it, at a rate of its own that cannot be changed — "
+              + "it is a compile-time constant with nothing behind it to write to — so what is "
+              + "left is to aim further and be most of the way there sooner. Above one it also "
+              + "brings the wheel up at full opacity instead of fading it in, which is the "
+              + "other half of the wait. One is the game's own feel; clamped to between a "
+              + "quarter and eight.");
 
             MenuDeadzone = Config.Bind("Interface", "MenuDeadzone", 0.65f,
                 "How far the stick must move to step through a menu -- the game's menus and the "

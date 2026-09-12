@@ -121,10 +121,13 @@ rolls off — and the wheel stays up with the stick free. Either way you finish 
 pushing towards a spell and letting the stick come home. A tap with nothing chosen closes on a
 second tap.
 
-The wheel also moves quicker than the game makes it. Its pointer, arrow and icons all ease
-towards the stick rather than following it, which is polish on a monitor and lag in a headset,
-where the whole interaction is one push and a release. `SpellWheelSpeed` multiplies the game's
-own rate — three by default, and it goes both ways.
+The wheel is also pushed at harder than your thumb pushes. It eases towards what it is handed
+rather than following it, at a fixed rate of its own, which is polish on a monitor and lag in a
+headset where the whole interaction is one push and a release — so `SpellWheelSpeed` scales the
+vector it is given, which puts the target further out and gets the arrow most of the way there
+sooner. The angle is never touched: the wheel is always handed the direction your thumb is
+holding. Above one it also brings the wheel up at full opacity instead of fading it in. Three by
+default.
 
 The title screen recentres itself, half a second after it comes up and behind the fade. It is
 the one screen with nothing to point you at — no Nobeta to face, no camera whose yaw is the

@@ -203,68 +203,63 @@ namespace NobetaVR.Input
         }
 
         /// <summary>
-        /// How quickly the wheel itself moves, which is not the same question as where the
-        /// stick is pointing.
+        /// How hard the stick is pushed at the wheel, and nothing about where it is pushed.
         ///
-        /// The wheel eases: the pointer, the arrow and the icons all chase their targets at
-        /// <c>MAGIC_SPEED</c> rather than snapping to them. On a monitor that reads as polish
-        /// and costs nothing, because the wheel is opened and held for as long as it takes. In
-        /// a headset it is the whole interaction — you push towards a spell and let go — and
-        /// the easing is then a lag between the push and the answer, felt as the wheel
-        /// dragging behind the thumb.
+        /// The wheel eases towards what it is handed rather than following it: its own rate is
+        /// 6 a second, which is a time constant of about a sixth of a second and reads as the
+        /// wheel dragging behind the thumb. On a monitor that is polish and costs nothing,
+        /// because the wheel is held open for as long as you like. In a headset the push and
+        /// the release *are* the interaction, so the easing is in the middle of it.
         ///
-        /// So the game's own rate is multiplied rather than replaced. The original is read off
-        /// the running game the first time and kept, so the setting is always applied to it
-        /// rather than to a value this method wrote last time — which is what makes it a knob
-        /// that can be turned both ways instead of one that only ever compounds. Both statics
-        /// are scaled: the selector's is the pointer and the arrow, the handler's is the icons
-        /// growing and settling under it, and an arrow that arrives ahead of the highlight is
-        /// worse than either being slow.
+        /// <para>
+        /// That rate cannot be changed. <c>UIMagicSelector.MAGIC_SPEED</c> reads back as 6.00
+        /// and is a <c>const</c>: IL2CPP gives a constant no storage, so the value comes out of
+        /// the metadata and there is nothing behind it to write to. Il2CppInterop generates a
+        /// setter all the same, and calling it writes to an address that does not exist and
+        /// takes the process with it — which is what it did. See ARCHITECTURE.md; the reading
+        /// works, and that is exactly what makes it inviting.
+        /// </para>
         ///
-        /// <c>MAGIC_INTERVAL</c> next to the second of them is deliberately left alone — the
-        /// name says spacing, not rate, and a wheel whose slots have moved is a different bug
-        /// from a wheel that is slow.
+        /// <para>
+        /// The interop assembly cannot be asked which it is: a constant comes out with the same
+        /// <c>NativeFieldInfoPtr</c> shape as a field with storage. What tells them apart is
+        /// that one is a static in capitals the game only ever reads. Instance fields —
+        /// <c>magicSelectAlpha</c> below, <c>cursorX</c>, <c>arrowDegree</c> — are storage on
+        /// an object we are holding, and writing those is ordinary.
+        /// </para>
+        ///
+        /// What is ours to change is the value the wheel is easing *towards*. A target further
+        /// out is reached sooner in the part that matters, because the easing covers a fixed
+        /// fraction of the remaining distance per frame: the arrow settles on its angle in
+        /// fewer frames, and any threshold between "pointing" and "pointing at something"
+        /// is crossed earlier. The direction is untouched — this scales a vector, so the angle
+        /// handed to the wheel is the angle the thumb is holding, whatever the multiplier.
         /// </summary>
-        private void ApplyWheelSpeed()
+        private static Vector2 Hasten(Vector2 stick)
+            => stick * Mathf.Clamp(Plugin.Instance.SpellWheelSpeed.Value, 0.25f, 8f);
+
+        /// <summary>
+        /// Brings the wheel up at once rather than letting it fade in at that same fixed rate.
+        ///
+        /// The other half of the wait, and the half that is not about pointing at all: the
+        /// wheel's own opacity eases from nothing when it opens, so the first fifth of a second
+        /// of every use is spent reading a wheel that is not fully there yet. The alpha is an
+        /// ordinary instance field with storage behind it, so unlike the rate above it can
+        /// simply be set.
+        ///
+        /// Only while the multiplier asks for it, and only while the wheel is open — the fade
+        /// out on the way back is the game's and is left alone.
+        /// </summary>
+        private void ShowAtOnce(UIMagicSelector selector)
         {
-            if (_speedFailed) return;
+            if (selector == null) return;
+            if (Plugin.Instance.SpellWheelSpeed.Value <= 1f) return;
 
-            var factor = Mathf.Clamp(Plugin.Instance.SpellWheelSpeed.Value, 0.25f, 8f);
-
-            try
-            {
-                if (float.IsNaN(_selectorSpeedWas))
-                {
-                    _selectorSpeedWas = UIMagicSelector.MAGIC_SPEED;
-                    _handlerSpeedWas = UIMagicHandler.MAGIC_SPEED;
-                    Plugin.Log.LogInfo($"the spell wheel's own rates are "
-                                     + $"{_selectorSpeedWas:F2} for the pointer and "
-                                     + $"{_handlerSpeedWas:F2} for the icons; "
-                                     + $"×{factor:F2} from here on");
-                }
-
-                UIMagicSelector.MAGIC_SPEED = _selectorSpeedWas * factor;
-                UIMagicHandler.MAGIC_SPEED = _handlerSpeedWas * factor;
-            }
-            catch (System.Exception e)
-            {
-                // Nothing here is load-bearing: a wheel at the game's own speed is the wheel
-                // the game shipped. Tried once and then given up on, both so a build where
-                // these are not readable does not pay for the attempt on every open, and so
-                // that a half-finished attempt cannot leave a rate of its own behind.
-                _speedFailed = true;
-                Plugin.Log.LogWarning($"the spell wheel's speed could not be set: {e.Message}");
-            }
+            if (selector.magicSelectAlpha < 1f) selector.magicSelectAlpha = 1f;
         }
-
-        private static float _selectorSpeedWas = float.NaN;
-        private static float _handlerSpeedWas = float.NaN;
-        private static bool _speedFailed;
 
         private void Open(PlayerInputController controller)
         {
-            ApplyWheelSpeed();
-
             _open = true;
             _latched = false;
             _chose = false;
@@ -303,15 +298,22 @@ namespace NobetaVR.Input
         /// </summary>
         private void Point(PlayerInputController controller, Vector2 stick, bool deflected)
         {
+            ShowAtOnce(Selector());
+
+            // Scaled on the way out and nowhere else: everything this class decides — whether
+            // a spell was chosen, whether the stick has come home — is decided on the reading
+            // the thumb actually gave.
+            var pushed = Hasten(stick);
+
             if (_direct)
             {
                 var ui = Ui();
-                if (ui != null) ui.UpdateMagicPointer(stick);
-                else controller.MoveMenuPointer(stick);
+                if (ui != null) ui.UpdateMagicPointer(pushed);
+                else controller.MoveMenuPointer(pushed);
                 return;
             }
 
-            controller.MoveMenuPointer(stick);
+            controller.MoveMenuPointer(pushed);
 
             if (!deflected) { _deflectedSince = 0f; return; }
             if (_deflectedSince <= 0f) { _deflectedSince = Time.unscaledTime; return; }
