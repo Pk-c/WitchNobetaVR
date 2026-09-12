@@ -492,8 +492,8 @@ namespace NobetaVR
               + "done to you — and the framing the scene was authored with works as intended "
               + "instead of being fought. The horizon is kept level and your head still moves "
               + "the view, so it is a step back rather than the camera taking over. It applies "
-              + "to every moment the game stages her, but not to the face-camera mode, which "
-              + "you asked for yourself.");
+              + "to every moment the game stages her, the close-ups of her face a scene cuts "
+              + "to included, but not to the face camera you turn on yourself during play.");
 
             AlignCutscenesToView = Config.Bind(
                 "Comfort", "AlignCutscenesToView", true,

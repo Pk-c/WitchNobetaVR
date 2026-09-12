@@ -78,6 +78,17 @@ namespace NobetaVR.Vr
         private Transform Head()
         {
             if (_head != null) return _head;
+
+            // Whatever was known about the last head goes with it. `girl.transform` outlives a
+            // skin change -- a costume, or the story skin a cutscene puts on -- so the root is
+            // the same object while every bone under it has been destroyed and rebuilt, and a
+            // null `_head` is the one place that notices. Left standing, `_hidden` says "the
+            // head is scaled away" about a bone that no longer exists: `UpdateHeadVisibility`
+            // then finds the answer it wants already recorded and returns without touching the
+            // new one, so her head sits in the middle of the view for as long as the costume
+            // is on. Dropped rather than restored, since there is nothing left to restore to.
+            ForgetHead();
+
             if (_playerCamera == null) return null;
 
             var girl = _playerCamera.wizardGirl;
@@ -588,7 +599,17 @@ namespace NobetaVR.Vr
         public void RestoreHead()
         {
             if (_headScaleSaved && _head != null) _head.localScale = _headScale;
+            ForgetHead();
+        }
+
+        /// <summary>
+        /// Forgets that the head was ever hidden, without writing to the bone. For the case
+        /// <see cref="Head"/> describes, where there is no bone left to write to.
+        /// </summary>
+        private void ForgetHead()
+        {
             _headScaleSaved = false;
+            _headScale = Vector3.one;
             _hidden = false;
         }
     }

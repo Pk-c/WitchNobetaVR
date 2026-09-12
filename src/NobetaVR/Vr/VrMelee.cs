@@ -588,7 +588,7 @@ namespace NobetaVR.Vr
             // off it: there is one wand, and everything that claims to be on it has to come
             // from one place. The tilt below is the hitbox's own and stops here.
             if (cfg.MeleeTrailSeconds.Value > 0f)
-                _trail.Follow(girl.transform, VrHands.AimOrigin.Value, forward,
+                _trail.Follow(girl, VrHands.AimOrigin.Value, forward,
                               cfg.MeleeHitboxReach.Value);
             else
                 _trail.Release();

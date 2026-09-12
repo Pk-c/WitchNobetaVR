@@ -247,7 +247,7 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
-                Label = "Her body",
+                Label = "Body visible",
                 Value = () => cfg.HideBody.Value ? "Hidden" : "Visible",
                 Adjust = _ => cfg.HideBody.Value = !cfg.HideBody.Value,
             });

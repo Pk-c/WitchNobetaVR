@@ -293,9 +293,11 @@ namespace NobetaVR.Vr
         /// rather than being fought, which is the other half of what the frame cost.
         /// </para>
         ///
-        /// <c>PlayerFace</c> is excluded: the player asked for that one themselves with
-        /// <c>SwitchCameraMode</c>, and pulling the view out of her head because she chose to
-        /// look at herself would be the mod second-guessing them.
+        /// <c>PlayerFace</c> belongs to both and is decided by who has her. The player asks for
+        /// that one themselves with <c>SwitchCameraMode</c>, and pulling the view out of her
+        /// head because she chose to look at herself would be the mod second-guessing them. A
+        /// cutscene asks for the same mode for every close-up of her face, and there it is a
+        /// shot like any other.
         /// </summary>
         private static bool ThirdPersonView()
         {
@@ -317,8 +319,24 @@ namespace NobetaVR.Vr
         private static bool GameIsFraming()
         {
             var mode = BodyFacing.Mode;
+
+            // The one mode that is the player's or the game's depending on the moment, and
+            // reading it as always the player's is the half-turn a cutscene was reported to
+            // have. A scene alternates `ScriptNoLerp` with `PlayerFace` — a wide shot, then a
+            // close-up of her face — and the close-up parks the camera in front of her looking
+            // back at her. Staying in first person there anchors the view to her head and takes
+            // its yaw from that camera, so the line is spent inside her head facing the way the
+            // shot came from: her own forward reversed, every time, which is exactly how it
+            // reads from in there.
+            //
+            // `controllable` is what separates the two. The player's own face camera runs while
+            // she is theirs to move; a scene holds her for as long as it frames her. It is also
+            // false when there is no character to ask at all, which is the cautious answer here
+            // for the same reason the death latch gives: a view left standing back has the wrong
+            // framing, a view put into a head that is not loaded has no framing.
+            if (mode == PlayerCamera.CameraMode.PlayerFace) return !PlayerStatus.Controllable;
+
             return mode != PlayerCamera.CameraMode.Normal
-                && mode != PlayerCamera.CameraMode.PlayerFace
                 && mode != PlayerCamera.CameraMode.Dead
                 && mode != PlayerCamera.CameraMode.FallDead;
         }

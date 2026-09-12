@@ -29,6 +29,13 @@ namespace NobetaVR.Vr
     internal sealed class WandTrail
     {
         private Transform _boundRoot;
+
+        /// <summary>The <c>PlayerEffectPlay</c> the current set was read from, as a pointer.</summary>
+        private System.IntPtr _boundEffect;
+
+        /// <summary>Where the current set came from, for the line that reports it.</summary>
+        private string _foundOn = "PlayerEffectPlay";
+
         private XWeaponTrail[] _trails;
         private Transform[] _originalStart;
         private Transform[] _originalEnd;
@@ -51,9 +58,10 @@ namespace NobetaVR.Vr
         /// <summary>
         /// Drives the trail along the wand for this frame, taking it over the first time.
         /// </summary>
-        public void Follow(Transform root, Vector3 origin, Vector3 direction, float fallbackReach)
+        public void Follow(WizardGirlManage girl, Vector3 origin, Vector3 direction,
+                           float fallbackReach)
         {
-            if (!Bind(root)) return;
+            if (!Bind(girl)) return;
 
             EnsurePoints();
 
@@ -79,7 +87,8 @@ namespace NobetaVR.Vr
                 trail.PointEnd = _end;
             }
 
-            Plugin.Log.LogInfo($"wand trail: {_trails.Length} trail(s) moved onto the wand");
+            Plugin.Log.LogInfo($"wand trail: {_trails.Length} trail(s) from {_foundOn} "
+                             + "moved onto the wand");
         }
 
         /// <summary>
@@ -236,15 +245,41 @@ namespace NobetaVR.Vr
         /// <summary>
         /// Collects the character's trails, once per body.
         ///
-        /// Found on the skeleton rather than through <c>PlayerEffectPlay</c>, which holds the
-        /// same four in named fields but is not reachable from anything the mod already has.
-        /// Searching for the component answers the question directly and does not care how many
-        /// there turn out to be — the build carries four, one per element the wand can be.
+        /// Read off <c>PlayerEffectPlay</c>, which holds the four the wand can use — one per
+        /// element — in named fields, and which <c>WizardGirlManage.GetEffect()</c> hands over.
+        ///
+        /// <para>
+        /// The first version walked her skeleton for the component instead, on the belief that
+        /// the effect object was not reachable from anything the mod had in hand. It is; and
+        /// the walk found nothing, on every stage of every run — "no XWeaponTrail on this
+        /// character" is in the log from the first stage to the last. The trails are not
+        /// parented to her: they are their own objects elsewhere in the scene, which is the
+        /// whole reason the rig does not carry the component. So the ribbon was never taken
+        /// over at all and went on being drawn between whatever two points the rig handed it —
+        /// and a costume that swings the wand differently is simply a different wrong line.
+        /// </para>
+        ///
+        /// <para>
+        /// The rig walk is kept behind the fields, for a character whose trails do hang off the
+        /// skeleton — the boss-rush swaps included — and it costs nothing on a character whose
+        /// fields answer first.
+        /// </para>
         /// </summary>
-        private bool Bind(Transform root)
+        private bool Bind(WizardGirlManage girl)
         {
+            if (girl == null) return false;
+
+            var root = girl.transform;
             if (root == null) return false;
-            if (ReferenceEquals(root, _boundRoot) && Live()) return true;
+
+            // The effect object is part of what a skin change replaces, so which one the trails
+            // were read from is as much a part of "still the set we bound" as the root is.
+            // Compared by pointer rather than by reference: this is a plain il2cpp object, not a
+            // Unity one, and the managed wrapper around it is not guaranteed to be one instance.
+            var effect = girl.GetEffect();
+            var handle = effect != null ? effect.Pointer : System.IntPtr.Zero;
+
+            if (ReferenceEquals(root, _boundRoot) && handle == _boundEffect && Live()) return true;
 
             // A root already searched and found barren. The search walks the whole rig, so
             // repeating it every frame is not free, and the answer only changes when the
@@ -256,14 +291,15 @@ namespace NobetaVR.Vr
 
             Release();
             _boundRoot = root;
+            _boundEffect = handle;
 
-            var found = root.GetComponentsInChildren(Il2CppType.Of<XWeaponTrail>(), true);
-            var trails = new System.Collections.Generic.List<XWeaponTrail>();
+            var where = "PlayerEffectPlay";
+            var trails = FromEffect(effect);
 
-            for (var i = 0; i < found.Length; i++)
+            if (trails.Count == 0)
             {
-                var trail = found[i] != null ? found[i].TryCast<XWeaponTrail>() : null;
-                if (trail != null) trails.Add(trail);
+                where = "the rig";
+                trails = FromRig(root);
             }
 
             _trails = trails.ToArray();
@@ -276,7 +312,8 @@ namespace NobetaVR.Vr
                 // be moved onto is worth one line; the same line four thousand times is a log
                 // nobody can read at all.
                 if (!ReferenceEquals(root, _barrenRoot))
-                    Plugin.Log.LogWarning("wand trail: no XWeaponTrail on this character; the "
+                    Plugin.Log.LogWarning("wand trail: no XWeaponTrail on this character, "
+                                        + "neither on PlayerEffectPlay nor on the rig; the "
                                         + "swing trail will stay wherever the rig puts it.");
 
                 _barrenRoot = root;
@@ -284,8 +321,42 @@ namespace NobetaVR.Vr
                 return false;
             }
 
+            _foundOn = where;
             _barrenRoot = null;
             return true;
+        }
+
+        /// <summary>The four named trails, skipping any the build leaves unset.</summary>
+        private static System.Collections.Generic.List<XWeaponTrail> FromEffect(PlayerEffectPlay effect)
+        {
+            var trails = new System.Collections.Generic.List<XWeaponTrail>(4);
+            if (effect == null) return trails;
+
+            Add(trails, effect.g_WTrail);
+            Add(trails, effect.g_WTrail02);
+            Add(trails, effect.g_WTrail03);
+            Add(trails, effect.g_WTrail04);
+            return trails;
+        }
+
+        private static void Add(System.Collections.Generic.List<XWeaponTrail> trails, XWeaponTrail trail)
+        {
+            if (trail != null) trails.Add(trail);
+        }
+
+        /// <summary>Whatever the skeleton carries, for a character that carries any.</summary>
+        private static System.Collections.Generic.List<XWeaponTrail> FromRig(Transform root)
+        {
+            var trails = new System.Collections.Generic.List<XWeaponTrail>();
+            var found = root.GetComponentsInChildren(Il2CppType.Of<XWeaponTrail>(), true);
+
+            for (var i = 0; i < found.Length; i++)
+            {
+                var trail = found[i] != null ? found[i].TryCast<XWeaponTrail>() : null;
+                if (trail != null) trails.Add(trail);
+            }
+
+            return trails;
         }
 
         /// <summary>
