@@ -74,6 +74,7 @@ namespace NobetaVR
         internal ConfigEntry<float> AimRollOffset;
         internal ConfigEntry<float> AimDistance;
         internal ConfigEntry<bool> ShowAimReticle;
+        internal ConfigEntry<bool> UseGameAimIcon;
         internal ConfigEntry<float> AimReticleSize;
         internal ConfigEntry<float> AimReticleGap;
         internal ConfigEntry<float> AimReticleFocusGap;
@@ -369,6 +370,16 @@ namespace NobetaVR
               + "distance, so it would read at a different place in each eye. A mark placed in "
               + "the world has neither problem, and it is the same answer whichever aim mode "
               + "is on.");
+
+            UseGameAimIcon = Config.Bind("Aim", "UseGameAimIcon", true,
+                "Draws the game's own aim icon at the reticle's place instead of the three "
+              + "marks. The game keeps one per magic and swaps between them as the spell "
+              + "changes, so this puts the spell back at the point you are already looking at "
+              + "— the part hiding the centred crosshair used to cost. Only the picture is "
+              + "borrowed: it is drawn in the world on whatever the aim ray found, at the same "
+              + "place and the same size the marks would have been. Turn it off for the three "
+              + "marks, which are also what is drawn on any frame the game has no sprite up "
+              + "yet, and which are the only shape that shows focus closing the group.");
 
             AimReticleSize = Config.Bind("Aim", "AimReticleSize", 0.035f,
                 "How big the reticle is, as a fraction of how far away it is. Angular rather "

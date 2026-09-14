@@ -40,6 +40,15 @@ namespace NobetaVR.Ui
     /// a lie told precisely. Both widths are settings, and setting them equal gives back a
     /// reticle that never moves.
     /// </para>
+    ///
+    /// <para>
+    /// All of that is about the shape, and the placement above is about the position — and only
+    /// the position was ever the VR problem. The game draws its own crosshair with one of four
+    /// sprites, one per magic, so the shape is a thing it can already say better than this can:
+    /// see <see cref="MagicAimIcon"/>, which is drawn at exactly the point worked out here and
+    /// is what <c>UseGameAimIcon</c> switches between. The three marks stay as the alternative
+    /// and as the fallback for any frame there is no sprite to draw.
+    /// </para>
     /// </summary>
     public sealed class AimReticle : MonoBehaviour
     {
@@ -98,6 +107,9 @@ namespace NobetaVR.Ui
         private UIAimingPoint _gameCrosshair;
         private float _nextScan;
         private bool _gameCrosshairHidden;
+
+        /// <summary>The game's own aim sprite, drawn at the same point when it is asked for.</summary>
+        private MagicAimIcon _icon;
 
         internal static AimReticle Instance { get; private set; }
 
@@ -166,8 +178,7 @@ namespace NobetaVR.Ui
             // not swells into a dinner plate against a near wall.
             var size = distance * Plugin.Instance.AimReticleSize.Value;
 
-            Gap();
-            Place();
+            var reach = Shape();
 
             // Lifted off the surface towards the eye. The aim point is *on* the wall it found,
             // and a quad coplanar with a wall is a coin toss between the two every frame,
@@ -175,13 +186,81 @@ namespace NobetaVR.Ui
             // Scaled with distance so the lift stays small next to what it is marking, and
             // with the reticle's own reach on top of that: the marks stand off the centre now,
             // so on a wall taken at an angle they are the parts that go through it first.
-            var lift = Mathf.Min(0.05f, distance * 0.04f) + Reach() * size * 0.5f;
+            var lift = Mathf.Min(0.05f, distance * 0.04f) + reach * size * 0.5f;
 
             _root.position = target.Value - direction * lift;
             _root.rotation = Quaternion.LookRotation(direction, camera.up);
             _root.localScale = new Vector3(size, size, 1f);
 
             if (!_root.gameObject.activeSelf) _root.gameObject.SetActive(true);
+        }
+
+        /// <summary>
+        /// Draws one of the two shapes at the point <see cref="Follow"/> has already settled on,
+        /// and answers with how far that shape reaches from it, in reticle sizes.
+        ///
+        /// The choice is made per frame rather than once, because the sprite is not always
+        /// there to take: the aiming UI is rebuilt per stage, and for a frame or two after a
+        /// loading screen it exists without one. Falling back to the three marks on those frames
+        /// costs nothing — they are what would have been drawn anyway — and it means the setting
+        /// can be changed in the VR menu and take effect on the next frame without anything
+        /// being rebuilt.
+        ///
+        /// Whichever is drawn is drawn in the same place, which is the point of doing it here:
+        /// the mark does not move when the shape changes.
+        /// </summary>
+        private float Shape()
+        {
+            var sprite = MagicSprite(out var tint);
+
+            if (sprite != null && _icon.Show(sprite, tint))
+            {
+                Marks(false);
+
+                // The gap is left unsettled while the icon has the frame, so that the marks snap
+                // to their width rather than easing out of a stale one if they come back.
+                _gapSettled = false;
+                return _icon.Reach;
+            }
+
+            _icon.Hide();
+            Marks(true);
+
+            Gap();
+            Place();
+            return Reach();
+        }
+
+        private void Marks(bool show)
+        {
+            for (var i = 0; i < _marks.Length; i++)
+            {
+                var mark = _marks[i].gameObject;
+                if (mark.activeSelf != show) mark.SetActive(show);
+            }
+        }
+
+        /// <summary>
+        /// The sprite the game is currently drawing its crosshair with, and the colour it is
+        /// drawing it in — which between them are the magic, since <c>UpdateMagicAimIcon</c>
+        /// writes the first and the <c>COLOR_MAGIC_*</c> constants the second.
+        ///
+        /// Taken off the <c>Image</c> whether or not that <c>Image</c> is switched on. Hiding the
+        /// centred crosshair clears <c>enabled</c>, which stops it being drawn and leaves every
+        /// field on it exactly as the game last wrote it; the two settings are independent, and
+        /// the useful pair is both — the flat one off, its picture in the world.
+        /// </summary>
+        private Sprite MagicSprite(out Color tint)
+        {
+            tint = Color.white;
+            if (!Plugin.Instance.UseGameAimIcon.Value) return null;
+
+            var aiming = AimingPoint();
+            var image = aiming != null ? aiming.aimImg : null;
+            if (image == null) return null;
+
+            tint = image.color;
+            return image.sprite;
         }
 
         /// <summary>
@@ -231,6 +310,29 @@ namespace NobetaVR.Ui
             _gapSettled = false;
         }
 
+        /// <summary>
+        /// The game's aiming UI, found on a timer rather than held.
+        ///
+        /// The timer is because this UI is rebuilt per stage, so a reference taken once is a dead
+        /// pointer from the next loading screen onwards. It sits here rather than inside either
+        /// caller because there are two of them now and they want it for unrelated reasons — one
+        /// to switch the crosshair off, one to borrow its sprite — and neither should pay for a
+        /// scan the other asked for.
+        /// </summary>
+        private UIAimingPoint AimingPoint()
+        {
+            if (_gameCrosshair != null) return _gameCrosshair;
+            if (Time.unscaledTime < _nextScan) return null;
+
+            _nextScan = Time.unscaledTime + 1f;
+
+            var found = UnityEngine.Object.FindObjectOfType(Il2CppType.Of<UIAimingPoint>());
+            _gameCrosshair = found != null ? found.TryCast<UIAimingPoint>() : null;
+            if (_gameCrosshair != null) Plugin.Log.LogInfo("found the game's UIAimingPoint");
+
+            return _gameCrosshair;
+        }
+
         private void OnDisable()
         {
             RestoreGameCrosshair();
@@ -256,15 +358,7 @@ namespace NobetaVR.Ui
             var wanted = Plugin.Instance.HideGameCrosshair.Value;
             if (!wanted && !_gameCrosshairHidden) return;
 
-            if (_gameCrosshair == null && Time.unscaledTime >= _nextScan)
-            {
-                _nextScan = Time.unscaledTime + 1f;
-                var found = UnityEngine.Object.FindObjectOfType(Il2CppType.Of<UIAimingPoint>());
-                _gameCrosshair = found != null ? found.TryCast<UIAimingPoint>() : null;
-                if (_gameCrosshair != null) Plugin.Log.LogInfo("found the game's UIAimingPoint");
-            }
-
-            if (_gameCrosshair == null) return;
+            if (AimingPoint() == null) return;
 
             SetEnabled(_gameCrosshair.aimImg, !wanted);
             SetEnabled(_gameCrosshair.aimCenterImg, !wanted);
@@ -311,6 +405,11 @@ namespace NobetaVR.Ui
             // The unrotated mark sits to the right and points left, so one angle turns it to
             // its place on the ring and leaves it pointing in, both at once.
             for (var i = 0; i < Angles.Length; i++) Mark(i, Angles[i]);
+
+            // Built alongside the marks rather than on the first frame it is wanted. It is one
+            // object with an empty mesh until a sprite arrives, and building it here keeps the
+            // setting a per-frame choice between two shapes that both already exist.
+            _icon = new MagicAimIcon(_root, shader);
 
             root.SetActive(false);
 
