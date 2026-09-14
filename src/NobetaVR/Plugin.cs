@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Unity.IL2CPP;
@@ -125,6 +126,13 @@ namespace NobetaVR
         internal ConfigEntry<bool> MeleeRequireWand;
         internal ConfigEntry<bool> MeleeSwingVoice;
         internal ConfigEntry<string> MeleeRangeName;
+        internal ConfigEntry<bool> ParryFromSwing;
+        internal ConfigEntry<float> ParryWindow;
+        internal ConfigEntry<float> ParryArmInterval;
+        internal ConfigEntry<int> StaggerBudget;
+        internal ConfigEntry<float> StaggerRecovery;
+        internal ConfigEntry<float> HitstopInterval;
+        internal ConfigEntry<bool> LogMeleeBalance;
         internal ConfigEntry<bool> Haptics;
         internal ConfigEntry<NobetaVR.Vr.HapticsHands> HapticsHand;
         internal ConfigEntry<float> HapticsStrength;
@@ -205,6 +213,18 @@ namespace NobetaVR
               + "no pose work will help. Measured whether or not LateLatchPose is on, so the "
               + "same run says what the setting is worth. Off by default; it is for one "
               + "reproduction, not for playing with.");
+
+            LogMeleeBalance = Config.Bind(
+                "Diagnostics", "LogMeleeBalance", false,
+                "Writes a line every five seconds while enemies are being hit, saying how many "
+              + "blows landed, how many of them staggered, how many staggers and hit-stops were "
+              + "waived, and — the reading it exists for — what share of the time those enemies "
+              + "spent unable to act, with the mean and longest length of a single stagger.\n"
+              + "That last figure is what StaggerBudget and StaggerRecovery have to be set "
+              + "against. Four blows that stagger for 0.4 s each fill a recovery of one second "
+              + "twice over, and the enemy never gets its turn; the same four at 0.15 s leave "
+              + "it most of the second. From inside the headset the two are the same picture. "
+              + "Off by default; it is for one fight, read afterwards.");
 
             ShowFpsCounter = Config.Bind(
                 "Diagnostics", "ShowFpsCounter", false,
@@ -927,6 +947,99 @@ namespace NobetaVR
               + "the range rather than on the animation, this is the choice of how hard a swing "
               + "hits as much as of where it reaches.");
 
+
+            ParryFromSwing = Config.Bind(
+                "Balance", "ParryFromSwing", true,
+                "Lets a ground swing parry, the way an attack does on a pad.\n"
+              + "A blow that arrives while NobetaRuntimeData.absorbTimer is running does not "
+              + "damage Nobeta: the game puts her into NobetaState.Absorb instead and she takes "
+              + "mana out of it. The attack animation opens that timer as it swings -- "
+              + "ABSORB_TIME_MAX is 0.15 s -- so on a pad the parry is just 'attack a moment "
+              + "before the blow lands'.\n"
+              + "The free swing opens the attack collision directly and plays no animation, "
+              + "which is the point of it: the animation plants her feet and takes your arm "
+              + "away mid-stroke. So nothing opens the timer and the parry is unavailable "
+              + "however well timed. Turning the free swing off restores it at once, which is "
+              + "the control that proved it. With this on, the swing opens the timer itself, "
+              + "through the game's own call.");
+
+            ParryWindow = Config.Bind(
+                "Balance", "ParryWindow", 0f,
+                "How long the window a ground swing opens lasts, in seconds. Zero uses the "
+              + "game's own length, which is 0.15 s.\n"
+              + "Raise it to forgive a headset, where the frame you reacted to was presented "
+              + "later than it was simulated and the telegraph you saw is already old. It only "
+              + "sets the window a swing opens; the absorb a successful parry throws her into "
+              + "is the game's and is left alone.\n"
+              + "This is not the setting that decides how easily a parry can be had -- see "
+              + "ParryArmInterval for that.");
+
+            ParryArmInterval = Config.Bind(
+                "Balance", "ParryArmInterval", 0.6f,
+                "How long you must go without swinging before a swing can open a parry window "
+              + "again, in seconds. Zero lets every swing open one.\n"
+              + "Without it the parry is had by flailing rather than by timing: a window of a "
+              + "third of a second, topped up seven times a second, never shuts, and the reward "
+              + "for choosing the right moment goes to whoever is not choosing at all. With it, "
+              + "only the first swing of a burst arms anything -- mash and you get exactly one "
+              + "parry at the start of the flurry, then nothing until you let go.\n"
+              + "A gate on swing spacing would be the wrong tool for a stagger, where it would "
+              + "decide whether your blow lands on a difference you cannot feel. It is the right "
+              + "tool here, because nothing is taken away: the blow lands either way, and what "
+              + "the quiet moment buys is a defence. Earning it by choosing when to swing is the "
+              + "whole mechanic.");
+
+
+            StaggerBudget = Config.Bind(
+                "Balance", "StaggerBudget", 4,
+                "How many blows in a row may stagger the same enemy before it stops flinching. "
+              + "Zero is the game's own behaviour, where every blow interrupts.\n"
+              + "This is the setting that gives an enemy its turn back. Nothing in the game "
+              + "rate-limits an interruption, because the attack animation used to: on a pad "
+              + "melee plants her feet and holds the next input off, and AI_NPC was written "
+              + "behind that with no poise and no accumulator of any kind. The VR swing removed "
+              + "the animation and with it the only thing pacing a stagger, so an enemy hit six "
+              + "times a second never leaves the Damaged state and never attacks.\n"
+              + "Counted rather than timed, on purpose. A rule that asked how fast you were "
+              + "swinging would put its threshold in the middle of the tempo people actually "
+              + "swing at, and blows would stagger or not depending on a difference you cannot "
+              + "see or feel — which in a headset reads as hits that did not register rather "
+              + "than as a rule. A count is the same for everyone: the first four land like a "
+              + "combo, and after them the enemy is back on its feet.\n"
+              + "A blow that cannot stagger is not refused. It lands, it deals its damage and "
+              + "it raises its effect and its hit sound; only the stiffness and the knockback "
+              + "come off it. Applies to every source of damage, magic and the pad's own melee "
+              + "included — the point of putting it on the enemy is that alternating a swing "
+              + "with a shot cannot walk around it.");
+
+            StaggerRecovery = Config.Bind(
+                "Balance", "StaggerRecovery", 1f,
+                "How long an enemy must be left alone before it can be staggered again, in "
+              + "seconds.\n"
+              + "Measured from the last blow that landed, not from the last stagger — so "
+              + "carrying on hitting an enemy that has stopped flinching keeps its flurry "
+              + "alive by doing it, and backing off is the only thing that ends one. That is "
+              + "the whole of the loop this is meant to create: four blows, then let go, then "
+              + "four more. Under a continuous flurry the count never clears and the enemy is "
+              + "never interrupted again, which is the point.");
+
+            HitstopInterval = Config.Bind(
+                "Balance", "HitstopInterval", 0.3f,
+                "Shortest gap between two hit-stops on the same enemy, in seconds. Zero is the "
+              + "game's own behaviour, where every blow pauses.\n"
+              + "The hit-stop is the freeze at the moment of impact — AttackData.g_bPauseTime "
+              + "reaching NPCManage.SetPauseTime, which drives the delta time the enemy's whole "
+              + "AI runs on. It is asymmetric by design: the enemy is slowed and Nobeta is not, "
+              + "which at one blow every half second is what makes a hit feel like a hit. At six "
+              + "a second each pause begins before the last has ended, and instead of a series "
+              + "of accents the enemies simply live in slow motion while you do not.\n"
+              + "So this only has to stop the effect overlapping itself, and it can sit low: the "
+              + "default is the game's own g_fCollisionInterval, the shortest gap it allows "
+              + "between two hits on one target. A swing thrown deliberately keeps its impact; "
+              + "only a flurry loses it. Unlike the stagger this is feedback rather than "
+              + "balance, which is why it is an interval on the blows and not a cooldown on the "
+              + "enemy — it should be present as often as it can be without piling up.");
+
             Haptics = Config.Bind(
                 "Haptics", "Haptics", true,
                 "Plays the game's own rumble on the controllers. The game has haptics already "
@@ -1042,7 +1155,21 @@ namespace NobetaVR
             try
             {
                 var harmony = new Harmony(Guid);
-                harmony.PatchAll();
+
+                // Class by class rather than one PatchAll, because PatchAll is all-or-nothing:
+                // a single malformed patch class throws out of it and every remaining class is
+                // abandoned. That happened — a diagnostic class that combined TargetMethods()
+                // with per-method annotations, which Harmony refuses — and the whole mod ran
+                // unpatched behind one line in the log. One bad class should cost its own
+                // patches and nothing else, and it should say which one it was.
+                foreach (var type in Assembly.GetExecutingAssembly().GetTypes())
+                {
+                    if (type.GetCustomAttribute<HarmonyPatch>() == null) continue;
+
+                    try { harmony.CreateClassProcessor(type).Patch(); }
+                    catch (Exception e) { Log.LogError($"Harmony: {type.Name} failed to patch: {e.Message}"); }
+                }
+
                 var patched = 0;
                 foreach (var m in harmony.GetPatchedMethods()) { Log.LogInfo($"patched {m.DeclaringType?.Name}.{m.Name}"); patched++; }
                 if (patched == 0) Log.LogWarning("Harmony applied no patches; the camera will fight the game.");

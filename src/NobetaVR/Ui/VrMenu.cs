@@ -537,6 +537,59 @@ namespace NobetaVR.Ui
             });
 
             _items.Add(new Item { Label = "", IsHeading = true });
+            _items.Add(new Item { Label = "COMBAT", IsHeading = true });
+
+            _items.Add(new Item
+            {
+                Label = "Parry from swing",
+                Value = () => cfg.ParryFromSwing.Value ? "On" : "Off",
+                Adjust = _ => cfg.ParryFromSwing.Value = !cfg.ParryFromSwing.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Parry window",
+                Value = () => cfg.ParryWindow.Value <= 0f
+                    ? "Off"
+                    : $"{cfg.ParryWindow.Value:F2} s",
+                Adjust = d => cfg.ParryWindow.Value =
+                    Mathf.Clamp(cfg.ParryWindow.Value + d * 0.05f, 0f, 1.5f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Parry re-arm",
+                Value = () => cfg.ParryArmInterval.Value <= 0f
+                    ? "Every swing"
+                    : $"{cfg.ParryArmInterval.Value:F2} s quiet",
+                Adjust = d => cfg.ParryArmInterval.Value =
+                    Mathf.Clamp(cfg.ParryArmInterval.Value + d * 0.1f, 0f, 3f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Stagger budget",
+                Value = () => cfg.StaggerBudget.Value <= 0
+                    ? "Every blow"
+                    : $"{cfg.StaggerBudget.Value} blow(s)",
+                Adjust = d => cfg.StaggerBudget.Value =
+                    Mathf.Clamp(cfg.StaggerBudget.Value + (d > 0f ? 1 : -1), 0, 20),
+            });
+            _items.Add(new Item
+            {
+                Label = "Stagger recovery",
+                Value = () => $"{cfg.StaggerRecovery.Value:F2} s",
+                Adjust = d => cfg.StaggerRecovery.Value =
+                    Mathf.Clamp(cfg.StaggerRecovery.Value + d * 0.1f, 0.1f, 5f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Hit-stop interval",
+                Value = () => cfg.HitstopInterval.Value <= 0f
+                    ? "Every blow"
+                    : $"{cfg.HitstopInterval.Value:F2} s",
+                Adjust = d => cfg.HitstopInterval.Value =
+                    Mathf.Clamp(cfg.HitstopInterval.Value + d * 0.05f, 0f, 2f),
+            });
+
+            _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "HAPTICS", IsHeading = true });
 
             _items.Add(new Item

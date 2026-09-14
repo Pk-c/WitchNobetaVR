@@ -499,6 +499,11 @@ namespace NobetaVR.Vr
             girl.CancelAttackCollision();
             girl.OpenAttackCollision(range);
 
+            // The parry window, which the attack animation opens and this swing does not reach.
+            // Fourth of the same kind in this method, after the swing sound, the voice and the
+            // trail: a thing the animation does, done by hand because there is no animation.
+            AbsorbWindow.Swung(girl);
+
             if (!cfg.MeleeSwingVoice.Value) return true;
 
             // Round the four the game has, as the combo does. One voice line on every swing

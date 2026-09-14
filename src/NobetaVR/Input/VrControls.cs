@@ -131,6 +131,11 @@ namespace NobetaVR.Input
             // CutsceneProbe; it costs a string per frame and writes nothing unless asked.
             Diagnostics.CutsceneProbe.Note(Drive());
             Diagnostics.CutsceneProbe.Tick(_gameUi.InputManager);
+
+            // Enemy-side bookkeeping, and the one thing here that is not about the player at
+            // all. Outside the gates on purpose: an enemy's flurry does not stop running
+            // because the player opened a menu. See MeleeBalance.Tick.
+            Vr.MeleeBalance.Tick();
         }
 
         /// <summary>
@@ -341,6 +346,7 @@ namespace NobetaVR.Input
 
             if (left && !_leftGripHeld) { _leftGripAt = now; _cyclePending = true; }
             if (right && !_rightGripHeld) _rightGripAt = now;
+
             _leftGripHeld = left;
             _rightGripHeld = right;
 
