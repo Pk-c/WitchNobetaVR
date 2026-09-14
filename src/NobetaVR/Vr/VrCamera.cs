@@ -184,6 +184,12 @@ namespace NobetaVR.Vr
 
             _firstPerson.Rebind(instance);
 
+            // A fresh camera is a fresh stage, and a stage opens behind a fade with the game
+            // holding her. This arm covers that; the one that covers the wake itself comes from
+            // WakeSequencePatches, because the wake starts seconds after the stage does and
+            // every reading of "the game has her" says otherwise until it is under way.
+            ArmSpawnView("a stage opened");
+
             // A new stage is a new body, and the renderers held from the last one are dead
             // pointers rather than hers.
             BodyVisibility.Rebind(instance);
@@ -307,7 +313,13 @@ namespace NobetaVR.Vr
             // respawn would have held it open to its timeout.
             var dying = DeathView();
 
-            return dying || (Plugin.Instance.ThirdPersonInCutscenes.Value && GameIsFraming());
+            // Same argument, same reason to ask it unconditionally: this one is a latch too,
+            // armed by the stage rather than by a state, and a latch consulted only on the
+            // frames something else is false is a latch that closes late or not at all.
+            var waking = SpawnView();
+
+            return dying || waking
+                || (Plugin.Instance.ThirdPersonInCutscenes.Value && GameIsFraming());
         }
 
         /// <summary>
@@ -396,10 +408,11 @@ namespace NobetaVR.Vr
             // twice, differing by a frame — which is what "sometimes I come back looking at her
             // from behind" was.
             //
-            // Her own eyes is also the better of the two, and it is already handled: the view
-            // rides her facing through the whole get-up and is handed over the moment the
-            // player asks for something, so waking against the pillar looks like waking against
-            // the pillar. See FirstPerson.RideHerFacing, which was written for this sequence.
+            // The get-up is covered all the same, and by the latch that covers every other
+            // stage opening too: the reload binds a fresh PlayerCamera, which arms SpawnView,
+            // which holds the view back until she is plainly the player's. So this one only has
+            // to reach as far as the respawn, and the two together read as one continuous step
+            // back from the fall to her standing up.
             if (!PlayerStatus.Dead
              && PlayerStatus.Controllable
              && mode == PlayerCamera.CameraMode.Normal)
@@ -419,6 +432,313 @@ namespace NobetaVR.Vr
                                 + $"{LatchTimeout:F0}s; putting the view back anyway.");
             return false;
         }
+
+        /// <summary>
+        /// Whether the view should stand back from her while the game opens a stage, from the
+        /// first frame of that stage to the first frame she is the player's.
+        ///
+        /// The sequence this exists for is the spawn at a save statue. She is placed slumped
+        /// against the pillar, she sits there while the stage finishes arriving, and then she
+        /// stands up — and none of it is the player's. On a monitor that is an opening shot.
+        /// From inside her head it opens with your eyes at the height of a girl sitting on the
+        /// floor, looking at whatever her closed eyes happen to point at, and continues with a
+        /// get-up your neck did not make. There is nothing in it a first-person view is better
+        /// at, and the game's own camera already has her in frame.
+        ///
+        /// <para>
+        /// Armed by the game saying so rather than by anything watched per frame — see
+        /// <see cref="ArmSpawnView"/> for the two places that say it. Polling her state cannot
+        /// work here: at a save statue the stage opens with her in <c>Normal</c> and already
+        /// marked controllable, and the wake starts seconds later, so a latch closed on "she is
+        /// yours" closes before the sequence begins.
+        /// </para>
+        ///
+        /// Closed by her being plainly the player's — an ordinary camera mode, the game's own
+        /// controllable flag, and none of the states it holds her through — which for a stage
+        /// she simply walks into is the first frame there is a body to ask, so nothing is
+        /// stood back from. It fails open on a timeout for the same reason the death latch
+        /// does: stuck outside her head is a fault a player cannot get out of.
+        ///
+        /// <para>
+        /// What happens on the frame it closes is already written and is not written again
+        /// here. First person resumes with the view still riding her facing — the latch has
+        /// only postponed that, since nothing during the stand-back hands the view over — so
+        /// the eye arrives pointing the way she is pointing rather than the way the opening
+        /// shot was framed from, and <see cref="FirstPerson.RideHerFacing"/> keeps the game's
+        /// own yaw handle underneath it until the player's first input takes both. Realigning
+        /// at the close instead would leave the game camera to swing from the shot's angle to
+        /// hers under a view that can watch it happen.
+        /// </para>
+        /// </summary>
+        private static bool SpawnView()
+        {
+            if (!Plugin.Instance.ThirdPersonOnSpawn.Value)
+            {
+                _spawnLatch = false;
+                return false;
+            }
+
+            if (!_spawnLatch) return false;
+
+            // The turn runs after she is already the player's, which is why it is asked before
+            // the handover rather than inside it: once it has started, nothing about her state
+            // ends it but its own clock.
+            if (_spawnTurning)
+            {
+                var turned = Time.unscaledTime - _spawnTurnStart;
+
+                // The turn has to have been drawn before it can be over, and that is what keeps
+                // a cut a frame long: it is entered and applied on one frame, and only the next
+                // frame's ask can end it. A cut spent on the frame the view moves is not a turn
+                // before the handover, it is the handover -- the half turn and the change of
+                // place arrive together as one jump, which is the thing being taken apart here.
+                // Given a second to be drawn in, after which something is wrong and a view left
+                // standing back is worse than an unturned handover.
+                if (!_spawnTurnTaken)
+                {
+                    if (turned < 1f) return true;
+
+                    _spawnTurning = false;
+                    _spawnLatch = false;
+                    Plugin.Log.LogWarning("spawn: the turn onto her facing was never drawn; "
+                                        + "handing the view over without it.");
+                    return false;
+                }
+
+                if (turned < Plugin.Instance.SpawnTurnSeconds.Value) return true;
+
+                _spawnTurning = false;
+                _spawnLatch = false;
+                Plugin.Log.LogInfo($"spawn: she is yours after "
+                                 + $"{Time.unscaledTime - _spawnArmedAt:F1}s; the view turns "
+                                 + $"{_spawnTurnBy:F0} deg onto {_spawnHandoverYaw:F0} and goes "
+                                 + $"back on her head");
+                return false;
+            }
+
+            if (PlayerStatus.YoursToDrive)
+            {
+                // Turn to her facing first, if there was a shot to turn out of. The view has
+                // spent the get-up looking at her, so it is looking the way she is not, and
+                // going straight into her head from there means the half turn and the change of
+                // place land on the same frame, as one jump. The turn takes a frame of its own
+                // instead — snapped by default, eased if asked — and it lands on the yaw first
+                // person is about to use, so the handover that follows moves nothing at all and
+                // leaves you facing where she faces.
+                if (_spawnHeld && _spawnFramed)
+                {
+                    _spawnTurning = true;
+                    _spawnTurnStart = Time.unscaledTime;
+                    _spawnTurnTaken = false;
+                    return true;
+                }
+
+                _spawnLatch = false;
+
+                // Silent unless the view actually stood back. The stage arm closes on the first
+                // frame of most stages, and a line per stage saying nothing happened is a line
+                // that makes the ones that matter harder to find.
+                if (_spawnHeld)
+                    Plugin.Log.LogInfo($"spawn: she is yours after "
+                                     + $"{Time.unscaledTime - _spawnArmedAt:F1}s; "
+                                     + $"the view goes back on her head");
+                return false;
+            }
+
+            _spawnHeld = true;
+
+            if (Time.unscaledTime - _spawnArmedAt < SpawnTimeout) return true;
+
+            _spawnLatch = false;
+            Plugin.Log.LogWarning($"spawn: nothing said she was yours within {SpawnTimeout:F0}s; "
+                                + $"putting the view on her head anyway.");
+            return false;
+        }
+
+        /// <summary>
+        /// Where the view watches a stage open from: a fixed point a short way in front of
+        /// Nobeta, a little above the floor, looking back at her.
+        ///
+        /// Standing back to the game's own boom was not enough on its own. The boom is where
+        /// the stage left it, which at a save statue is wherever the opening was framed from —
+        /// behind the pillar, off to one side, or close enough on her face that the get-up
+        /// fills the view. None of those is the shot the moment wants. What it wants is the
+        /// plainest one there is: she is over there, on the floor, and you are watching her
+        /// get up.
+        ///
+        /// <para>
+        /// Taken from her own forward, so it is her face rather than her back, and taken once
+        /// rather than followed. A framing rebuilt every frame rides her root through the
+        /// stand-up animation and turns the whole world with her, which is the one thing a view
+        /// the player cannot steer must never do. Frozen, it is a camera on a tripod: she
+        /// stands, she turns, the room holds still.
+        /// </para>
+        ///
+        /// <para>
+        /// Re-taken for as long as the view is black, which is what makes taking it once safe.
+        /// A stage places her somewhere between its first frame and its last loading frame, and
+        /// a shot built from a body that has not been put down yet frames an empty floor. The
+        /// fade covers all of it, and behind a fade a retake cannot be seen.
+        /// </para>
+        ///
+        /// Declines for a cutscene and for a death, and returns false so the caller keeps the
+        /// game's own pose: both are shots somebody authored, and replacing an authored shot
+        /// with a tripod in front of her is not a comfort, it is a different film.
+        /// </summary>
+        /// <returns>Whether the shot is ours this frame, rather than the game's.</returns>
+        private bool SpawnFraming(ref Vector3 position, ref Quaternion rotation)
+        {
+            if (!_spawnLatch || _deathLatch || GameIsFraming())
+            {
+                _spawnFramed = false;
+                return false;
+            }
+
+            var girl = _playerCamera != null ? _playerCamera.wizardGirl : null;
+            var black = ViewFade.Amount > FramingBlack;
+
+            if (girl != null && (!_spawnFramed || black))
+            {
+                var forward = girl.transform.forward;
+                forward.y = 0f;
+                forward = forward.sqrMagnitude > 0.0001f ? forward.normalized : Vector3.forward;
+
+                var cfg = Plugin.Instance;
+                _spawnPos = girl.transform.position
+                          + forward * cfg.SpawnViewDistance.Value
+                          + Vector3.up * cfg.SpawnViewHeight.Value;
+                _spawnRot = Quaternion.LookRotation(-forward, Vector3.up);
+
+                if (!_spawnFramed)
+                    Plugin.Log.LogInfo($"spawn: watching her get up from "
+                                     + $"{cfg.SpawnViewDistance.Value:F1} m in front, "
+                                     + $"{cfg.SpawnViewHeight.Value:F1} m up ({_spawnWhy})");
+
+                _spawnFramed = true;
+            }
+
+            // No body yet and nothing taken: the caller keeps the game's camera, which is a
+            // pose belonging to a loading screen and is still better than a shot of the origin.
+            if (!_spawnFramed) return false;
+
+            position = _spawnPos;
+            rotation = _spawnRot;
+            return true;
+        }
+
+        private static bool _spawnFramed;
+        private static Vector3 _spawnPos;
+        private static Quaternion _spawnRot = Quaternion.identity;
+
+        /// <summary>How black the view has to be for the framing to be worth re-taking.</summary>
+        private const float FramingBlack = 0.8f;
+
+        /// <summary>
+        /// Holds the view back until she is the player's again, and takes a fresh shot of
+        /// wherever she is now.
+        ///
+        /// Armed twice over, from two places that answer different halves of the same question.
+        /// A PlayerCamera binding says a stage is opening, which is once per stage and once
+        /// more for the reload in the middle of a death; it covers the load and the fade, and
+        /// on a stage she simply walks into it closes again on the first frame there is a body
+        /// to ask. <see cref="WakeSequencePatches"/> says the game has begun standing her up,
+        /// which at a save statue is seconds later and is the sequence this is actually for.
+        ///
+        /// Re-arming an open latch is ordinary rather than a special case: it pushes the
+        /// timeout out and drops the held shot, which is what a fresh shot of a body that has
+        /// since been placed requires.
+        /// </summary>
+        internal static void ArmSpawnView(string why)
+        {
+            if (!Plugin.Instance.ThirdPersonOnSpawn.Value) return;
+
+            _spawnLatch = true;
+            _spawnArmedAt = Time.unscaledTime;
+            _spawnFramed = false;
+            _spawnHeld = false;
+            _spawnTurning = false;
+            _spawnWhy = why;
+        }
+
+        private static bool _spawnLatch;
+        private static float _spawnArmedAt;
+        private static string _spawnWhy = string.Empty;
+        private static bool _spawnHeld;
+        private static bool _spawnTurning;
+        private static float _spawnTurnStart;
+        private static bool _spawnTurnTaken;
+        private static float _spawnTurnFrom;
+        private static float _spawnTurnBy;
+        private static float _spawnHandoverYaw;
+
+        /// <summary>
+        /// The yaw the game's camera is being held on while the spawn shot runs: Nobeta's
+        /// facing with the player's own physical heading taken off it, so that the two add back
+        /// up to her facing and nothing else once first person resumes.
+        /// </summary>
+        private float HandoverYaw(Quaternion headRot)
+        {
+            var nose = Ui.ViewAnchor.YawForward(headRot, Vector3.forward);
+            var headsetYaw = Quaternion.LookRotation(nose, Vector3.up).eulerAngles.y;
+
+            return _firstPerson.AimAlongBody(headsetYaw, out var yaw) ? yaw : _gameRot.eulerAngles.y;
+        }
+
+        /// <summary>
+        /// The view's yaw while it turns out of the spawn shot and onto her facing.
+        /// </summary>
+        /// <param name="standingBack">
+        /// The yaw the stand-back would have used this frame, alignment included.
+        /// </param>
+        /// <remarks>
+        /// Both ends are taken once, on the first frame of the turn, and the yaw is walked
+        /// between them as an angle rather than slerped: at a half turn exactly — which is
+        /// what a shot framed down her own forward gives — a slerp has no shorter way round
+        /// to prefer, and which one it picks is not something to leave to rounding.
+        ///
+        /// <para>
+        /// The far end is her plain facing, with no alignment on it, because that is what first
+        /// person is about to show: it takes her yaw and adds the headset to it. The stand-back
+        /// carries the alignment that takes the player's accumulated physical yaw off an
+        /// authored shot, so the turn unwinds that as it goes and arrives on the exact value
+        /// the next frame will use. What is left at the handover is a change of position and
+        /// nothing else.
+        /// </para>
+        /// </remarks>
+        private Quaternion SpawnTurnYaw(Quaternion standingBack)
+        {
+            if (!_spawnTurnTaken)
+            {
+                _spawnTurnTaken = true;
+                _spawnTurnFrom = standingBack.eulerAngles.y;
+            }
+
+            // Re-read rather than taken once: the far end is her facing with the player's own
+            // heading taken off it, and the player may move their head while this runs. A
+            // target that drifts is the promise being kept, not broken — what must not drift is
+            // where the turn started, which is why only that end is held.
+            _spawnTurnBy = Mathf.DeltaAngle(_spawnTurnFrom, _spawnHandoverYaw);
+
+            var seconds = Plugin.Instance.SpawnTurnSeconds.Value;
+
+            // A cut arrives whole on the first frame of the phase, which is the frame before
+            // the view moves. Eased over the phase otherwise: a turn you cannot steer is one
+            // you can only sit through, and what is hardest to sit through is a constant rate
+            // starting and stopping dead.
+            var t = seconds <= Cut
+                  ? 1f
+                  : Mathf.Clamp01((Time.unscaledTime - _spawnTurnStart) / seconds);
+
+            t = t * t * (3f - 2f * t);
+
+            return Quaternion.Euler(0f, _spawnTurnFrom + _spawnTurnBy * t, 0f);
+        }
+
+        /// <summary>Longest the view will watch a stage open, in seconds.</summary>
+        private const float SpawnTimeout = 30f;
+
+        /// <summary>At or under this, the turn onto her facing is a cut rather than a move.</summary>
+        private const float Cut = 0.001f;
 
         /// <summary>
         /// How far the view is lifted while she dies, this frame.
@@ -518,15 +838,40 @@ namespace NobetaVR.Vr
             // shot over their shoulder. See ShotFacing, which takes that offset off at every
             // cut. Asked on the frames the view is hers again as well, so a cutscene always
             // opens on a freshly taken alignment.
-            if (ViewStandsBack) ShotFacing.Update(_gameRot, _gamePos, headRot);
+            // Whose shot this is. The game's for a cutscene and for a death, ours while a
+            // stage opens on her — see SpawnFraming, which is the one case the game's own
+            // camera is not already pointing at what the player needs to see.
+            var framingPos = _gamePos;
+            var framingRot = _gameRot;
+            var ownFraming = ViewStandsBack && SpawnFraming(ref framingPos, ref framingRot);
+
+            if (ViewStandsBack) ShotFacing.Update(framingRot, framingPos, headRot);
             else ShotFacing.Forget();
 
             var inHead = false;
 
             if (ViewStandsBack)
             {
-                viewRot = Quaternion.Euler(0f, _gameRot.eulerAngles.y, 0f) * ShotFacing.Yaw;
-                viewPos += Vector3.up * DeathRise();
+                viewRot = Quaternion.Euler(0f, framingRot.eulerAngles.y, 0f) * ShotFacing.Yaw;
+                viewPos = framingPos;
+
+                // The death's answer to a camera that sinks to the floor with her. Ours is not
+                // sinking anywhere, so there is nothing here for it to answer.
+                if (!ownFraming) viewPos += Vector3.up * DeathRise();
+
+                if (ownFraming)
+                {
+                    // Where the handover will point, kept under the game's camera for the whole
+                    // of the stand-back so that it has arrived there by the time the view takes
+                    // its direction from it again. See FirstPerson.AimAlongBody.
+                    _spawnHandoverYaw = HandoverYaw(headRot);
+
+                    // And the last thing the spawn shot does: turn off her, onto that yaw,
+                    // before the view goes back on her head. The camera stays where it is while
+                    // it turns — a turn on the spot is one movement to follow, where turning
+                    // and travelling at once is two.
+                    if (_spawnTurning) viewRot = SpawnTurnYaw(viewRot);
+                }
             }
             // If the head bone is not loaded yet, first person declines and the boom pose
             // stands, so a stage opens in third person for a few frames rather than snapping

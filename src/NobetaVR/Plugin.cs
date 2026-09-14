@@ -143,6 +143,10 @@ namespace NobetaVR
         internal ConfigEntry<bool> DodgeAlwaysBackstep;
         internal ConfigEntry<bool> AirJumpKeepsJumpAnimation;
         internal ConfigEntry<bool> ThirdPersonOnDeath;
+        internal ConfigEntry<bool> ThirdPersonOnSpawn;
+        internal ConfigEntry<float> SpawnViewDistance;
+        internal ConfigEntry<float> SpawnViewHeight;
+        internal ConfigEntry<float> SpawnTurnSeconds;
         internal ConfigEntry<float> DeathViewRise;
 
         public override void Load()
@@ -1139,6 +1143,49 @@ namespace NobetaVR
               + "back to the game's own camera gives the death its framing back and gives you "
               + "somewhere to be while it plays. The horizon is kept level and the head pose "
               + "still moves the view, so it is a step back rather than the camera taking over.");
+
+            ThirdPersonOnSpawn = Config.Bind(
+                "Comfort", "ThirdPersonOnSpawn", true,
+                "Watches her wake up from outside her head, and goes back on it the moment she "
+              + "is yours. A stage opens with her slumped against a save pillar, and the "
+              + "get-up that follows is an animation the player has no part in: from inside "
+              + "her head it is a minute of somebody else's neck, beginning with your eyes at "
+              + "the height of a girl sitting on the floor for no reason you can see. From the "
+              + "game's own camera it is what it was authored as — she is there, against the "
+              + "pillar, and she stands up. The view is handed over on her facing the instant "
+              + "the game lets go of her, so the first thing you own is already pointing the "
+              + "way she is. It covers every stage opening and the respawn after a death, not "
+              + "a knockdown in a fight: being pulled out of your own head mid-combat is its "
+              + "own kind of unpleasant.");
+
+            SpawnViewDistance = Config.Bind(
+                "Comfort", "SpawnViewDistance", 1.8f,
+                "How far in front of Nobeta the view watches a stage open from, in metres. "
+              + "Measured along the way she is facing, so it is her face you are looking at "
+              + "rather than her back. Close enough to read as standing with her and far "
+              + "enough to have her whole in frame when she stands up.");
+
+            SpawnViewHeight = Config.Bind(
+                "Comfort", "SpawnViewHeight", 1.2f,
+                "How high above the floor the same view sits, in metres. Roughly her eye line "
+              + "once she is on her feet, which puts the end of the get-up level with you and "
+              + "leaves her a little below while she is still down — where your own neck can "
+              + "follow her, since looking around is the one thing this view never takes away.");
+
+            SpawnTurnSeconds = Config.Bind(
+                "Comfort", "SpawnTurnSeconds", 0f,
+                "How long the view takes to turn off her and onto her facing at the end of a "
+              + "get-up, in seconds. The shot that watches her wake up looks at her, so it "
+              + "looks the way she does not, and going straight from it into her head is half "
+              + "a turn of the world between one frame and the next — the sharpest kind of "
+              + "cut there is to take in a headset, on the frame you are being handed the "
+              + "controls. Turning first spends it as a movement you can follow, eased at both "
+              + "ends. Zero, the default, snaps it round instead.\n"
+              + "Either way it is spent on its own frame, before the view moves, and lands on "
+              + "the yaw first person is about to use. That is the whole of why it helps: the "
+              + "half turn and the change of place are two jumps, and taking them one at a "
+              + "time leaves a handover that moves nothing at all and drops you looking where "
+              + "she looks.");
 
             Log.LogInfo($"NobetaVR {Version} loading");
 

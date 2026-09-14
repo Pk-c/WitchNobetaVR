@@ -87,6 +87,12 @@ namespace NobetaVR.Vr
             // FirstPerson.RideHerFacing.
             if (!VrCamera.ViewIsYours) return;
 
+            // Nor while the view stands back from her at all. Every such moment is the game's
+            // or the mod's framing rather than the player's look, and the spawn turn is the one
+            // where she also reads as the player's to move — so this is the only reading that
+            // stops the half turn at the end of a get-up from taking her round with it.
+            if (VrCamera.ViewStandsBack) return;
+
             var move = controller.moveController;
             if (move == null) return;
 

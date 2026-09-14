@@ -310,6 +310,35 @@ namespace NobetaVR.Ui
 
             _items.Add(new Item
             {
+                Label = "View on spawn",
+                Value = () => cfg.ThirdPersonOnSpawn.Value ? "Third person" : "Stay in her head",
+                Adjust = _ => cfg.ThirdPersonOnSpawn.Value = !cfg.ThirdPersonOnSpawn.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Spawn view distance",
+                Value = () => $"{cfg.SpawnViewDistance.Value:F1} m",
+                Adjust = d => cfg.SpawnViewDistance.Value =
+                    Mathf.Clamp(cfg.SpawnViewDistance.Value + d * 0.1f, 0.5f, 6f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Spawn view height",
+                Value = () => $"{cfg.SpawnViewHeight.Value:F1} m",
+                Adjust = d => cfg.SpawnViewHeight.Value =
+                    Mathf.Clamp(cfg.SpawnViewHeight.Value + d * 0.1f, 0.2f, 4f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Spawn turn",
+                Value = () => cfg.SpawnTurnSeconds.Value <= 0.001f
+                    ? "Straight cut"
+                    : $"{cfg.SpawnTurnSeconds.Value:F1} s",
+                Adjust = d => cfg.SpawnTurnSeconds.Value =
+                    Mathf.Clamp(cfg.SpawnTurnSeconds.Value + d * 0.1f, 0f, 4f),
+            });
+            _items.Add(new Item
+            {
                 Label = "View on death",
                 Value = () => cfg.ThirdPersonOnDeath.Value ? "Third person" : "Stay in her head",
                 Adjust = _ => cfg.ThirdPersonOnDeath.Value = !cfg.ThirdPersonOnDeath.Value,

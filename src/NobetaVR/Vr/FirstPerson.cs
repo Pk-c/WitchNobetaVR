@@ -581,6 +581,57 @@ namespace NobetaVR.Vr
             Plugin.Log.LogInfo($"recentre: the view goes back to her facing, {bodyYaw:F1} deg");
         }
 
+        /// <summary>
+        /// Points the game's camera so that Nobeta's forward is straight ahead of the player's
+        /// nose, and hands the view's yaw over without a ride. Returns the yaw the camera is
+        /// being sent to, or false when there is no body to read.
+        /// </summary>
+        /// <param name="headsetYaw">Where the player is physically facing, flattened.</param>
+        /// <param name="cameraYaw">The yaw the game's camera will settle on.</param>
+        /// <remarks>
+        /// What the view shows in a stage is the game camera's yaw with the headset's own laid
+        /// on top, and that second term is a player's accumulated physical turning: half a turn
+        /// of it is an ordinary way to be standing after a fight. So aiming the camera down her
+        /// forward — which is all <see cref="RealignToBody"/> and the ride can do — aims the
+        /// player's nose down her forward *plus* however they happen to be standing, and the
+        /// answer is right by exactly as much as they are square to the room.
+        ///
+        /// <para>
+        /// Taking the headset off the camera's yaw is what closes that gap: the two terms then
+        /// add up to her facing and nothing else, for a player standing any way at all. It is
+        /// the direction half of a recentre, and it is spent where a recentre cannot be asked
+        /// for — the frame a spawn hands the controls over, where being turned the wrong way is
+        /// the first thing that happens to you.
+        /// </para>
+        ///
+        /// <para>
+        /// Called every frame of the stand-back rather than once at the handover. The game's
+        /// camera eases towards <c>g_fX</c> rather than jumping to it, so a value written on
+        /// the last frame arrives some way after the view has already taken its direction from
+        /// it. Written throughout, the camera has long since settled, and the handover has
+        /// nothing left to converge.
+        /// </para>
+        /// </remarks>
+        public bool AimAlongBody(float headsetYaw, out float cameraYaw)
+        {
+            cameraYaw = 0f;
+
+            var girl = _playerCamera != null ? _playerCamera.wizardGirl : null;
+            if (girl == null) return false;
+
+            cameraYaw = girl.transform.eulerAngles.y - headsetYaw;
+            _playerCamera.g_fX = cameraYaw - (_cameraYawKnown ? _cameraYawOffset : 0f);
+
+            // The ride is the other way of carrying a view through a get-up, and it is the one
+            // that leaves the headset's yaw on top. Standing it down here is not an
+            // optimisation: left armed, it would take the view back off this the moment first
+            // person resumed.
+            _viewIsYours = true;
+            _riding = false;
+            _wroteHandle = null;
+            return true;
+        }
+
         private Vector3 _steadyLocal;
         private bool _steadySeeded;
 
