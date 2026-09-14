@@ -468,6 +468,32 @@ namespace NobetaVR.Ui
             });
             _items.Add(new Item
             {
+                Label = "Damage numbers",
+                Value = () => cfg.WorldDamageNumbers.Value ? "In world" : "On panel",
+                Adjust = _ => cfg.WorldDamageNumbers.Value = !cfg.WorldDamageNumbers.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Number size",
+                Value = () => $"{cfg.DamageNumberSize.Value:F3}",
+                Adjust = d => cfg.DamageNumberSize.Value =
+                    Mathf.Clamp(cfg.DamageNumberSize.Value + d * 0.005f, 0.01f, 0.2f),
+            });
+            _items.Add(new Item
+            {
+                Label = "Enemy health",
+                Value = () => cfg.WorldEnemyHealthBars.Value ? "In world" : "On panel",
+                Adjust = _ => cfg.WorldEnemyHealthBars.Value = !cfg.WorldEnemyHealthBars.Value,
+            });
+            _items.Add(new Item
+            {
+                Label = "Enemy bar size",
+                Value = () => $"{cfg.EnemyHealthBarSize.Value:F3}",
+                Adjust = d => cfg.EnemyHealthBarSize.Value =
+                    Mathf.Clamp(cfg.EnemyHealthBarSize.Value + d * 0.01f, 0.02f, 0.4f),
+            });
+            _items.Add(new Item
+            {
                 Label = "Fade to black",
                 Value = () => cfg.VrFade.Value ? "Whole view" : "On the panel",
                 Adjust = _ => cfg.VrFade.Value = !cfg.VrFade.Value,

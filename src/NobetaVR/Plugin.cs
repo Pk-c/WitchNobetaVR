@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Reflection;
 using BepInEx;
 using BepInEx.Configuration;
@@ -96,6 +96,15 @@ namespace NobetaVR
         internal ConfigEntry<bool> HideCutsceneBars;
         internal ConfigEntry<float> MoneyShowSeconds;
         internal ConfigEntry<float> ItemBarShowSeconds;
+        internal ConfigEntry<bool> WorldDamageNumbers;
+        internal ConfigEntry<float> DamageNumberSize;
+        internal ConfigEntry<float> DamageNumberLife;
+        internal ConfigEntry<float> DamageNumberRise;
+        internal ConfigEntry<float> DamageNumberSpread;
+        internal ConfigEntry<bool> WorldEnemyHealthBars;
+        internal ConfigEntry<float> EnemyHealthBarSize;
+        internal ConfigEntry<float> EnemyHealthBarThickness;
+        internal ConfigEntry<float> EnemyHealthBarHold;
         internal ConfigEntry<bool> WristGauges;
         internal ConfigEntry<float> WristGaugeRadius;
         internal ConfigEntry<float> WristGaugeThickness;
@@ -751,6 +760,64 @@ namespace NobetaVR
                 "Interface", "ItemBarShowSeconds", 3f,
                 "How long the item bar stays up after you change item, in seconds.");
 
+            WorldDamageNumbers = Config.Bind(
+                "Interface", "WorldDamageNumbers", true,
+                "Draws the damage numbers in the world, at the point the blow landed, instead of "
+              + "on the HUD panel. The game has always had them; in a headset they were never "
+              + "visible. Each one is handed a world position and projects it into screen space "
+              + "every frame, and screen space here means the captured panel -- a flat quad "
+              + "covering a fraction of your view, projected through a stereo camera that does "
+              + "not agree with it -- so the row of digits was being animated somewhere off the "
+              + "edge of it. The digits are the game's own sprites, in the game's own colour for "
+              + "the magic that did the damage; only the place they are drawn has changed. Off "
+              + "gives the game its flat ones straight back.");
+
+            DamageNumberSize = Config.Bind(
+                "Interface", "DamageNumberSize", 0.045f,
+                "How big a damage number is, as a fraction of how far away it is. Angular rather "
+              + "than absolute for the reason the reticle is: a number that shrank with distance "
+              + "would be unreadable at the range you actually fight at.");
+
+            DamageNumberLife = Config.Bind(
+                "Interface", "DamageNumberLife", 1.1f,
+                "How long a damage number lasts, in seconds, from the hit to the end of its fade.");
+
+            DamageNumberRise = Config.Bind(
+                "Interface", "DamageNumberRise", 1.6f,
+                "How far a damage number climbs over its life, in digit heights. It rises fast "
+              + "off the hit and settles as it fades, which is what makes it read as thrown off "
+              + "the blow rather than as floating up out of nothing.");
+
+            DamageNumberSpread = Config.Bind(
+                "Interface", "DamageNumberSpread", 0.9f,
+                "How far a damage number drifts sideways over its life, in row widths, in a "
+              + "direction drawn at random when it spawns. Several hits landing on the same point "
+              + "in quick succession would otherwise stack into one illegible smear. Zero stacks "
+              + "them.");
+
+            WorldEnemyHealthBars = Config.Bind(
+                "Interface", "WorldEnemyHealthBars", true,
+                "Draws each enemy's health bar over the enemy, in the world, instead of on the "
+              + "HUD panel. Same problem as the damage numbers and the same answer: the game "
+              + "projects the enemy's own HPPosition into screen space, and a screen coordinate "
+              + "lands nowhere useful on a captured panel. The boss banner is left alone -- it is "
+              + "not anchored to anything in the world, so the panel is where it belongs and it "
+              + "has been arriving correctly all along.");
+
+            EnemyHealthBarSize = Config.Bind(
+                "Interface", "EnemyHealthBarSize", 0.09f,
+                "How wide an enemy health bar is, as a fraction of how far away the enemy is.");
+
+            EnemyHealthBarThickness = Config.Bind(
+                "Interface", "EnemyHealthBarThickness", 0.14f,
+                "How thick an enemy health bar is, as a fraction of its width.");
+
+            EnemyHealthBarHold = Config.Bind(
+                "Interface", "EnemyHealthBarHold", 4f,
+                "How long an enemy health bar stays up after that enemy was last hurt, in "
+              + "seconds. The bar is raised by the health changing, which is the game's own rule "
+              + "for it.");
+
             WristGauges = Config.Bind(
                 "Interface", "WristGauges", true,
                 "Wears health, stamina and mana on your left wrist as three bands. They cost "
@@ -1205,6 +1272,8 @@ namespace NobetaVR
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.WristGauges>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.VrMenu>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.AimReticle>();
+            ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.DamageNumbers>();
+            ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.EnemyHealthBars>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Ui.FpsCounter>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Vr.VrHands>();
             ClassInjector.RegisterTypeInIl2Cpp<NobetaVR.Vr.VrMelee>();
@@ -1260,6 +1329,8 @@ namespace NobetaVR
             host.AddComponent<NobetaVR.Ui.WristGauges>();
             host.AddComponent<NobetaVR.Ui.VrMenu>();
             host.AddComponent<NobetaVR.Ui.AimReticle>();
+            host.AddComponent<NobetaVR.Ui.DamageNumbers>();
+            host.AddComponent<NobetaVR.Ui.EnemyHealthBars>();
             host.AddComponent<NobetaVR.Ui.FpsCounter>();
             host.AddComponent<NobetaVR.Vr.VrHands>();
             host.AddComponent<NobetaVR.Vr.VrMelee>();
