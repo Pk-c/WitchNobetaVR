@@ -304,6 +304,12 @@ namespace NobetaVR.Ui
                 Value = () => cfg.HideBody.Value ? "Hidden" : "Visible",
                 Adjust = _ => cfg.HideBody.Value = !cfg.HideBody.Value,
             });
+            _items.Add(new Item
+            {
+                Label = "Shadow",
+                Value = () => cfg.FullShadow.Value ? "Whole" : "As drawn",
+                Adjust = _ => cfg.FullShadow.Value = !cfg.FullShadow.Value,
+            });
 
             _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item { Label = "COMFORT", IsHeading = true });

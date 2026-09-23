@@ -78,6 +78,9 @@ namespace NobetaVR.Diagnostics
             // camera that has already been bound, and nothing else.
             Ui.AimFrame.Tick();
 
+            // And the crystals, whose materials are a standing job for the same reason.
+            Vr.Crystals.Tick();
+
             // Cheap, and it saves wiring an il2cpp delegate onto sceneLoaded just to learn
             // which of level0..level14 is which. The build index is only asked for on the
             // frame the name changed, since that is the only frame anything says it.
@@ -85,6 +88,7 @@ namespace NobetaVR.Diagnostics
             if (active != _scene)
             {
                 _scene = active;
+                Vr.Crystals.SceneChanged();
                 var index = UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex;
                 Plugin.Log.LogInfo($"scene -> '{_scene}' (build index {index})");
             }

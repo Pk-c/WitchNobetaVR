@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace NobetaVR.Vr
 {
@@ -40,6 +41,15 @@ namespace NobetaVR.Vr
     /// to own. This one is ours, nothing else reads it, and on the way back out there is no
     /// guessing whether a renderer was off because we turned it off or because the game did.
     /// </para>
+    ///
+    /// <para>
+    /// Hidden is not shadowless, while <c>FullShadow</c> is on. A renderer that was casting a
+    /// shadow is switched to <c>ShadowsOnly</c> instead of being turned off, so she goes on
+    /// standing in the light even though she is not in the picture, and
+    /// <see cref="ShadowBody"/> casts her head and arms alongside. Each renderer's own mode is
+    /// taken the first time it is seen and is what it gets back: the first sighting is always
+    /// before anything here has touched it.
+    /// </para>
     /// </summary>
     internal static class BodyVisibility
     {
@@ -53,6 +63,10 @@ namespace NobetaVR.Vr
         private static int _fromId;
 
         private static float _nextScan;
+
+        /// <summary>Each renderer's shadow mode as the game left it, by instance.</summary>
+        private static readonly Dictionary<int, ShadowCastingMode> OwnShadow = new();
+
         private static bool _suppressed;
         private static bool _reported;
 
@@ -65,6 +79,7 @@ namespace NobetaVR.Vr
             Show();
             _camera = camera;
             _parts = null;
+            OwnShadow.Clear();
             _fromId = 0;
             _nextScan = 0f;
             _reported = false;
@@ -81,6 +96,7 @@ namespace NobetaVR.Vr
         internal static void Tick(bool viewInHerHead)
         {
             var wanted = Plugin.Instance.HideBody.Value && viewInHerHead;
+            var asShadow = wanted && Plugin.Instance.FullShadow.Value;
 
             // Nothing to do and nothing to undo. Checked before the scan, so a player who never
             // turns this on never pays for walking her skeleton.
@@ -92,10 +108,29 @@ namespace NobetaVR.Vr
             for (var i = 0; i < parts.Length; i++)
             {
                 var part = parts[i];
-                if (part != null && part.forceRenderingOff != wanted) part.forceRenderingOff = wanted;
+                if (part != null) Apply(part, wanted, asShadow);
             }
 
             _suppressed = wanted;
+        }
+
+        /// <summary>
+        /// Puts one renderer in the state asked for: drawn as the game has it, cast as a shadow
+        /// only, or held off entirely. A renderer that was never casting a shadow has no shadow
+        /// to keep, and is held off either way.
+        /// </summary>
+        private static void Apply(Renderer part, bool hidden, bool asShadow)
+        {
+            var own = OwnShadow.TryGetValue(part.GetInstanceID(), out var mode)
+                    ? mode
+                    : part.shadowCastingMode;
+
+            var shadowOnly = hidden && asShadow && own != ShadowCastingMode.Off;
+            var off = hidden && !shadowOnly;
+            var cast = shadowOnly ? ShadowCastingMode.ShadowsOnly : own;
+
+            if (part.forceRenderingOff != off) part.forceRenderingOff = off;
+            if (part.shadowCastingMode != cast) part.shadowCastingMode = cast;
         }
 
         /// <summary>
@@ -156,7 +191,14 @@ namespace NobetaVR.Vr
             for (var i = 0; i < under.Length; i++)
             {
                 var renderer = under[i];
-                if (renderer != null) found.Add(renderer);
+                if (renderer == null) continue;
+
+                found.Add(renderer);
+
+                // Only on first sight, which is before anything here has changed it. A rescan
+                // while she is hidden reads back our own ShadowsOnly, and must not keep it.
+                var id = renderer.GetInstanceID();
+                if (!OwnShadow.ContainsKey(id)) OwnShadow[id] = renderer.shadowCastingMode;
             }
 
             var parts = found.ToArray();
@@ -196,7 +238,7 @@ namespace NobetaVR.Vr
             for (var i = 0; i < _parts.Length; i++)
             {
                 var part = _parts[i];
-                if (part != null) part.forceRenderingOff = false;
+                if (part != null) Apply(part, false, false);
             }
         }
     }

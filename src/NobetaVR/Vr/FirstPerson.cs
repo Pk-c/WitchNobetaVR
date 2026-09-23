@@ -33,6 +33,14 @@ namespace NobetaVR.Vr
         /// the hands must be placed relative to her actual head, not to the camera.
         /// </summary>
         public Transform HeadBone => _head;
+
+        /// <summary>
+        /// The head bone's own scale, whether or not it is hidden right now. Exposed for
+        /// <see cref="ShadowBody"/>, which draws her shadow from a head that is never hidden.
+        /// </summary>
+        public Vector3 HeadRestScale =>
+            _headScaleSaved ? _headScale : _head != null ? _head.localScale : Vector3.one;
+
         private Vector3 _headScale = Vector3.one;
         private bool _headScaleSaved;
         private bool _comfortApplied;

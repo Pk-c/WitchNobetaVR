@@ -523,6 +523,35 @@ namespace NobetaVR.Vr
         }
 
         /// <summary>
+        /// Whether one side's real arm is collapsed behind a hand right now, and if so the
+        /// scale that arm is owed and where its hand was last put. For
+        /// <see cref="ShadowBody"/>, which casts that arm's shadow from a copy reaching for
+        /// the same place.
+        ///
+        /// Read off the bone rather than off our own bookkeeping: <see cref="Place"/> is what
+        /// collapses the arm, and a hand that was built but has not been placed yet leaves it
+        /// whole, in which case the real arm is still casting its own shadow.
+        /// </summary>
+        public bool TryCollapsed(bool left, out Vector3 restScale,
+                                 out Vector3 handPosition, out Quaternion handRotation)
+        {
+            var hand = left ? _left : _right;
+            var upper = left ? _leftUpper : _rightUpper;
+
+            restScale = left ? _leftUpperScale : _rightUpperScale;
+            handPosition = Vector3.zero;
+            handRotation = Quaternion.identity;
+
+            if (!_attached || !_shown || hand == null || hand.Root == null || upper == null)
+                return false;
+            if (upper.localScale != Vector3.zero) return false;
+
+            handPosition = hand.Root.position;
+            handRotation = hand.Root.rotation;
+            return true;
+        }
+
+        /// <summary>
         /// Places one hand for this frame, and collapses that side's real arm in place.
         ///
         /// In place matters: scaling the upper arm to nothing pulls everything below it — the

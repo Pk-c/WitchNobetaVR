@@ -180,6 +180,36 @@ namespace NobetaVR.Vr
         [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
         internal static VrHands Instance { get; private set; }
 
+        /// <summary>
+        /// One side's arm chain as resolved on the rig, or false before it resolves. For
+        /// <see cref="ShadowBody"/>, which needs the same three bones to cast the arm's shadow.
+        /// </summary>
+        internal static bool TryArm(bool left, out Transform upper, out Transform fore,
+                                    out Transform hand)
+        {
+            var arm = Instance == null ? null : left ? Instance._left : Instance._right;
+            upper = arm?.Upper;
+            fore = arm?.Fore;
+            hand = arm?.Hand;
+            return arm != null && arm.Valid;
+        }
+
+        /// <summary>See <see cref="DetachedHands.TryCollapsed"/>.</summary>
+        internal static bool TryCollapsedArm(bool left, out Vector3 restScale,
+                                             out Vector3 handPosition, out Quaternion handRotation)
+        {
+            if (Instance == null)
+            {
+                restScale = Vector3.one;
+                handPosition = Vector3.zero;
+                handRotation = Quaternion.identity;
+                return false;
+            }
+
+            return Instance._detached.TryCollapsed(left, out restScale,
+                                                   out handPosition, out handRotation);
+        }
+
         private Transform _boundRoot;
         private bool _reported;
 

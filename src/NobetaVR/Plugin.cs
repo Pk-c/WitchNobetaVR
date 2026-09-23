@@ -30,6 +30,7 @@ namespace NobetaVR
         internal ConfigEntry<bool> SubmitDepth;
         internal ConfigEntry<float> HeadHideDistance;
         internal ConfigEntry<bool> HideBody;
+        internal ConfigEntry<bool> FullShadow;
         internal ConfigEntry<bool> HeadBobbing;
         internal ConfigEntry<bool> LateLatchPose;
         internal ConfigEntry<bool> LogPoseLatch;
@@ -459,6 +460,16 @@ namespace NobetaVR
               + "the game frames: cutscenes and death play with her body as they were authored. "
               + "The wand stays in either case — it is the sight, and it is held by your own "
               + "hand rather than by her.");
+
+            FullShadow = Config.Bind(
+                "Camera", "FullShadow", true,
+                "Keeps her whole shadow while you are inside her. Her head and arms are taken out "
+              + "of the view — the head because your eyes are in it, the arms because the hands "
+              + "are drawn on your controllers — and on their own they would take her shadow's "
+              + "head and arms with them. With this on, an unseen copy of her casts the shadow "
+              + "instead, with its arms reaching for where your hands are; with Hide body on as "
+              + "well, the rest of her goes on casting its shadow too. Costs one extra skinned "
+              + "mesh per part of her that is copied, in the shadow pass only.");
 
             HeadBobbing = Config.Bind(
                 "Camera", "HeadBobbing", false,

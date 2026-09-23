@@ -193,6 +193,7 @@ namespace NobetaVR.Vr
             // A new stage is a new body, and the renderers held from the last one are dead
             // pointers rather than hers.
             BodyVisibility.Rebind(instance);
+            ShadowBody.Rebind(instance);
 
             // The game's focus frame hangs off this camera, so it is rebuilt with it.
             Ui.AimFrame.Rebind(_target);
@@ -948,6 +949,10 @@ namespace NobetaVR.Vr
             // The rest of her, which is a switch rather than a distance and is gated on the view
             // being in her head instead — so the body comes back for every shot the game frames.
             BodyVisibility.Tick(inHead);
+
+            // And her shadow, which has to be cast whole whatever the two above took out of
+            // the picture, so it is posed after both have decided.
+            ShadowBody.Tick(inHead, _firstPerson.HeadBone, _firstPerson.HeadRestScale);
 
             // Same reason: the aim line is the view's line, and the view is only final here.
             VrAim.Apply(_playerCamera, _target);
