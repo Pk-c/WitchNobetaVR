@@ -12,9 +12,11 @@ namespace NobetaVR.Ui
     /// moment it decided there was something to show, with the position and the value it decided
     /// them with. There is nothing to poll and nothing to miss between polls.
     ///
-    /// All postfixes. Nothing here changes what the game does — the flat versions go on being
-    /// built, moved and updated exactly as they were, and are faded out separately by the
-    /// components below, so every one of these choices is reversible at runtime.
+    /// Postfixes, save one guard. Nothing here changes what the game does — the flat versions go
+    /// on being built, moved and updated exactly as they were, and are faded out separately by
+    /// the components below, so every one of these choices is reversible at runtime. The
+    /// exception is <see cref="SkipDeadEnemyBar"/>, which only stops the game's bar updater from
+    /// running in the two states where it would throw.
     /// </summary>
     [HarmonyPatch]
     internal static class WorldUiPatches
@@ -37,6 +39,34 @@ namespace NobetaVR.Ui
         [HarmonyPatch(typeof(UIEnemyHp), nameof(UIEnemyHp.AddEnemyHPBar))]
         private static void EnemyRegistered(EnemiesManager.EnemyData data)
             => EnemyHealthBars.Add(data);
+
+        /// <summary>
+        /// Keeps the game's bar updater from running where it would throw.
+        ///
+        /// <c>UpdateInformation</c> reads <c>data.HPPosition.position</c> through
+        /// <c>Game.GetStageCamera()</c>, and two states break it: an enemy destroyed while its
+        /// bar is still up leaves the anchor dead, and a scene with no stage loaded has no
+        /// <c>Game.sceneManager</c> for the camera lookup to go through. Once the method is
+        /// patched, Il2CppInterop's trampoline catches the exception instead of letting it reach
+        /// the game's coroutine, so the updater is never recycled and throws again on every tick:
+        /// tens of thousands of <c>NullReferenceException</c>s in the log over one session.
+        ///
+        /// Skipping the original in those states leaves such an updater parked, and its flat bar
+        /// is hidden so it does not stay frozen on screen.
+        /// </summary>
+        [HarmonyPrefix]
+        [HarmonyPatch(typeof(UIEnemyHPUpdater), nameof(UIEnemyHPUpdater.UpdateInformation))]
+        private static bool SkipDeadEnemyBar(UIEnemyHPUpdater __instance)
+        {
+            var data = __instance.data;
+            if (data != null && data.HPPosition != null && Game.sceneManager != null) return true;
+
+            var bar = __instance.hpBarUI;
+            var group = bar != null ? bar.canvasGroup : null;
+            if (group != null) group.alpha = 0f;
+
+            return false;
+        }
 
         /// <summary>
         /// Holds the game's own enemy bar out of the way while ours is on.
