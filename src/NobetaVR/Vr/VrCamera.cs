@@ -950,6 +950,10 @@ namespace NobetaVR.Vr
             // being in her head instead — so the body comes back for every shot the game frames.
             BodyVisibility.Tick(inHead);
 
+            // And whatever the game's own camera hid of her because its boom, which nobody is
+            // looking down while the view is here, ran into a wall behind her.
+            CollisionHide.Tick(_playerCamera, inHead);
+
             // And her shadow, which has to be cast whole whatever the two above took out of
             // the picture, so it is posed after both have decided.
             ShadowBody.Tick(inHead, _firstPerson.HeadBone, _firstPerson.HeadRestScale);
