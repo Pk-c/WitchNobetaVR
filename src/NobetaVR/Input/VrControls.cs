@@ -441,8 +441,7 @@ namespace NobetaVR.Input
                      && Time.unscaledTime - _yDownAt >= Plugin.Instance.PauseHoldSeconds.Value)
             {
                 _pauseFired = true;
-                if (!_gameUi.OpenSceneMenu())
-                    Plugin.Log.LogInfo("nothing here to pause; no scene menu is bound");
+                _gameUi.OpenSceneMenu();
             }
             else if (!y && _yHeld && !_pauseFired)
             {

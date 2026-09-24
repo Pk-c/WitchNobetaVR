@@ -280,7 +280,6 @@ namespace NobetaVR.Ui
 
             for (var i = 0; i < _bars.Length; i++) _bars[i] = new Bar(_root, _material, i);
 
-            Plugin.Log.LogInfo($"enemy health bars built: {Pool} bars, shader '{shader.name}'");
             return true;
         }
 

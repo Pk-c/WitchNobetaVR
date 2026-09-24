@@ -70,7 +70,6 @@ namespace NobetaVR.Vr
         private const float Rescan = 0.5f;
 
         private static float _nextScan;
-        private static int _reported;
 
         /// <summary>
         /// Holds her trails down for this frame. Called with whatever character the camera has,
@@ -143,15 +142,6 @@ namespace NobetaVR.Vr
             Add(found, effect.g_WTrail04);
 
             _trails = found.ToArray();
-
-            // Said for the first few bodies and then never again. A costume change this did not
-            // notice and one it held look identical from inside the headset until this line
-            // exists: it fires on every rebuild, so its absence is the answer.
-            if (_reported < 6)
-            {
-                _reported++;
-                Plugin.Log.LogInfo($"wand trail: holding {_trails.Length} trail(s) off");
-            }
 
             return _trails;
         }

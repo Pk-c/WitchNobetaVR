@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Reflection;
 using BepInEx;
 using BepInEx.Configuration;
@@ -817,7 +818,7 @@ namespace NobetaVR
               + "has been arriving correctly all along.");
 
             EnemyHealthBarSize = Config.Bind(
-                "Interface", "EnemyHealthBarSize", 0.09f,
+                "Interface", "EnemyHealthBarSize", 0.15f,
                 "How wide an enemy health bar is, as a fraction of how far away the enemy is.");
 
             EnemyHealthBarThickness = Config.Bind(
@@ -1140,7 +1141,11 @@ namespace NobetaVR
               + "game's own damage and leaves every hit untouched. A testing aid rather than a "
               + "balance setting: only attacks the game itself labels as magic are raised, so "
               + "melee keeps its own figures, and the raise is undone after every hit, so "
-              + "turning this back down takes effect on the very next spell.");
+              + "turning this back down takes effect on the very next spell. Reset to 1 at "
+              + "every launch, so a session never starts with it on.");
+
+            // Cheats never outlive the session they were turned on in.
+            SpellDamageMultiplier.Value = (float)SpellDamageMultiplier.DefaultValue;
 
             Haptics = Config.Bind(
                 "Haptics", "Haptics", true,
@@ -1246,18 +1251,18 @@ namespace NobetaVR
               + "own kind of unpleasant.");
 
             SpawnViewDistance = Config.Bind(
-                "Comfort", "SpawnViewDistance", 1.8f,
+                "Comfort", "SpawnViewDistance", 2f,
                 "How far in front of Nobeta the view watches a stage open from, in metres. "
               + "Measured along the way she is facing, so it is her face you are looking at "
               + "rather than her back. Close enough to read as standing with her and far "
               + "enough to have her whole in frame when she stands up.");
 
             SpawnViewHeight = Config.Bind(
-                "Comfort", "SpawnViewHeight", 1.2f,
-                "How high above the floor the same view sits, in metres. Roughly her eye line "
-              + "once she is on her feet, which puts the end of the get-up level with you and "
-              + "leaves her a little below while she is still down — where your own neck can "
-              + "follow her, since looking around is the one thing this view never takes away.");
+                "Comfort", "SpawnViewHeight", 2f,
+                "How high above the floor the same view sits, in metres. Above her eye line, so "
+              + "the get-up is watched from slightly above and she stays below you throughout — "
+              + "where your own neck can follow her, since looking around is the one thing this "
+              + "view never takes away.");
 
             SpawnTurnSeconds = Config.Bind(
                 "Comfort", "SpawnTurnSeconds", 0f,
@@ -1317,9 +1322,9 @@ namespace NobetaVR
                     catch (Exception e) { Log.LogError($"Harmony: {type.Name} failed to patch: {e.Message}"); }
                 }
 
-                var patched = 0;
-                foreach (var m in harmony.GetPatchedMethods()) { Log.LogInfo($"patched {m.DeclaringType?.Name}.{m.Name}"); patched++; }
+                var patched = harmony.GetPatchedMethods().Count();
                 if (patched == 0) Log.LogWarning("Harmony applied no patches; the camera will fight the game.");
+                else Log.LogInfo($"Harmony patched {patched} method(s)");
             }
             catch (Exception e)
             {

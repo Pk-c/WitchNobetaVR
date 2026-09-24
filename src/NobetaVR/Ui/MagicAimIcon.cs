@@ -193,7 +193,6 @@ namespace NobetaVR.Ui
             _reach = extent.magnitude * scale * 0.5f;
 
             _built = sprite;
-            Plugin.Log.LogInfo($"aim icon: '{sprite.name}'");
             return true;
         }
     }

@@ -113,7 +113,6 @@ namespace NobetaVR.Vr
         private AnimAttackCollision _collision;
         private IntPtr _boundCollision;
         private bool _displaced;
-        private bool? _wandOut;
         private bool _wandWarned;
 
         private readonly MeleeGizmo _gizmo = new();
@@ -205,9 +204,6 @@ namespace NobetaVR.Vr
         /// was under her this frame". Both go true the moment she jumps, so the air attack and
         /// the hang it carries are still reached on the first airborne frame.
         ///
-        /// If a swing still comes out animated on the ground, <see cref="ReportAnimated"/> puts
-        /// all three readings in the log side by side and says which one called it.
-        ///
         /// The contact test stays as the last resort, for a character that has neither.
         /// </summary>
         private static bool Grounded(WizardGirlManage girl)
@@ -258,18 +254,7 @@ namespace NobetaVR.Vr
                 return true;
             }
 
-            var visible = renderer.enabled && renderer.gameObject.activeInHierarchy;
-
-            // Logged on the change alone. If swings stop landing, the one thing worth knowing
-            // is whether this ever said "out" — which separates a gate reading the wrong thing
-            // from a wand that really is away.
-            if (_wandOut != visible)
-            {
-                _wandOut = visible;
-                Plugin.Log.LogInfo(visible ? "melee: wand out" : "melee: wand stowed");
-            }
-
-            return visible;
+            return renderer.enabled && renderer.gameObject.activeInHierarchy;
         }
 
         /// <summary>
@@ -428,42 +413,8 @@ namespace NobetaVR.Vr
         {
             if (free && FreeSwing(girl, cfg)) return;
 
-            ReportAnimated(girl, cfg, free);
             controls.InputController.Attack();
         }
-
-        /// <summary>
-        /// Says, the first few times it happens, why a swing came out animated while the free
-        /// swing was asked for.
-        ///
-        /// There are only two ways it can: she was judged airborne, or there was no range to
-        /// open. From inside a headset the two are one symptom — she plays the attack and takes
-        /// your arm with her — and nothing else in the log distinguishes them. Bounded, because
-        /// this fires on a swing and swings come in flurries.
-        /// </summary>
-        [Il2CppInterop.Runtime.Attributes.HideFromIl2Cpp]
-        private void ReportAnimated(WizardGirlManage girl, Plugin cfg, bool free)
-        {
-            if (!cfg.MeleeFreeSwingOnGround.Value) return;
-            if (_animatedReported >= AnimatedReportLimit) return;
-            _animatedReported++;
-
-            var controller = girl.playerController;
-            var runtime = controller != null ? controller.runtimeData : null;
-            var move = girl.GetMoveController();
-
-            Plugin.Log.LogInfo(
-                $"melee: swing came out animated — "
-              + $"{(free ? $"no range to open (range '{RangeName(cfg) ?? "none"}')" : "she was in the air")}"
-              + $" [state {(controller != null ? controller.state.ToString() : "<none>")}, "
-              + $"isSky {(runtime != null ? runtime.isSky.ToString() : "<none>")}, "
-              + $"isGrounded {(move != null ? move.isGrounded.ToString() : "<none>")}]");
-        }
-
-        private int _animatedReported;
-
-        /// <summary>How many animated swings the log will explain before it stops.</summary>
-        private const int AnimatedReportLimit = 8;
 
         /// <summary>
         /// The ground swing: the hitbox, the sound and the voice, and no animation.
@@ -668,7 +619,6 @@ namespace NobetaVR.Vr
 
             var best = centre;
             var bestScore = float.PositiveInfinity;
-            Collider bestCollider = null;
 
             for (var i = 0; i < count && i < _candidates.Length; i++)
             {
@@ -695,22 +645,6 @@ namespace NobetaVR.Vr
                 if (score >= bestScore) continue;
                 bestScore = score;
                 best = onAxis;
-                bestCollider = candidate;
-            }
-
-            // Once per kind of thing, up to a handful. One line said what the capsule found
-            // first and nothing about the rest, and the rest is the question: it was a line
-            // like this, naming a barrel tagged AttackableObject, that showed the ranking had
-            // to be more than "Enemy or not".
-            if (bestCollider != null && _reportedTags.Count < ReportedTagLimit)
-            {
-                var tag = bestCollider.tag;
-                if (_reportedTags.Add(tag))
-                {
-                    Plugin.Log.LogInfo($"melee: capsule aimed at '{bestCollider.name}' "
-                                     + $"(tag {tag}, layer {bestCollider.gameObject.layer}), "
-                                     + $"{Vector3.Distance(from, best):F2} m along the axis");
-                }
             }
 
             return best;
@@ -735,11 +669,6 @@ namespace NobetaVR.Vr
         /// barrel anywhere inside, and a barrel beats a wall.
         /// </summary>
         private const float TierStep = 100f;
-
-        /// <summary>How many kinds of target the log will name before it stops.</summary>
-        private const int ReportedTagLimit = 8;
-
-        private readonly System.Collections.Generic.HashSet<string> _reportedTags = new();
 
         /// <summary>How many things the capsule will consider in one frame.</summary>
         private const int CandidateLimit = 16;
@@ -813,10 +742,6 @@ namespace NobetaVR.Vr
             {
                 _haveOriginalSize = true;
                 _originalCollisionSize = _data.g_fCollisionSize;
-                Plugin.Log.LogInfo($"melee: collision data on '{_data.name}' — "
-                                 + $"size {_originalCollisionSize:F3}, "
-                                 + $"time {_data.g_fCollisionTime:F3}s, "
-                                 + $"interval {_data.g_fCollisionInterval:F3}s");
                 return _data;
             }
 
@@ -897,17 +822,18 @@ namespace NobetaVR.Vr
 
             _defaultRangeName = PickRange();
 
-            Describe(collision);
+            if (_ranges.Length == 0)
+                Plugin.Log.LogWarning("melee: no attack ranges found, so the hitbox cannot be "
+                                    + "moved and the ground swing has nothing to open. Swings "
+                                    + "fall back to the game's own attack, animation and all.");
             return _ranges.Length > 0;
         }
 
         /// <summary>
         /// Which range the ground swing opens when the player has not said.
         ///
-        /// The first combo step, by name, and the first range otherwise. It is a guess, and it
-        /// is a guess with a stated fallback rather than a silent one: the whole list is in the
-        /// log with each range's strength beside it, so pinning a different one through
-        /// <c>MeleeRangeName</c> is a matter of reading rather than of trying them all.
+        /// The first combo step, by name, and the first range otherwise. It is a guess, so a
+        /// different one can be pinned through <c>MeleeRangeName</c>.
         /// </summary>
         private string PickRange()
         {
@@ -948,72 +874,6 @@ namespace NobetaVR.Vr
                 _data.g_fCollisionSize = _originalCollisionSize;
 
             _displaced = false;
-        }
-
-        /// <summary>
-        /// Writes the melee rig out once per character.
-        ///
-        /// The shape of this rig is the one thing about melee that could not be read off the
-        /// interop assemblies: they give the members and say nothing about how many ranges there
-        /// are, where they sit, how big they are, or how hard each one hits. It is a screenful,
-        /// once, and it is what turns the next round of tuning from guesswork into arithmetic.
-        /// </summary>
-        private void Describe(AnimAttackCollision collision)
-        {
-            var root = collision.attackRangeRoot;
-            Plugin.Log.LogInfo($"melee: attackRangeRoot '{(root != null ? Path(root) : "none")}', "
-                             + $"{_ranges.Length} range(s), hitLayer {collision.hitLayer.value}, "
-                             + $"ground swing opens '{_defaultRangeName ?? "nothing"}'");
-
-            for (var i = 0; i < _ranges.Length; i++)
-            {
-                var range = _ranges[i];
-                var shape = Shape(range);
-
-                var attack = range.GetComponent<AttackData>();
-                var damage = attack == null
-                    ? "no AttackData"
-                    : $"strength {attack.g_fStrength:F1}, repulse {attack.g_fRepulse:F1}";
-
-                Plugin.Log.LogInfo($"melee: range '{range.name}' local {range.localPosition.ToString("F3")} "
-                                 + $"scale {range.localScale.ToString("F2")} — {shape}, {damage}, "
-                                 + $"{(range.gameObject.activeSelf ? "active" : "inactive")}");
-            }
-
-            if (_ranges.Length == 0)
-                Plugin.Log.LogWarning("melee: no attack ranges found, so the hitbox cannot be "
-                                    + "moved and the ground swing has nothing to open. Swings "
-                                    + "fall back to the game's own attack, animation and all.");
-        }
-
-        /// <summary>
-        /// A range's collider, described by its own dimensions rather than by its bounds.
-        /// <c>Collider.bounds</c> is world-space and reads as zero on a disabled collider, and
-        /// these spend nearly all of their time disabled — so a dump taken between attacks,
-        /// which is every dump, would report every range as a point.
-        /// </summary>
-        private static string Shape(Transform range)
-        {
-            var collider = range.GetComponent<Collider>();
-            if (collider == null) return "no collider";
-
-            var sphere = collider.TryCast<SphereCollider>();
-            if (sphere != null) return $"sphere r{sphere.radius:F3}";
-
-            var box = collider.TryCast<BoxCollider>();
-            if (box != null) return $"box {box.size.ToString("F3")}";
-
-            var capsule = collider.TryCast<CapsuleCollider>();
-            if (capsule != null) return $"capsule r{capsule.radius:F3} h{capsule.height:F3}";
-
-            return collider.GetIl2CppType().Name;
-        }
-
-        private static string Path(Transform t)
-        {
-            var path = t.name;
-            for (var p = t.parent; p != null; p = p.parent) path = p.name + "/" + path;
-            return path;
         }
     }
 }

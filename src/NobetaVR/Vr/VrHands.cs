@@ -226,24 +226,10 @@ namespace NobetaVR.Vr
         private static readonly System.Collections.Generic.HashSet<string> BindPoseRefused = new();
 
         /// <summary>
-        /// The rigs whose calibration came from the bind pose rather than from a sample.
-        ///
-        /// Only the drift line reads this. "A second body would have measured this far away"
-        /// was the symptom of a calibration that could move between bodies, and against a bind
-        /// pose it is measuring something else entirely — how far her arm happens to be from
-        /// the modelled rest pose right now, which is a number with no fault in it and would
-        /// read as a warning about nothing.
-        /// </summary>
-        private static readonly System.Collections.Generic.HashSet<string> FromBindPose = new();
-
-        /// <summary>
         /// Whether she is the player's to move this frame.
         ///
         /// Read by anything that has to stand down with the hands — the aim reticle, so
         /// far — and kept here because this is where the question is already being asked.
-        /// The change is logged once rather than every frame: if the hands never appear, the
-        /// log says whether this was ever true, which separates a gate that is wrong from
-        /// hands that failed to build.
         /// </summary>
         internal static bool PlayerInControl { get; private set; }
 
@@ -251,8 +237,6 @@ namespace NobetaVR.Vr
         {
             if (value == PlayerInControl) return;
             PlayerInControl = value;
-            Plugin.Log.LogInfo(value ? "hands on: she is yours to move"
-                                     : "hands off: the game has her");
         }
 
         /// <summary>
@@ -524,8 +508,6 @@ namespace NobetaVR.Vr
             return runtime.Controllable && !runtime.IsDead;
         }
 
-        private bool _weightReported;
-
         private Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppArrayBase<RootMotion.SolverManager> _solvers;
         private bool[] _solverFixTransforms;
         private bool _restoringDisabled;
@@ -555,19 +537,13 @@ namespace NobetaVR.Vr
                 _solvers = root.GetComponentsInChildren<RootMotion.SolverManager>(true);
                 _solverFixTransforms = new bool[_solvers == null ? 0 : _solvers.Length];
 
-                if (_solvers == null || _solvers.Length == 0)
-                {
-                    Plugin.Log.LogInfo("no FinalIK solvers on this character");
-                    return;
-                }
+                if (_solvers == null || _solvers.Length == 0) return;
 
                 for (var i = 0; i < _solvers.Length; i++)
                 {
                     var solver = _solvers[i];
                     if (solver == null) continue;
                     _solverFixTransforms[i] = solver.fixTransforms;
-                    Plugin.Log.LogInfo($"FinalIK '{solver.GetIl2CppType().Name}' on '{solver.name}': "
-                                     + $"fixTransforms {solver.fixTransforms}");
                 }
             }
 
@@ -602,13 +578,6 @@ namespace NobetaVR.Vr
             var ik = skin != null ? skin.ik : null;
             if (ik == null) return;
 
-            if (!_weightReported)
-            {
-                _weightReported = true;
-                Plugin.Log.LogInfo($"game aim IK weight was {skin.aimIKWeight:F2}; standing it down "
-                                 + "so the arms have one owner");
-            }
-
             // Every frame, not once: the game sets this itself as she enters and leaves aiming,
             // so a single call would be undone the next time she raised the wand.
             ik.SetAimWeight(0f);
@@ -630,8 +599,6 @@ namespace NobetaVR.Vr
         /// whatever it is called, and it is correct whether or not the rig puts wrist or twist
         /// bones in between — those sit below the elbow, get carried along, and are never
         /// touched, so they keep exactly the local rotation the animator gave them.
-        ///
-        /// The chain is logged the first time. Reading it off the rig beats assuming it.
         /// </summary>
         private bool Bind(Transform root, bool settled)
         {
@@ -657,11 +624,7 @@ namespace NobetaVR.Vr
             // so her real arms came back *and* the old cut-outs stayed on the controllers. That
             // is the two pairs of hands after a cutscene, and it is the same fault the death
             // path had before the root check was added — one level further down.
-            if (_detached.Attached)
-            {
-                Plugin.Log.LogInfo("the arm binding changed; rebuilding the detached hands");
-                _detached.Detach();
-            }
+            if (_detached.Attached) _detached.Detach();
 
             // The solvers belong to the skeleton that has just gone, and the latch below them
             // is what stops the new ones ever being touched. Both are forgotten here for the
@@ -674,7 +637,6 @@ namespace NobetaVR.Vr
             {
                 _boundRoot = root;
                 _reported = false;
-                _weightReported = false;
             }
 
             var bones = root.GetComponentsInChildren<Transform>(true);
@@ -695,8 +657,7 @@ namespace NobetaVR.Vr
                 Report("right", _right);
                 if (!_left.Valid || !_right.Valid)
                     Plugin.Log.LogWarning("Hand tracking is off for this character: the arm chain "
-                                        + "above is incomplete. The bone list it walked is what "
-                                        + "the matcher needs widening for.");
+                                        + "is incomplete.");
             }
 
             return _left.Valid && _right.Valid && Calibrate(root, settled);
@@ -781,20 +742,9 @@ namespace NobetaVR.Vr
         /// is the part the flags cannot say and the part the measurement is actually about. It
         /// is retried every frame until both are true rather than attempted once, with a
         /// three-second cap so a hand that never settles gets a slightly wrong wrist instead of
-        /// no hands at all, and the log says which of the two happened. The hands are not drawn
-        /// until the reading is taken, so nothing is ever waiting on an identity rest pose.
+        /// no hands at all. The hands are not drawn until the reading is taken, so nothing is
+        /// ever waiting on an identity rest pose.
         /// </para>
-        ///
-        /// <para>
-        /// What is measured is logged, not just what a second body would have differed by. Two
-        /// launches of the same stage should now print the same angles, and that line is the
-        /// only way to tell a calibration that moved from a controller that was held
-        /// differently.
-        /// </para>
-        ///
-        /// What a second reading *would* have been is logged when there is one, because that
-        /// difference is the whole of the fault above and one line settles whether it is really
-        /// what moved.
         /// </summary>
         private static bool TakeRest(Arm arm, Transform root, bool settled)
         {
@@ -815,17 +765,8 @@ namespace NobetaVR.Vr
                 if (BindPoseRest(arm.Hand, root, out var authored))
                 {
                     RestByRig[key] = authored;
-                    FromBindPose.Add(key);
                     arm.RestRelativeToBody = authored;
                     arm.RestTaken = true;
-
-                    var rest = authored.eulerAngles;
-                    Plugin.Log.LogInfo($"wrist calibration for {arm.Hand.name}: "
-                                     + $"{rest.x:F1}, {rest.y:F1}, {rest.z:F1} "
-                                     + $"(the rig's bind pose, so the same on every launch; the "
-                                     + $"animated wrist is "
-                                     + $"{Quaternion.Angle(authored, measured):F1}° from it "
-                                     + $"just now)");
                     return true;
                 }
 
@@ -840,13 +781,6 @@ namespace NobetaVR.Vr
             {
                 arm.RestRelativeToBody = held;
                 arm.RestTaken = true;
-
-                var drift = Quaternion.Angle(held, measured);
-                if (settled && drift > 0.5f && !FromBindPose.Contains(key))
-                {
-                    Plugin.Log.LogInfo($"wrist calibration held for {arm.Hand.name}: this body "
-                                     + $"would have measured {drift:F1}° away from the first one.");
-                }
                 return true;
             }
 
@@ -859,20 +793,12 @@ namespace NobetaVR.Vr
             // standing up out of it. A reading taken anywhere in there is a reading of an
             // animation, which is why the same stage calibrated 38.2, 205.1, 117.6 one launch
             // and 7.5, 179.7, 155.6 the next.
-            var still = arm.HoldingStill(measured, Time.unscaledTime, out var waited, out var moved);
+            var still = arm.HoldingStill(measured, Time.unscaledTime, out var waited, out _);
             if (!still && waited < Arm.WaitAtMost) return false;
 
             RestByRig[key] = measured;
             arm.RestRelativeToBody = measured;
             arm.RestTaken = true;
-
-            var angles = measured.eulerAngles;
-            Plugin.Log.LogInfo($"wrist calibration for {arm.Hand.name}: "
-                             + $"{angles.x:F1}, {angles.y:F1}, {angles.z:F1} "
-                             + $"(relative to her body, taken {waited:F2}s after she became "
-                             + $"yours, on a hand moving {moved:F2}°/frame"
-                             + (still ? ")" : " — it never held still, so this is whatever it "
-                                             + "was doing when the wait ran out)"));
             return true;
         }
 
@@ -940,12 +866,7 @@ namespace NobetaVR.Vr
                 }
             }
 
-            if (found > 0) return true;
-
-            Plugin.Log.LogInfo($"wrist calibration: no skinned mesh under '{root.name}' carries "
-                             + $"{hand.name} among its bones, so the rest pose has to be "
-                             + $"sampled off the animation.");
-            return false;
+            return found > 0;
         }
 
         /// <summary>
@@ -1014,19 +935,7 @@ namespace NobetaVR.Vr
 
         private static void Report(string side, Arm arm)
         {
-            if (!arm.Valid)
-            {
-                Plugin.Log.LogWarning($"{side} arm: chain not resolved");
-                return;
-            }
-
-            // The whole path, so an unexpected wrist or twist bone is visible rather than
-            // inferred from how the mesh looks in the headset.
-            var path = arm.Hand.name;
-            for (var t = arm.Hand.parent; t != null && !ReferenceEquals(t, arm.Upper.parent); t = t.parent)
-                path = t.name + " > " + path;
-
-            Plugin.Log.LogInfo($"{side} arm chain: {path}   (collapsing {arm.Upper.name}, elbow {arm.Fore.name})");
+            if (!arm.Valid) Plugin.Log.LogWarning($"{side} arm: chain not resolved");
         }
 
         private void OnDisable() => Release();

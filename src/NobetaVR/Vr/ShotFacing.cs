@@ -64,7 +64,6 @@ namespace NobetaVR.Vr
         private static bool _held;
         private static Vector3 _wasForward = Vector3.forward;
         private static Vector3 _wasPosition;
-        private static float _nextLog;
 
         /// <summary>
         /// Asks for the current shot to be put back in front of the player on the next frame.
@@ -123,18 +122,7 @@ namespace NobetaVR.Vr
             // forward left, and what survives flattening it is mostly the roll their neck is
             // carrying.
             var nose = Ui.ViewAnchor.YawForward(headRot, Vector3.forward);
-            var facing = Quaternion.LookRotation(nose, Vector3.up);
-            Yaw = Quaternion.Inverse(facing);
-
-            // Rate-limited rather than one line per take, because a fade takes one every frame
-            // it is up. A line a second is enough to see a scene's cuts go past in the log.
-            if (black && Time.unscaledTime < _nextLog) return;
-            _nextLog = Time.unscaledTime + 1f;
-
-            Plugin.Log.LogInfo($"the shot is put in front of you: the game frames it at "
-                             + $"{gameRot.eulerAngles.y:F0} deg and you are facing "
-                             + $"{facing.eulerAngles.y:F0} deg"
-                             + (black ? ", behind a fade" : string.Empty));
+            Yaw = Quaternion.Inverse(Quaternion.LookRotation(nose, Vector3.up));
         }
     }
 }

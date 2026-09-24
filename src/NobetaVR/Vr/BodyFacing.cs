@@ -20,8 +20,6 @@ namespace NobetaVR.Vr
     /// </summary>
     internal static class BodyFacing
     {
-        private static PlayerCamera.CameraMode _logged = PlayerCamera.CameraMode.Normal;
-
         /// <summary>
         /// The camera mode the game is in, read from the live camera every time it is asked
         /// for, so that this stays out of the way when the game has taken the camera for its
@@ -50,18 +48,7 @@ namespace NobetaVR.Vr
                 var camera = controls != null ? controls.Camera : null;
                 if (camera == null) return PlayerCamera.CameraMode.Normal;
 
-                var mode = camera.cameraMode;
-
-                // Logged from the read rather than from `SetMode`, because the read is what
-                // the mod acts on: a mode that changes because the camera itself was replaced
-                // is exactly the event the old logging could not see.
-                if (mode != _logged)
-                {
-                    _logged = mode;
-                    Plugin.Log.LogInfo($"camera mode -> {mode}");
-                }
-
-                return mode;
+                return camera.cameraMode;
             }
         }
 

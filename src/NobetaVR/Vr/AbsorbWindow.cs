@@ -1,4 +1,3 @@
-using HarmonyLib;
 using UnityEngine;
 
 namespace NobetaVR.Vr
@@ -55,7 +54,6 @@ namespace NobetaVR.Vr
     /// away: the blow lands either way, and what the quiet moment buys is a defence.
     /// </para>
     /// </summary>
-    [HarmonyPatch]
     internal static class AbsorbWindow
     {
         /// <summary>When the last ground swing landed, unscaled — the player's arm, not the world.</summary>
@@ -97,38 +95,6 @@ namespace NobetaVR.Vr
             // her into is refilled by the game and left alone.
             var window = cfg.ParryWindow.Value;
             if (window > 0f) data.absorbTimer = window;
-
-            Report($"window open for {data.absorbTimer:F2}s");
         }
-
-        /// <summary>
-        /// Says, the first few times, that a parry landed.
-        ///
-        /// A window that opened and one that opened and was used are indistinguishable from
-        /// inside a headset until the blow either lands or does not, and by then the moment has
-        /// gone. Bounded, because this is a release build and not a probe.
-        /// </summary>
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(PlayerController), nameof(PlayerController.Hit))]
-        private static void AfterHit(PlayerController __instance)
-        {
-            if (__instance == null || _reported >= ReportLimit) return;
-            if (__instance.state != NobetaState.Absorb) return;
-
-            Report("parry landed");
-        }
-
-        private static void Report(string what)
-        {
-            if (_reported >= ReportLimit) return;
-            _reported++;
-
-            Plugin.Log.LogInfo($"parry: {what}");
-        }
-
-        private static int _reported;
-
-        /// <summary>How many parry lines the log will carry before it goes quiet.</summary>
-        private const int ReportLimit = 8;
     }
 }

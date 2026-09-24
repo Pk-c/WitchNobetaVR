@@ -68,7 +68,6 @@ namespace NobetaVR.Vr
         private static readonly Dictionary<int, ShadowCastingMode> OwnShadow = new();
 
         private static bool _suppressed;
-        private static bool _reported;
 
         /// <summary>
         /// Points this at a new <c>PlayerCamera</c>. Called when the view binds one, because a
@@ -82,7 +81,6 @@ namespace NobetaVR.Vr
             OwnShadow.Clear();
             _fromId = 0;
             _nextScan = 0f;
-            _reported = false;
         }
 
         /// <summary>
@@ -201,30 +199,7 @@ namespace NobetaVR.Vr
                 if (!OwnShadow.ContainsKey(id)) OwnShadow[id] = renderer.shadowCastingMode;
             }
 
-            var parts = found.ToArray();
-
-            if (!_reported)
-            {
-                _reported = true;
-                Plugin.Log.LogInfo($"body hiding: {parts.Length} skinned mesh(es) under "
-                                 + $"'{root.name}'{Names(parts)}");
-            }
-
-            return parts;
-        }
-
-        /// <summary>
-        /// Names what was found, once per body. Which meshes a character is made of is a fact
-        /// about the model, and the only way to learn that a costume brought a piece this does
-        /// not reach is to have the set written down.
-        /// </summary>
-        private static string Names(Renderer[] parts)
-        {
-            if (parts.Length == 0) return string.Empty;
-
-            var names = new List<string>(parts.Length);
-            for (var i = 0; i < parts.Length; i++) names.Add(parts[i].name);
-            return ": " + string.Join(", ", names);
+            return found.ToArray();
         }
 
         /// <summary>Gives the current set its rendering back, if we were the ones holding it off.</summary>

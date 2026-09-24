@@ -122,7 +122,6 @@ namespace NobetaVR.Ui
                 _activateHeld = controls.Input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
                 Redraw();
             }
-            Plugin.Log.LogInfo(_open ? "VR menu opened" : "VR menu closed");
         }
 
         // -- input ---------------------------------------------------------------------
@@ -526,8 +525,6 @@ namespace NobetaVR.Ui
                 entry.BoxedValue = entry.DefaultValue;
                 reset++;
             }
-
-            Plugin.Log.LogInfo($"VR menu reset {reset} settings to their defaults");
         }
 
         // -- drawing -------------------------------------------------------------------
@@ -707,7 +704,6 @@ namespace NobetaVR.Ui
             textRect.offsetMax = new Vector2(-Padding, -Padding);
 
             _root.SetActive(false);
-            Plugin.Log.LogInfo($"VR menu built with font '{font.name}'");
             return true;
         }
 
@@ -728,11 +724,7 @@ namespace NobetaVR.Ui
                 try
                 {
                     var font = Font.CreateDynamicFontFromOSFont(name, 28);
-                    if (font != null)
-                    {
-                        Plugin.Log.LogInfo($"using the OS font '{name}'");
-                        return font;
-                    }
+                    if (font != null) return font;
                 }
                 catch (Exception e)
                 {

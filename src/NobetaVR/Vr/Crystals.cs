@@ -58,7 +58,6 @@ namespace NobetaVR.Vr
 
         private static Shader _shader;
         private static float _nextScan;
-        private static bool _reported;
 
         public static void Tick()
         {
@@ -94,12 +93,6 @@ namespace NobetaVR.Vr
 
                 material.renderQueue = AfterCopy;
                 moved++;
-            }
-
-            if (moved > 0 && !_reported)
-            {
-                _reported = true;
-                Plugin.Log.LogInfo($"crystals: {moved} material(s) moved after the opaque copy");
             }
         }
     }

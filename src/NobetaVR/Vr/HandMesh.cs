@@ -136,11 +136,6 @@ namespace NobetaVR.Vr
 
             built.RecalculateBounds();
 
-            Plugin.Log.LogInfo($"{side} hand cut out: {keptVertices.Count} vertices, "
-                             + $"{totalTriangles} triangles, {keptBones.Count} bones "
-                             + $"from '{mesh.name}'"
-                             + (capped > 0 ? $", {capped} triangles capping the wrist" : ""));
-
             return new Result { Mesh = built, Bones = keptBones.ToArray() };
 
             int Emit(int index)

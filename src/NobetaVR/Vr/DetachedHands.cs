@@ -353,8 +353,6 @@ namespace NobetaVR.Vr
                 }
 
                 hand.AttachmentParents[i] = child.parent;
-
-                Plugin.Log.LogInfo($"{side} hand carries '{child.name}'");
             }
         }
 

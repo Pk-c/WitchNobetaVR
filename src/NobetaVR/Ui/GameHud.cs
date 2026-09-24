@@ -125,14 +125,7 @@ namespace NobetaVR.Ui
             _bars = Group(edges != null ? edges.gameObject : null);
 
             _statsAlpha = _chargeAlpha = _moneyAlpha = _itemsAlpha = _barsAlpha = 1f;
-
-            Plugin.Log.LogInfo("game HUD bound: "
-                             + $"stats {Seen(_stats)}, charge {Seen(_charge)}, "
-                             + $"souls {Seen(_money)}, items {Seen(_items)}, "
-                             + $"cutscene bars {Seen(_bars)}");
         }
-
-        private static string Seen(CanvasGroup group) => group != null ? "yes" : "no";
 
         /// <summary>
         /// The group is added rather than looked for and required. None of these objects has

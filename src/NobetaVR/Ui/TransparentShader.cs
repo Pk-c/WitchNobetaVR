@@ -36,12 +36,7 @@ namespace NobetaVR.Ui
             foreach (var name in Candidates)
             {
                 _found = Shader.Find(name);
-                if (_found != null)
-                {
-                    Plugin.Log.LogInfo($"transparent shader: '{_found.name}'");
-                    return _found;
-                }
-                Plugin.Log.LogInfo($"shader '{name}' is not in this build");
+                if (_found != null) return _found;
             }
 
             Plugin.Log.LogError("No alpha-blended shader survived stripping. Anything the mod "

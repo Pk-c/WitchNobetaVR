@@ -98,8 +98,6 @@ namespace NobetaVR.Vr
         private static readonly Side LeftSide = new(XRNode.LeftHand, "left");
         private static readonly Side RightSide = new(XRNode.RightHand, "right");
 
-        private static int _traced;
-
         /// <summary>Plays one of the game's vibration events.</summary>
         /// <param name="seconds">How long the game asked the pad to run for.</param>
         /// <param name="lowMotor">The heavy motor, 0 to 1.</param>
@@ -128,7 +126,6 @@ namespace NobetaVR.Vr
             var duration = Mathf.Clamp(seconds, MinSeconds, longest);
 
             Emit(low, high, duration);
-            Trace("event", seconds, low, high);
         }
 
         /// <summary>
@@ -177,7 +174,6 @@ namespace NobetaVR.Vr
             _refreshAt = Time.unscaledTime + RefreshEvery;
 
             Emit(low, high, ImpulseSeconds);
-            Trace("level", 0f, low, high);
         }
 
         /// <summary>
@@ -275,7 +271,6 @@ namespace NobetaVR.Vr
         /// </summary>
         public static void Test()
         {
-            Plugin.Log.LogInfo("haptics: test pulse");
             Play(0.3f, 0.8f, 0.8f);
         }
 
@@ -467,25 +462,6 @@ namespace NobetaVR.Vr
                 // Before the config is loaded there is no setting to disagree with.
                 return true;
             }
-        }
-
-        /// <summary>
-        /// Writes the first few events out. What the game passes for a motor level is documented
-        /// nowhere and the mapping above assumes 0 to 1; eight lines in the log settle that from
-        /// the game itself, once, without turning a fight into a running commentary.
-        /// </summary>
-        private static void Trace(string kind, float seconds, float low, float high)
-        {
-            if (_traced >= 8) return;
-            _traced++;
-
-            // The kind matters as much as the numbers. An event and a held level arrive by
-            // different routes through the game, and which of the two a given moment uses is
-            // not readable from an IL2CPP build — so the first eight lines say which route the
-            // game actually took, and a scene whose rumble is missing from the hands can be
-            // told apart from one whose rumble never fired at all.
-            var length = seconds > 0f ? $"{seconds:F2}s" : "held";
-            Plugin.Log.LogInfo($"haptics: {kind} {length} low={low:F2} high={high:F2}");
         }
     }
 }

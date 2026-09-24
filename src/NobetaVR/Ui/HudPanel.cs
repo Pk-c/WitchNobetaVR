@@ -32,8 +32,6 @@ namespace NobetaVR.Ui
         private float _nextScan;
         private int _canvasCount = -1;
 
-        /// <summary>Layers the captured canvases were last seen on; reported, not enforced.</summary>
-        private int _layers;
         private bool _failed;
         private Vector3 _direction;
 
@@ -248,9 +246,6 @@ namespace NobetaVR.Ui
             // the game's own camera renders, it renders this too. What keeps it out of the
             // capture is Park, not the layer.
             _panel.gameObject.layer = 0;
-
-            Plugin.Log.LogInfo($"HUD panel built: {_texture.width}x{_texture.height}, "
-                             + $"shader '{shader.name}', capture parked at {_capture.transform.position}");
             return true;
         }
 
@@ -301,12 +296,7 @@ namespace NobetaVR.Ui
         private readonly System.Collections.Generic.List<Canvas> _stack = new();
 
         /// <summary>
-        /// Pins the captured canvases to the canvas plane, and reports the order they are in.
-        ///
-        /// The report is the useful half. Which piece of interface is in front of which is the
-        /// question this whole arrangement has to get right, and for a long time the log could
-        /// not answer it at all -- the count of canvases said nothing about their order or
-        /// their names. It is logged only when it changes, so a steady session says it once.
+        /// Pins the captured canvases to the canvas plane, in the order the game wants them drawn.
         /// </summary>
         private void Stack()
         {
@@ -335,30 +325,10 @@ namespace NobetaVR.Ui
             // was tried, on the theory that coplanar canvases leave their order to the
             // renderer, and it changed nothing -- because the game already gives these distinct
             // sortingOrders and Unity already honours them between canvases at equal distance.
-            // The order was never the fault, so the depth stays simple and this reports rather
-            // than rearranges.
-            var report = new System.Text.StringBuilder();
-
+            // The order was never the fault, so the depth stays simple.
             for (var i = 0; i < _stack.Count; i++)
-            {
                 _stack[i].planeDistance = CanvasPlane;
-
-                if (i > 0) report.Append(" < ");
-                report.Append(_stack[i].name).Append('(').Append(_stack[i].sortingOrder).Append(')');
-            }
-
-            // Only when it changes. Which interface is in front of which is the question this
-            // whole arrangement exists to get right, and a session that never reshuffles should
-            // say so once rather than once a second.
-            var line = report.ToString();
-            if (line == _order) return;
-
-            _order = line;
-            Plugin.Log.LogInfo($"HUD panel, back to front: {line}");
         }
-
-        /// <summary>The order as last reported, so a steady stack is not logged over and over.</summary>
-        private string _order;
 
         /// <summary>
         /// A new render texture holds whatever was in that memory. Clearing it to transparent
@@ -409,7 +379,6 @@ namespace NobetaVR.Ui
             var found = UnityEngine.Object.FindObjectsOfType(Il2CppType.Of<Canvas>());
             if (found == null) return;
 
-            var mask = 0;
             var redirected = 0;
 
             _stack.Clear();
@@ -430,7 +399,6 @@ namespace NobetaVR.Ui
                 if (canvas.worldCamera != _capture) continue;
 
                 _stack.Add(canvas);
-                mask |= 1 << canvas.gameObject.layer;
             }
 
             // Every pass, not only on the frame a canvas was taken over: the set changes as
@@ -439,16 +407,6 @@ namespace NobetaVR.Ui
             Stack();
 
             RedirectVideos();
-
-            // Reported rather than enforced. The camera sees every layer -- see Build for why
-            // that is safe and why culling by these was not -- but which layers the interface
-            // is spread across is still the first thing worth knowing when a piece of it goes
-            // missing, so the reading is kept and the decision is not.
-            if (mask != 0 && mask != _layers)
-            {
-                _layers = mask;
-                Plugin.Log.LogInfo($"HUD canvases on layers 0x{mask:X}");
-            }
 
             if (redirected > 0 || _canvasCount != found.Length)
             {
@@ -461,7 +419,6 @@ namespace NobetaVR.Ui
                     _eagerUntil = Time.unscaledTime + 1f;
 
                 _canvasCount = found.Length;
-                if (redirected > 0) Plugin.Log.LogInfo($"redirected {redirected} canvas(es) to the HUD panel");
             }
         }
 
@@ -511,9 +468,6 @@ namespace NobetaVR.Ui
                 player.renderMode = VideoRenderMode.CameraFarPlane;
                 player.aspectRatio = VideoAspectRatio.FitInside;
                 player.targetCamera = _capture;
-
-                Plugin.Log.LogInfo($"video '{player.name}' moved from {mode} on "
-                                 + $"'{(target != null ? target.name : "<none>")}' to the HUD panel");
             }
         }
 
@@ -588,8 +542,6 @@ namespace NobetaVR.Ui
                 _hidden = true;
                 _hiddenFrom = _scene;
                 _giveUp = Time.unscaledTime + GiveUp;
-
-                Plugin.Log.LogInfo($"HUD panel stands aside at {progress:P0} of the load");
             }
 
             if (!_hidden) return;
@@ -597,17 +549,11 @@ namespace NobetaVR.Ui
             // With the VR fade off the game paints its own black straight onto the panel, which
             // covers the same ground. There is nothing to wait for, and waiting would only
             // blank the interface for no gain.
-            if (!Plugin.Instance.VrFade.Value) { Return("the VR fade is off"); return; }
+            if (!Plugin.Instance.VrFade.Value) { _hidden = false; return; }
 
-            if (Time.unscaledTime > _giveUp) { Return("it waited long enough"); return; }
+            if (Time.unscaledTime > _giveUp) { _hidden = false; return; }
 
-            if (_scene != _hiddenFrom && Vr.ViewFade.Amount < Down) Return($"'{_scene}' is up");
-        }
-
-        private void Return(string why)
-        {
-            _hidden = false;
-            Plugin.Log.LogInfo($"HUD panel back: {why}");
+            if (_scene != _hiddenFrom && Vr.ViewFade.Amount < Down) _hidden = false;
         }
 
         private void Show(bool shown)

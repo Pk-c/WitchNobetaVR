@@ -52,9 +52,6 @@ namespace NobetaVR.Vr
     /// </summary>
     internal static class CollisionHide
     {
-        private static bool _reportedInHead;
-        private static bool _reportedSpawn;
-
         /// <summary>
         /// Called once a frame, after the game's camera update. <paramref name="inHead"/> is
         /// whether the view is in her head, <paramref name="ownShot"/> whether it is the mod's
@@ -70,22 +67,6 @@ namespace NobetaVR.Vr
             if (mesh == null || mesh.enableAllParts) return;
 
             mesh.EnableAllParts(true);
-
-            if (inHead)
-            {
-                if (_reportedInHead) return;
-                _reportedInHead = true;
-                Plugin.Log.LogInfo("the game's camera hid her (its boom is pressed against a wall "
-                                 + "behind her), and the view is in her head, so she is shown again");
-            }
-            else
-            {
-                if (_reportedSpawn) return;
-                _reportedSpawn = true;
-                Plugin.Log.LogInfo("the game's camera hid her (its boom is pressed against a wall "
-                                 + "behind her), and the view is the spawn shot in front of her, "
-                                 + "so she is shown again");
-            }
         }
     }
 }

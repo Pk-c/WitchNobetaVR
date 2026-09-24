@@ -37,49 +37,14 @@ namespace NobetaVR.Input
         /// </summary>
         internal static bool Forcing;
 
-        private static int _logged;
-
         [HarmonyPrefix]
         [HarmonyPatch(typeof(NobetaAnimatorController), nameof(NobetaAnimatorController.PlayDodgeForward))]
         private static bool RollBecomesHop(NobetaAnimatorController __instance)
         {
-            if (!Forcing)
-            {
-                Report("roll, left alone");
-                return true;
-            }
+            if (!Forcing) return true;
 
-            Report("roll, redirected to the hop");
-
-            _redirecting = true;
-            try { __instance.PlayDodgeBack(); }
-            finally { _redirecting = false; }
-
+            __instance.PlayDodgeBack();
             return false;
-        }
-
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(NobetaAnimatorController), nameof(NobetaAnimatorController.PlayDodgeBack))]
-        private static void Hop()
-        {
-            // The redirect above already said what happened; this would only repeat it.
-            if (_redirecting) return;
-
-            Report("hop, the game's own choice");
-        }
-
-        private static bool _redirecting;
-
-        /// <summary>
-        /// The first few dodges, and no more: enough to show the redirect is reached, which is
-        /// the one thing that cannot be read off a build.
-        /// </summary>
-        private static void Report(string what)
-        {
-            if (_logged >= 6) return;
-            _logged++;
-
-            Plugin.Log.LogInfo($"dodge: {what}");
         }
     }
 }

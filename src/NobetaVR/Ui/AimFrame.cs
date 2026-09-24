@@ -103,7 +103,6 @@ namespace NobetaVR.Ui
             // a search that only saw what was on screen would find it on no frame that matters.
             _parts = _frame.GetComponentsInChildren<Renderer>(true);
 
-            Plugin.Log.LogInfo($"focus frame found: '{_frame.name}' with {_parts.Length} renderer(s)");
             return _parts.Length > 0;
         }
 

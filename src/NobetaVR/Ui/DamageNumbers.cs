@@ -254,18 +254,16 @@ namespace NobetaVR.Ui
             _flat = hits != null ? hits.TryCast<UIHitNumber>() : null;
             if (_flat == null) return;
 
-            var go = _flat.gameObject;
-            _flatGroup = go.GetComponent<CanvasGroup>();
-            if (_flatGroup == null) _flatGroup = go.AddComponent<CanvasGroup>();
-            _flatAlpha = _flatGroup.alpha;
-
             // The group goes on UIHitNumber's own object, which is where the pool is built. It
             // cannot be checked from here -- hitNumberElements is still empty when this runs,
             // because the scan finds the component before Init has filled it -- and it does not
             // greatly matter: a flat row that escaped the group is drawn on the panel, which is
             // where it was already invisible. The group is what makes the setting reversible,
             // not what makes the numbers go away.
-            Plugin.Log.LogInfo($"world damage numbers bound: fading '{go.name}'");
+            var go = _flat.gameObject;
+            _flatGroup = go.GetComponent<CanvasGroup>();
+            if (_flatGroup == null) _flatGroup = go.AddComponent<CanvasGroup>();
+            _flatAlpha = _flatGroup.alpha;
         }
 
         // -- construction ----------------------------------------------------------------
@@ -289,7 +287,6 @@ namespace NobetaVR.Ui
 
             for (var i = 0; i < _numbers.Length; i++) _numbers[i] = new Number(_root, shader, i);
 
-            Plugin.Log.LogInfo($"damage numbers built: {Pool} rows, shader '{shader.name}'");
             return true;
         }
 

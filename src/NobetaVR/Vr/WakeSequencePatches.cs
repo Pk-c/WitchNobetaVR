@@ -32,17 +32,17 @@ namespace NobetaVR.Vr
     {
         [HarmonyPostfix]
         [HarmonyPatch(typeof(PlayerController), nameof(PlayerController.SetStatus))]
-        private static void StatusSet(NobetaState CharacterStatus) => Note(CharacterStatus, "SetStatus");
+        private static void StatusSet(NobetaState CharacterStatus) => Note(CharacterStatus);
 
         [HarmonyPostfix]
         [HarmonyPatch(typeof(PlayerController), nameof(PlayerController.InitState))]
-        private static void StateInitialised(NobetaState state) => Note(state, "InitState");
+        private static void StateInitialised(NobetaState state) => Note(state);
 
-        private static void Note(NobetaState state, string via)
+        private static void Note(NobetaState state)
         {
             if (state != NobetaState.Resurrection && state != NobetaState.Wake) return;
 
-            VrCamera.ArmSpawnView($"{state} via {via}");
+            VrCamera.ArmSpawnView();
         }
     }
 }

@@ -54,14 +54,12 @@ namespace NobetaVR.Vr
             _headScaleSaved = false;
             _comfortApplied = false;
             _eyeSeeded = false;
-            _candidatesReported = false;
 
             // A new stage is a new spawn, so the view goes back to riding her facing until she
             // is the player's again — and what the player did in the stage before is not an
             // answer to whether they have asked for anything in this one.
             _viewIsYours = false;
             _riding = false;
-            _wroteHandle = null;
             _lastHandle = float.NaN;
             _lastGameYaw = float.NaN;
             _atRestFor = 0;
@@ -79,8 +77,7 @@ namespace NobetaVR.Vr
         /// camera and body agreed to within 13 degrees, so nothing was ever turned around.
         ///
         /// So the skeleton is searched instead, and the helper is kept only as a starting point
-        /// for finding the character root. Candidates are logged the first time, because a bone
-        /// name is a fact about the model that no amount of reasoning will produce.
+        /// for finding the character root.
         ///
         /// Re-resolved while null, since the skin loads asynchronously: on the opening frames of
         /// a stage the chain exists but ends in nothing.
@@ -110,11 +107,6 @@ namespace NobetaVR.Vr
             var root = girl != null ? girl.transform : helper.root;
             _head = FindHeadBone(root, helper);
 
-            if (_head != null)
-            {
-                Plugin.Log.LogInfo($"first person anchored to '{Path(_head)}' "
-                                 + $"(IK helper was '{helper.name}')");
-            }
             return _head;
         }
 
@@ -128,14 +120,11 @@ namespace NobetaVR.Vr
         {
             var wanted = Plugin.Instance.HeadBoneName.Value;
             Transform exact = null, partial = null;
-            var candidates = new System.Collections.Generic.List<string>();
 
             foreach (var t in root.GetComponentsInChildren<Transform>(true))
             {
                 var name = t.name;
                 if (name.IndexOf("head", System.StringComparison.OrdinalIgnoreCase) < 0) continue;
-
-                candidates.Add(name);
 
                 if (!string.IsNullOrEmpty(wanted))
                 {
@@ -153,15 +142,6 @@ namespace NobetaVR.Vr
                 else partial ??= t;
             }
 
-            if (!_candidatesReported)
-            {
-                _candidatesReported = true;
-                Plugin.Log.LogInfo($"head-bone candidates under '{root.name}': "
-                                 + (candidates.Count > 0 ? string.Join(", ", candidates) : "none"));
-                if (!string.IsNullOrEmpty(wanted))
-                    Plugin.Log.LogInfo($"HeadBoneName is set to '{wanted}'");
-            }
-
             var chosen = exact ?? partial;
             if (chosen == null)
             {
@@ -170,15 +150,6 @@ namespace NobetaVR.Vr
                 return fallback;
             }
             return chosen;
-        }
-
-        private bool _candidatesReported;
-
-        private static string Path(Transform t)
-        {
-            var path = t.name;
-            for (var p = t.parent; p != null; p = p.parent) path = p.name + "/" + path;
-            return path;
         }
 
         /// <summary>
@@ -236,7 +207,6 @@ namespace NobetaVR.Vr
             if (girl != null) MeasureEyeLevel(girl.transform, position.y);
             else EyeLevel = position.y;
 
-            ReportFacing(gameCameraRotation, head);
             return true;
         }
 
@@ -291,33 +261,6 @@ namespace NobetaVR.Vr
         }
 
         /// <summary>
-        /// Says once, in numbers, which way everything is pointing.
-        ///
-        /// "I can see Nobeta's face" has more than one cause — the view could be turned around,
-        /// or it could be inside an unhidden head looking at the inside of the face mesh — and
-        /// they are not distinguishable from in there. These three readings separate them: if
-        /// the camera and the body disagree by about 180 degrees the view is backwards, and if
-        /// the head scale is not zero the head was never hidden.
-        /// </summary>
-        private bool _facingReported;
-
-        private void ReportFacing(Quaternion gameCameraRotation, Transform head)
-        {
-            if (_facingReported || _playerCamera == null) return;
-            var girl = _playerCamera.wizardGirl;
-            if (girl == null) return;
-            _facingReported = true;
-
-            var camFwd = gameCameraRotation * Vector3.forward;
-            var bodyFwd = girl.transform.forward;
-            var headFwd = head.forward;
-
-            Plugin.Log.LogInfo($"facing: camera->body {Vector3.Angle(camFwd, bodyFwd):F1} deg, "
-                             + $"camera->headBone {Vector3.Angle(camFwd, headFwd):F1} deg, "
-                             + $"head localScale {head.localScale}");
-        }
-
-        /// <summary>
         /// Points the view where Nobeta is facing, for as long as the game is the one moving
         /// her.
         ///
@@ -356,12 +299,7 @@ namespace NobetaVR.Vr
             if (!_riding)
             {
                 _riding = true;
-                _rodeFrom = bodyYaw;
                 _rodeSince = Time.unscaledTime;
-                Plugin.Log.LogInfo($"the view rides her facing from {bodyYaw:F1} deg until she "
-                                 + $"is yours (state {PlayerStatus.State?.ToString() ?? "<none>"}, "
-                                 + $"controllable {PlayerStatus.Controllable}, g_fX "
-                                 + $"{_playerCamera.g_fX:F1}, game camera {gameYaw:F1})");
             }
 
             // Kept under the view as it goes, rather than written once at the end. Movement is
@@ -374,9 +312,7 @@ namespace NobetaVR.Vr
             // it for the whole ride, and the view is handed over to a camera that was never
             // asked to point anywhere — which at a save statue is the camera the wake framed her
             // face with, half a turn from the way she is standing up.
-            TraceRide(bodyYaw, gameYaw);
-            _wroteHandle = bodyYaw - (_cameraYawKnown ? _cameraYawOffset : 0f);
-            _playerCamera.g_fX = _wroteHandle.Value;
+            _playerCamera.g_fX = bodyYaw - (_cameraYawKnown ? _cameraYawOffset : 0f);
 
             // Her holding still is *not* a second way out of this, which is worth writing down
             // because it is the obvious one to reach for. She holds perfectly still for as long
@@ -388,15 +324,7 @@ namespace NobetaVR.Vr
             var waited = Time.unscaledTime - _rodeSince;
             var asked = PlayerStatus.YoursToDrive && Input.VrControls.PlayerActed;
 
-            if (asked || waited > RidePatience)
-            {
-                _viewIsYours = true;
-                _wroteHandle = null;
-                Plugin.Log.LogInfo($"the view is yours after {waited:F1}s "
-                                 + $"({(asked ? "you asked for it" : "nothing did, so the wait ran out")}): "
-                                 + $"her facing went {_rodeFrom:F1} -> {bodyYaw:F1} deg, "
-                                 + $"g_fX left at {_playerCamera.g_fX:F1}");
-            }
+            if (asked || waited > RidePatience) _viewIsYours = true;
 
             return bodyYaw;
         }
@@ -406,58 +334,7 @@ namespace NobetaVR.Vr
 
         private bool _viewIsYours;
         private bool _riding;
-        private float _rodeFrom;
         private float _rodeSince;
-        private float _nextRideLog;
-
-        /// <summary>
-        /// What the ride last wrote into `g_fX`, or null when it has not written yet. Kept so
-        /// the next frame can tell the handle it left behind from one something else has moved.
-        /// </summary>
-        private float? _wroteHandle;
-
-        /// <summary>
-        /// One line a second while the view rides her facing, and one the moment `g_fX` is found
-        /// holding a value this did not put there.
-        ///
-        /// The spawn at a save statue is the sequence that cannot be watched from outside: it
-        /// runs for as long as the get-up takes, it ends on the player's first input, and what
-        /// is being reported about it — "the camera comes back the wrong way round, but not
-        /// every time" — is a statement about three yaws that nobody can read from inside a
-        /// headset. So they go in the log, and they separate the causes rather than confirming
-        /// one. Her facing against the camera's says whether the ride is pointing the view the
-        /// wrong way itself; the handle against the camera's says whether the game's camera is
-        /// following the handle at all while she is down; and the handle against the value
-        /// written on the previous frame says whether the game is writing it too — its own
-        /// reset-to-front is the obvious candidate for a half turn that arrives some spawns and
-        /// not others, and from in here it would be invisible.
-        /// </summary>
-        private void TraceRide(float bodyYaw, float gameYaw)
-        {
-            var handle = _playerCamera.g_fX;
-
-            // Before the rate limit: a handle moved under us is an event, not a status, and it
-            // is the one reading here that may not be sampled once a second and missed.
-            if (_wroteHandle.HasValue)
-            {
-                var moved = Mathf.DeltaAngle(_wroteHandle.Value, handle);
-                if (Mathf.Abs(moved) > 0.5f)
-                {
-                    Plugin.Log.LogInfo($"ride: g_fX moved {moved:F1} deg under us, to {handle:F1} "
-                                     + $"(we left {_wroteHandle.Value:F1}); the game is writing it too");
-                }
-            }
-
-            if (Time.unscaledTime < _nextRideLog) return;
-            _nextRideLog = Time.unscaledTime + 1f;
-
-            Plugin.Log.LogInfo($"ride: she faces {bodyYaw:F1}, the camera {gameYaw:F1} "
-                             + $"({Mathf.DeltaAngle(bodyYaw, gameYaw):F1} apart), g_fX {handle:F1} "
-                             + $"+ offset {(_cameraYawKnown ? _cameraYawOffset.ToString("F0") : "unmeasured")}, "
-                             + $"mode {BodyFacing.Mode}, state "
-                             + $"{PlayerStatus.State?.ToString() ?? "<none>"}, standsBack "
-                             + $"{VrCamera.ViewStandsBack}");
-        }
 
         /// <summary>
         /// Whether the view's yaw is the player's rather than Nobeta's own facing. False only
@@ -482,15 +359,12 @@ namespace NobetaVR.Vr
         /// ended up with. Only while the player is driving both and both have come to rest,
         /// which is the whole of what makes the two comparable — see the gate below for the
         /// spawn that taught it that. Quantised to a half turn, since that is the shape this
-        /// answer can take and a degree of residual lag should not become a degree of error —
-        /// with the raw reading logged beside it, so a third answer would be visible in the log
-        /// rather than rounded away.
+        /// answer can take and a degree of residual lag should not become a degree of error.
         ///
         /// Re-read for as long as the game runs rather than settled once, and zero until the
         /// first reading lands. Zero is what <see cref="RealignToBody"/> has always assumed and
         /// what the game has measured as every time it has been asked; a later reading taken
-        /// with both ends plainly at rest is worth more than an early one, and if they disagree
-        /// the log says so and says which the view was built on.
+        /// with both ends plainly at rest is worth more than an early one.
         /// </summary>
         private void MeasureCameraYaw(float gameYaw)
         {
@@ -531,18 +405,6 @@ namespace NobetaVR.Vr
             var raw = Mathf.DeltaAngle(handle, gameYaw);
             var offset = Mathf.Round(raw / 180f) * 180f;
 
-            if (!_cameraYawKnown)
-            {
-                Plugin.Log.LogInfo($"g_fX {handle:F1} holds the game's camera at {gameYaw:F1} deg: "
-                                 + $"the yaw it means is {raw:F1} deg from the view, taken as "
-                                 + $"{offset:F0}");
-            }
-            else if (Mathf.Abs(Mathf.DeltaAngle(offset, _cameraYawOffset)) > 1f)
-            {
-                Plugin.Log.LogInfo($"g_fX offset re-measured: {_cameraYawOffset:F0} -> {offset:F0} "
-                                 + $"(raw {raw:F1}); the view's yaw was built on the old one.");
-            }
-
             _cameraYawOffset = offset;
             _cameraYawKnown = true;
         }
@@ -577,7 +439,6 @@ namespace NobetaVR.Vr
                 // body do it. That is what the ride is for.
                 _viewIsYours = false;
                 _riding = false;
-                _wroteHandle = null;
                 return;
             }
 
@@ -585,8 +446,6 @@ namespace NobetaVR.Vr
             _playerCamera.g_fX = bodyYaw - (_cameraYawKnown ? _cameraYawOffset : 0f);
             _viewIsYours = true;
             _riding = false;
-            _wroteHandle = null;
-            Plugin.Log.LogInfo($"recentre: the view goes back to her facing, {bodyYaw:F1} deg");
         }
 
         /// <summary>
@@ -636,7 +495,6 @@ namespace NobetaVR.Vr
             // person resumed.
             _viewIsYours = true;
             _riding = false;
-            _wroteHandle = null;
             return true;
         }
 
@@ -692,17 +550,8 @@ namespace NobetaVR.Vr
             if (_comfortApplied || _playerCamera == null) return;
             _comfortApplied = true;
 
-            if (Plugin.Instance.DisableRespiration.Value)
-            {
-                _playerCamera.SetRespiration(false);
-                Plugin.Log.LogInfo("camera respiration off");
-            }
-
-            if (Plugin.Instance.DisableCameraShake.Value)
-            {
-                _playerCamera.g_bShakeEnable = false;
-                Plugin.Log.LogInfo("camera shake off");
-            }
+            if (Plugin.Instance.DisableRespiration.Value) _playerCamera.SetRespiration(false);
+            if (Plugin.Instance.DisableCameraShake.Value) _playerCamera.g_bShakeEnable = false;
         }
 
         /// <summary>

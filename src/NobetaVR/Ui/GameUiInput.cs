@@ -27,7 +27,6 @@ namespace NobetaVR.Ui
 
         private bool _submitHeld, _cancelHeld, _pageLeftHeld, _pageRightHeld;
         private bool _nextHeld, _skipHeld, _specialHeld;
-        private bool _storyReported;
 
         // The hold, and which screen was told about it. See Holding.
         private System.IntPtr _holdTarget = System.IntPtr.Zero;
@@ -109,12 +108,6 @@ namespace NobetaVR.Ui
             {
                 SeedDialogueEdges(input);
                 return;
-            }
-
-            if (!_storyReported)
-            {
-                _storyReported = true;
-                Plugin.Log.LogInfo("dialogue bound: A advances the line, B opens the skip menu");
             }
 
             Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary),

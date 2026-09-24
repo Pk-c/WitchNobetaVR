@@ -735,10 +735,6 @@ namespace NobetaVR.Ui
                 Colour = Health, Warned = Warn(Health), Read = d => Fraction(d.GetHP(), d.GetHPMax()),
             });
 
-            Plugin.Log.LogInfo($"wrist gauges built: {Bands} bands of {Rings} rings, "
-                             + $"{MajorSegments}x{MinorSegments} segments each, "
-                             + $"shader '{shader.name}'");
-
             _root.SetActive(false);
             return true;
         }

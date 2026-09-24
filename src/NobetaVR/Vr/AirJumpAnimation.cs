@@ -24,8 +24,6 @@ namespace NobetaVR.Vr
     [HarmonyPatch]
     internal static class AirJumpAnimation
     {
-        private static int _logged;
-
         [HarmonyPostfix]
         [HarmonyPatch(typeof(NobetaAnimatorController), nameof(NobetaAnimatorController.PlaySkyJump))]
         private static void SkyJumpLooksLikeTheFirst(
@@ -35,14 +33,6 @@ namespace NobetaVR.Vr
             if (cfg == null || !cfg.AirJumpKeepsJumpAnimation.Value) return;
 
             __instance.PlayJump(duration, startTime);
-
-            // The first few, and no more. Air jumps are frequent, and what this has to confirm
-            // is only that the postfix is reached at all -- an animator method that turns out
-            // not to be the one the air jump calls would say so by this line never appearing.
-            if (_logged >= 4) return;
-            _logged++;
-            Plugin.Log.LogInfo($"air jump: playing the ground jump's animation instead "
-                             + $"(duration {duration:F2}, start {startTime:F2})");
         }
     }
 }

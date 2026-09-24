@@ -82,7 +82,6 @@ namespace NobetaVR.Input
         private float _deflectedSince;
         private float _arrowAtOpen;
         private bool _direct;
-        private int _reported;
 
         private StageUIManager _ui;
         private float _nextScan;
@@ -281,8 +280,6 @@ namespace NobetaVR.Input
 
             if (apply && _chose && id >= 0) controller.ApplyMagic(id);
 
-            Report(apply, id);
-
             _open = _latched = _chose = false;
             _deflectedSince = 0f;
         }
@@ -382,30 +379,6 @@ namespace NobetaVR.Input
             var found = Object.FindObjectOfType(Il2CppType.Of<StageUIManager>());
             _ui = found != null ? found.TryCast<StageUIManager>() : null;
             return _ui;
-        }
-
-        /// <summary>
-        /// Says what the wheel did, for the first few uses of it and then never again.
-        ///
-        /// Three of the four ways this can go wrong look identical from inside the headset — a
-        /// wheel that closed too early, a pointer that never arrived, and an apply that went to
-        /// a slot nothing was pointing at — and a player can only report the one symptom. One
-        /// line names which of them happened.
-        /// </summary>
-        private void Report(bool apply, int id)
-        {
-            if (_reported >= 4) return;
-            _reported++;
-
-            var selector = Selector();
-            var enabled = selector != null && selector.isMagicSelectEnabled;
-
-            Plugin.Log.LogInfo($"spell wheel closed after "
-                             + $"{Time.unscaledTime - _openedAt:F2}s "
-                             + $"({(_latched ? "latched" : "held")}): "
-                             + $"{(_chose ? "pointed" : "nothing chosen")}, slot {id}, "
-                             + $"arrow {Arrow():F0} deg, wheel enabled={enabled}, "
-                             + $"{(apply && _chose && id >= 0 ? "applied" : "applied nothing")}");
         }
     }
 }

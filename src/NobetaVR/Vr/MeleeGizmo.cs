@@ -103,7 +103,6 @@ namespace NobetaVR.Vr
             _capTo = Piece(PrimitiveType.Sphere, "NobetaVR Melee Hitbox Cap B");
             _shaft = Piece(PrimitiveType.Cylinder, "NobetaVR Melee Hitbox Shaft");
 
-            Plugin.Log.LogInfo("melee hitbox gizmo built");
             return true;
         }
 

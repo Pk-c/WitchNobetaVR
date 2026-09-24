@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using HarmonyLib;
 
 namespace NobetaVR.Vr
@@ -30,10 +29,6 @@ namespace NobetaVR.Vr
             internal float SecondStrength;
         }
 
-        /// <summary>Attack names already reported, so the log says which ranges count as
-        /// spells once each instead of on every hit.</summary>
-        private static readonly HashSet<string> Reported = new();
-
         [HarmonyPrefix]
         [HarmonyPatch(typeof(NPCManage), nameof(NPCManage.Hit))]
         private static void BeforeHit(AttackData Data, out Boosted __state)
@@ -54,11 +49,6 @@ namespace NobetaVR.Vr
 
             Data.g_fStrength *= multiplier;
             Data.g_fSecondStrength *= multiplier;
-
-            var name = Data.name;
-            if (Reported.Add(name))
-                Plugin.Log.LogInfo($"[cheat] spell damage ×{multiplier:F1} applied to '{name}' "
-                                 + $"({__state.Strength:F1} -> {Data.g_fStrength:F1})");
         }
 
         [HarmonyPostfix]

@@ -143,9 +143,6 @@ namespace NobetaVR.Vr
             private CanvasGroup _group;
             private float _last = -1f;
 
-            /// <summary>Whether this particular image has been reported as taken over.</summary>
-            private bool _taken;
-
             /// <summary>
             /// Whether the game has been seen to fade by animating an Image's own colour alpha
             /// -- once, by any of the three sources, for all of them.
@@ -180,7 +177,6 @@ namespace NobetaVR.Vr
                     _image = image;
                     _group = null;
                     _last = -1f;
-                    _taken = false;
                 }
 
                 if (_image == null) return 0f;
@@ -191,23 +187,9 @@ namespace NobetaVR.Vr
 
                 if (!_proven)
                 {
-                    if (_last >= 0f && Mathf.Abs(alpha - _last) > 0.002f)
-                    {
-                        _proven = true;
-                        Plugin.Log.LogInfo($"VR fade: {_name} animates its own alpha, so all "
-                                         + "three sources are now believed");
-                    }
+                    if (_last >= 0f && Mathf.Abs(alpha - _last) > 0.002f) _proven = true;
                     _last = alpha;
                     return 0f;
-                }
-
-                // Per image rather than per source, so a stage change says so: the veil is a
-                // new object every stage, and which fade is on the view is exactly the question
-                // this log gets read to answer.
-                if (!_taken)
-                {
-                    _taken = true;
-                    Plugin.Log.LogInfo($"VR fade is taking over {_name}");
                 }
 
                 Show(false);
@@ -271,7 +253,6 @@ namespace NobetaVR.Vr
             {
                 var found = Object.FindObjectOfType(Il2CppType.Of<GameUIManager>());
                 _ui = found != null ? found.TryCast<GameUIManager>() : null;
-                if (_ui != null) Plugin.Log.LogInfo("VR fade found GameUIManager.blackScreen");
             }
 
             if (_stage == null)
@@ -342,7 +323,6 @@ namespace NobetaVR.Vr
             _quad.gameObject.layer = 0;
             _quad.gameObject.SetActive(false);
 
-            Plugin.Log.LogInfo("VR fade built");
             return true;
         }
     }

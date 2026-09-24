@@ -64,9 +64,7 @@ namespace NobetaVR.Vr
                 var controller = Controller();
                 if (controller == null) return null;
 
-                var state = controller.state;
-                Note(state);
-                return state;
+                return controller.state;
             }
         }
 
@@ -142,22 +140,5 @@ namespace NobetaVR.Vr
             BodyFacing.Mode == PlayerCamera.CameraMode.Normal
             && Controllable
             && !DownOrGettingUp;
-
-        private static readonly HashSet<NobetaState> Seen = new();
-
-        /// <summary>
-        /// Names each state the first time it is seen, and never again.
-        ///
-        /// Bounded by the enum, so it cannot run away, and it is the only way to find out what
-        /// the game actually calls a moment: the set above was assembled from the enum's names,
-        /// and a name is a guess until the log shows it under the character's feet. If a
-        /// scripted moment still hands the player controls they should not have, the state it
-        /// runs in is in this list.
-        /// </summary>
-        private static void Note(NobetaState state)
-        {
-            if (!Seen.Add(state)) return;
-            Plugin.Log.LogInfo($"player state seen for the first time: {state}");
-        }
     }
 }

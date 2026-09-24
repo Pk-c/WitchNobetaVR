@@ -328,7 +328,6 @@ namespace NobetaVR.Ui
 
             var found = UnityEngine.Object.FindObjectOfType(Il2CppType.Of<UIAimingPoint>());
             _gameCrosshair = found != null ? found.TryCast<UIAimingPoint>() : null;
-            if (_gameCrosshair != null) Plugin.Log.LogInfo("found the game's UIAimingPoint");
 
             return _gameCrosshair;
         }
@@ -413,7 +412,6 @@ namespace NobetaVR.Ui
 
             root.SetActive(false);
 
-            Plugin.Log.LogInfo("aim reticle built");
             return true;
         }
 

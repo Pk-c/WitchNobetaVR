@@ -100,7 +100,6 @@ namespace NobetaVR.Vr
 
                     component.active = false;
                     Silenced.Add(component);
-                    Plugin.Log.LogInfo($"depth of field off on volume '{volume.name}'");
                 }
             }
         }
@@ -149,7 +148,6 @@ namespace NobetaVR.Vr
                 if (component != null) component.active = true;
             }
 
-            if (Silenced.Count > 0) Plugin.Log.LogInfo($"depth of field restored on {Silenced.Count} volume(s)");
             Silenced.Clear();
         }
     }

@@ -70,7 +70,6 @@ namespace NobetaVR.Vr
             // leave the difference between the two frames in the result.
             HeadPose.Sample();
 
-            Plugin.Log.LogInfo("the title screen is up, so the view is put straight ahead");
             HeadPose.Recenter();
         }
     }

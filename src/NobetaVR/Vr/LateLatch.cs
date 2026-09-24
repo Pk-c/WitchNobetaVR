@@ -56,20 +56,10 @@ namespace NobetaVR.Vr
         /// latch honest about which view it is refreshing; <c>Render</c> is the whole frame and
         /// names nothing, so it latches once and lets <see cref="VrCamera"/>'s own frame guard
         /// decide. Any of the three is late enough — all of them run after every LateUpdate.
-        ///
-        /// The candidates are logged whether or not they are used. A hook that resolves to
-        /// nothing and a hook that resolves and is never called look identical from inside the
-        /// headset, and this is the difference written down before the first frame.
         /// </summary>
         internal static void Install(Harmony harmony)
         {
             var pipeline = typeof(UniversalRenderPipeline);
-
-            foreach (var m in pipeline.GetMethods(Any))
-            {
-                if (m.Name is "Render" or "RenderCameraStack" or "RenderSingleCamera")
-                    Plugin.Log.LogInfo($"URP render entry point found: {Describe(m)}");
-            }
 
             if (TryPatch(harmony, pipeline, "RenderCameraStack", nameof(BeforeCamera), true)) return;
             if (TryPatch(harmony, pipeline, "RenderSingleCamera", nameof(BeforeCamera), true)) return;

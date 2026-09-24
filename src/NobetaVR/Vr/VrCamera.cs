@@ -26,8 +26,6 @@ namespace NobetaVR.Vr
 
         private XrLoader _xr;
         private bool _originConfigured;
-        private float _nextPoseLog;
-        private float _burstUntil = -1f;
 
         /// <summary>The PlayerCamera currently driving the view, or null on menus.</summary>
         private PlayerCamera _playerCamera;
@@ -188,7 +186,7 @@ namespace NobetaVR.Vr
             // holding her. This arm covers that; the one that covers the wake itself comes from
             // WakeSequencePatches, because the wake starts seconds after the stage does and
             // every reading of "the game has her" says otherwise until it is under way.
-            ArmSpawnView("a stage opened");
+            ArmSpawnView();
 
             // A new stage is a new body, and the renderers held from the last one are dead
             // pointers rather than hers.
@@ -391,7 +389,6 @@ namespace NobetaVR.Vr
                 {
                     _deathLatch = true;
                     _latchedAt = Time.unscaledTime;
-                    Plugin.Log.LogInfo("death: the view steps back out of her head");
                 }
                 return true;
             }
@@ -419,7 +416,6 @@ namespace NobetaVR.Vr
              && mode == PlayerCamera.CameraMode.Normal)
             {
                 _deathLatch = false;
-                Plugin.Log.LogInfo("death: she is yours again; the view goes back on her head");
                 return false;
             }
 
@@ -510,10 +506,6 @@ namespace NobetaVR.Vr
 
                 _spawnTurning = false;
                 _spawnLatch = false;
-                Plugin.Log.LogInfo($"spawn: she is yours after "
-                                 + $"{Time.unscaledTime - _spawnArmedAt:F1}s; the view turns "
-                                 + $"{_spawnTurnBy:F0} deg onto {_spawnHandoverYaw:F0} and goes "
-                                 + $"back on her head");
                 return false;
             }
 
@@ -535,14 +527,6 @@ namespace NobetaVR.Vr
                 }
 
                 _spawnLatch = false;
-
-                // Silent unless the view actually stood back. The stage arm closes on the first
-                // frame of most stages, and a line per stage saying nothing happened is a line
-                // that makes the ones that matter harder to find.
-                if (_spawnHeld)
-                    Plugin.Log.LogInfo($"spawn: she is yours after "
-                                     + $"{Time.unscaledTime - _spawnArmedAt:F1}s; "
-                                     + $"the view goes back on her head");
                 return false;
             }
 
@@ -609,12 +593,6 @@ namespace NobetaVR.Vr
                           + forward * cfg.SpawnViewDistance.Value
                           + Vector3.up * cfg.SpawnViewHeight.Value;
                 _spawnRot = Quaternion.LookRotation(-forward, Vector3.up);
-
-                if (!_spawnFramed)
-                    Plugin.Log.LogInfo($"spawn: watching her get up from "
-                                     + $"{cfg.SpawnViewDistance.Value:F1} m in front, "
-                                     + $"{cfg.SpawnViewHeight.Value:F1} m up ({_spawnWhy})");
-
                 _spawnFramed = true;
             }
 
@@ -649,7 +627,7 @@ namespace NobetaVR.Vr
         /// timeout out and drops the held shot, which is what a fresh shot of a body that has
         /// since been placed requires.
         /// </summary>
-        internal static void ArmSpawnView(string why)
+        internal static void ArmSpawnView()
         {
             if (!Plugin.Instance.ThirdPersonOnSpawn.Value) return;
 
@@ -658,12 +636,10 @@ namespace NobetaVR.Vr
             _spawnFramed = false;
             _spawnHeld = false;
             _spawnTurning = false;
-            _spawnWhy = why;
         }
 
         private static bool _spawnLatch;
         private static float _spawnArmedAt;
-        private static string _spawnWhy = string.Empty;
         private static bool _spawnHeld;
         private static bool _spawnTurning;
         private static float _spawnTurnStart;
@@ -789,8 +765,6 @@ namespace NobetaVR.Vr
             // viewpoint the way a head does rather than pivoting on a point between your ears.
             if (Plugin.Instance.RoomScale.Value)
                 headPos = new Vector3(HeadPose.EyesFromNeck.x, headPos.y, HeadPose.EyesFromNeck.z);
-
-            LogPose(headPos, headRot);
 
             Apply(headPos, headRot);
         }
@@ -1190,8 +1164,6 @@ namespace NobetaVR.Vr
 
             _latchCameraId = found.GetInstanceID();
             _latchCameraName = found.name;
-
-            Plugin.Log.LogInfo($"the render-time pose latch will wait for '{_latchCameraName}'");
         }
 
         private void AcquireFallbackCamera()
@@ -1231,10 +1203,6 @@ namespace NobetaVR.Vr
                 return;
             }
 
-            Plugin.Log.LogInfo($"input subsystem running={input.running}, "
-                             + $"supported origins={input.GetSupportedTrackingOriginModes()}, "
-                             + $"current={input.GetTrackingOriginMode()}");
-
             if (!input.TrySetTrackingOriginMode(TrackingOriginModeFlags.Device))
                 Plugin.Log.LogWarning("Could not set a Device tracking origin.");
 
@@ -1242,26 +1210,6 @@ namespace NobetaVR.Vr
                 Plugin.Log.LogInfo("TryRecenter refused; the runtime may not offer it.");
 
             Plugin.Log.LogInfo($"tracking origin now {input.GetTrackingOriginMode()}");
-        }
-
-        /// <summary>
-        /// Reports the head pose, in a burst whenever the camera changes and afterwards only if
-        /// the config asks.
-        ///
-        /// The burst is deliberate. "The view does not follow my head" has two very different
-        /// causes — the pose never arrives, or it arrives and is written somewhere that no
-        /// longer renders — and from inside the headset the two look identical. Re-arming the
-        /// burst on every camera change is what would have caught the stale-camera bug in one
-        /// run rather than two.
-        /// </summary>
-        private void LogPose(Vector3 pos, Quaternion rot)
-        {
-            if (Time.unscaledTime >= _burstUntil || Time.unscaledTime < _nextPoseLog) return;
-            _nextPoseLog = Time.unscaledTime + 0.5f;
-
-            var e = rot.eulerAngles;
-            Plugin.Log.LogInfo($"head  pos ({pos.x:F3}, {pos.y:F3}, {pos.z:F3})  "
-                             + $"rot ({e.x:F1}, {e.y:F1}, {e.z:F1})");
         }
 
         private void Describe(string how, Transform target, Camera cam)
@@ -1274,10 +1222,6 @@ namespace NobetaVR.Vr
                                  ? $"  tag='{cam.tag}' depth={cam.depth} "
                                  + $"stereo={cam.stereoEnabled} targetEye={cam.stereoTargetEye}"
                                  : "  (no Camera component supplied)"));
-
-            // A camera change is exactly when the pose is worth watching again.
-            _burstUntil = Time.unscaledTime + 6f;
-            _nextPoseLog = 0f;
         }
     }
 }

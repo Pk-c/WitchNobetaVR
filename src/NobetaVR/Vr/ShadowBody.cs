@@ -69,7 +69,6 @@ namespace NobetaVR.Vr
 
         private static bool _built;
         private static bool _shown;
-        private static bool _reported;
 
         /// <summary>
         /// Points this at a new <c>PlayerCamera</c>. A new stage is a new body, and a copy of
@@ -79,7 +78,6 @@ namespace NobetaVR.Vr
         {
             Clear();
             _camera = camera;
-            _reported = false;
         }
 
         /// <summary>
@@ -218,18 +216,6 @@ namespace NobetaVR.Vr
             _sources = sources.ToArray();
             _rigidSources = rigidSources.ToArray();
             _proxies = proxies.ToArray();
-
-            if (!_reported)
-            {
-                _reported = true;
-                var names = new List<string>(_proxies.Length);
-                for (var i = 0; i < _sources.Length; i++) names.Add(_sources[i].name);
-                for (var i = 0; i < _rigidSources.Length; i++) names.Add(_rigidSources[i].name);
-
-                Plugin.Log.LogInfo($"full shadow: {copies.Count} bone(s) copied, "
-                                 + $"{_proxies.Length} shadow caster(s)"
-                                 + (names.Count > 0 ? ": " + string.Join(", ", names) : string.Empty));
-            }
         }
 
         /// <summary>

@@ -206,7 +206,6 @@ namespace NobetaVR.Ui
             OnTop(_text);
 
             _root.SetActive(false);
-            Plugin.Log.LogInfo("FPS counter built");
             return true;
         }
 

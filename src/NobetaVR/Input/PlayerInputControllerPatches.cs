@@ -19,7 +19,6 @@ namespace NobetaVR.Input
             if (controls == null) return;
 
             controls.InputController = __instance;
-            Plugin.Log.LogInfo("bound to PlayerInputController");
         }
     }
 }

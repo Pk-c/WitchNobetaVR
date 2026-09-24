@@ -183,8 +183,6 @@ namespace NobetaVR.Vr
             // Direction as well as place. Recentring the position alone leaves you standing
             // where Nobeta is but facing wherever you happened to be looking.
             VrCamera.RealignToBody();
-
-            Plugin.Log.LogInfo("recentred");
         }
 
         /// <summary>
