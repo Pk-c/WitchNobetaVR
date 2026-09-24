@@ -944,7 +944,8 @@ namespace NobetaVR.Vr
 
             // Only now is the camera's real position known, and the head's visibility depends on
             // it. Deciding earlier would test last frame's position against this frame's bone.
-            _firstPerson.UpdateHeadVisibility(_writtenPos);
+            // Never hidden while a cutscene frames her, whichever view the player chose for it.
+            _firstPerson.UpdateHeadVisibility(_writtenPos, GameIsFraming());
 
             // The rest of her, which is a switch rather than a distance and is gated on the view
             // being in her head instead — so the body comes back for every shot the game frames.

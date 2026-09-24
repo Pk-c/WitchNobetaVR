@@ -2,6 +2,7 @@
 using Il2CppInterop.Runtime;
 using NobetaVR.Vr;
 using UnityEngine;
+using UnityEngine.Video;
 
 namespace NobetaVR.Ui
 {
@@ -437,6 +438,8 @@ namespace NobetaVR.Ui
             // relative to the others.
             Stack();
 
+            RedirectVideos();
+
             // Reported rather than enforced. The camera sees every layer -- see Build for why
             // that is safe and why culling by these was not -- but which layers the interface
             // is spread across is still the first thing worth knowing when a piece of it goes
@@ -459,6 +462,58 @@ namespace NobetaVR.Ui
 
                 _canvasCount = found.Length;
                 if (redirected > 0) Plugin.Log.LogInfo($"redirected {redirected} canvas(es) to the HUD panel");
+            }
+        }
+
+        /// <summary>
+        /// Moves a video the game draws straight onto a camera's image onto the panel instead.
+        ///
+        /// The end credits are the case: <c>StaffManager</c> plays <c>Staff.mp4</c> in
+        /// <c>CameraNearPlane</c> mode, aspect <c>FitOutside</c>, on the scene's only camera. That
+        /// is a full-screen video on a monitor. In the headset it is a picture welded to the
+        /// face that fills each eye's whole field of view, and cropped to the eye's nearly
+        /// square aspect on top of it, so what was left to read was the middle of the scroll,
+        /// blown up past the edges of vision.
+        ///
+        /// <para>
+        /// Pointed at the capture camera, the same video lands in the panel's 1080p texture:
+        /// 16:9, at the panel's distance and size, and as live as any other setting that moves
+        /// the panel. The far plane rather than the near one, because the canvases the scene
+        /// draws over the video — its fade to black and the skip prompt — are in this capture
+        /// too, and a video on the near plane would be drawn over them. <c>FitInside</c>, so a
+        /// video that is not 16:9 is letterboxed rather than cropped.
+        /// </para>
+        ///
+        /// <para>
+        /// Rechecked every scan rather than done once, like the canvases: the game may assign
+        /// the camera again when it prepares or plays the video, and a player that reverted
+        /// would go straight back to the face.
+        /// </para>
+        /// </summary>
+        private void RedirectVideos()
+        {
+            var found = UnityEngine.Object.FindObjectsOfType(Il2CppType.Of<VideoPlayer>());
+            if (found == null) return;
+
+            for (var i = 0; i < found.Length; i++)
+            {
+                var player = found[i].TryCast<VideoPlayer>();
+                if (player == null) continue;
+
+                var mode = player.renderMode;
+                if (mode != VideoRenderMode.CameraNearPlane && mode != VideoRenderMode.CameraFarPlane) continue;
+
+                var target = player.targetCamera;
+                if (target == _capture
+                    && mode == VideoRenderMode.CameraFarPlane
+                    && player.aspectRatio == VideoAspectRatio.FitInside) continue;
+
+                player.renderMode = VideoRenderMode.CameraFarPlane;
+                player.aspectRatio = VideoAspectRatio.FitInside;
+                player.targetCamera = _capture;
+
+                Plugin.Log.LogInfo($"video '{player.name}' moved from {mode} on "
+                                 + $"'{(target != null ? target.name : "<none>")}' to the HUD panel");
             }
         }
 

@@ -126,6 +126,10 @@
       <HintPath>$(Interop)\UnityEngine.TextRenderingModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityEngine.VideoModule">
+      <HintPath>$(Interop)\UnityEngine.VideoModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Unity.RenderPipelines.Universal.Runtime">
       <HintPath>$(Interop)\Unity.RenderPipelines.Universal.Runtime.dll</HintPath>
       <Private>false</Private>

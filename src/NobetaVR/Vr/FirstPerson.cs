@@ -717,13 +717,19 @@ namespace NobetaVR.Vr
         /// Scaling the bone rather than disabling a renderer is deliberate: the mesh is shared
         /// with the rest of the body, so there is no head renderer to switch off, and the hair
         /// is parented to this bone and goes with it.
+        ///
+        /// A cutscene is the exception to the distance rule: the game's camera is framing her,
+        /// and a push-in on her face can bring it inside the hide distance, which took her head
+        /// off in the middle of the shot. While the game frames the view her head always stays.
         /// </summary>
-        public void UpdateHeadVisibility(Vector3 cameraPosition)
+        /// <param name="cameraPosition">Where the view is this frame.</param>
+        /// <param name="gameIsFraming">Whether a cutscene is placing the camera.</param>
+        public void UpdateHeadVisibility(Vector3 cameraPosition, bool gameIsFraming)
         {
             if (_head == null) return;
 
             var distance = Vector3.Distance(cameraPosition, _head.position);
-            var hide = distance <= Plugin.Instance.HeadHideDistance.Value;
+            var hide = !gameIsFraming && distance <= Plugin.Instance.HeadHideDistance.Value;
 
             if (hide == _hidden) return;
             _hidden = hide;
