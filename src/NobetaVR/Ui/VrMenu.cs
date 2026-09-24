@@ -380,6 +380,18 @@ namespace NobetaVR.Ui
             });
 
             _items.Add(new Item { Label = "", IsHeading = true });
+            _items.Add(new Item { Label = "CHEATS", IsHeading = true });
+
+            _items.Add(new Item
+            {
+                Label = "Spell damage",
+                Value = () => $"×{cfg.SpellDamageMultiplier.Value:F1}",
+                Adjust = d => cfg.SpellDamageMultiplier.Value = Mathf.Clamp(
+                    cfg.SpellDamageMultiplier.Value + d * 0.5f,
+                    SpellDamageCheat.MinMultiplier, SpellDamageCheat.MaxMultiplier),
+            });
+
+            _items.Add(new Item { Label = "", IsHeading = true });
             _items.Add(new Item
             {
                 Label = "Reset to default",

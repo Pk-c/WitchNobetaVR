@@ -197,8 +197,22 @@ namespace NobetaVR.Input
             // scene is playing" send an investigation to opposite ends of the mod.
             if (!hers)
             {
-                StandDown();
+                // Getting up from a knockdown is the one held moment with a way out: the game
+                // lets the dodge cancel it while a direction is held. Everything else stays
+                // stood down, but the stick and the dodge go through, and the game still
+                // decides whether the dodge comes out.
+                var gettingUp = Vr.PlayerStatus.GettingUpFromKnockdown;
+
+                StandDown(gettingUp);
                 RealignOrRecentre();
+
+                if (gettingUp)
+                {
+                    Move();
+                    DodgeButton();
+                    return "getting up";
+                }
+
                 return Vr.PlayerStatus.DownOrGettingUp ? "she is down" : "the game has her";
             }
 
@@ -245,8 +259,11 @@ namespace NobetaVR.Input
         /// focus is worse, because nothing on screen says why the aim will not let go. The
         /// one-shot edges are set to what the buttons are actually doing rather than to false,
         /// so a button still down when the menu closes is not read as a fresh press.
+        ///
+        /// <paramref name="keepStickAndDodge"/> leaves the stick and B out of it, for the
+        /// get-up the caller is about to feed them to; see <see cref="Drive"/>.
         /// </summary>
-        private void StandDown()
+        private void StandDown(bool keepStickAndDodge = false)
         {
             // Physical movement is written off for as long as the controllers are handed back,
             // for the reason in RoomScale.Apply: what is not applied has to be spent, or a menu
@@ -260,15 +277,16 @@ namespace NobetaVR.Input
                 if (_shootHeld) InputController.Shoot(false);
                 if (_runHeld) InputController.Dash(false);
                 if (_aimHeld) InputController.Aim(false);
-                if (_wasMoving) InputController.Move(Vector2.zero);
+                if (_wasMoving && !keepStickAndDodge) InputController.Move(Vector2.zero);
             }
 
-            _shootHeld = _runHeld = _aimHeld = _wasMoving = false;
+            _shootHeld = _runHeld = _aimHeld = false;
+            if (!keepStickAndDodge) _wasMoving = false;
             Focusing = false;
             _snapArmed = true;
 
             _jumpHeld = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
-            _dodgeHeld = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary);
+            if (!keepStickAndDodge) _dodgeHeld = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary);
             _useItemHeld = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Primary);
             _chantHeld = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Trigger);
             _yHeld = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Secondary);
@@ -456,13 +474,7 @@ namespace NobetaVR.Input
             _jumpHeld = jump;
 
             // B — dodge
-            var dodge = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary);
-            if (dodge && !_dodgeHeld)
-            {
-                if (Plugin.Instance.DodgeAlwaysBackstep.Value) DodgeAsBackstep();
-                else InputController.Dodge();
-            }
-            _dodgeHeld = dodge;
+            DodgeButton();
 
             // X — use the selected item
             var useItem = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Primary);
@@ -494,34 +506,37 @@ namespace NobetaVR.Input
             }
         }
 
+        /// <summary>
+        /// B, on its own, because it is also live while she gets up from a knockdown.
+        /// </summary>
+        private void DodgeButton()
+        {
+            if (InputController == null) return;
+
+            var dodge = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary);
+            if (dodge && !_dodgeHeld)
+            {
+                if (Plugin.Instance.DodgeAlwaysBackstep.Value) DodgeAsBackstep();
+                else InputController.Dodge();
+            }
+            _dodgeHeld = dodge;
+        }
+
+        /// <summary>
         /// Fires the dodge as the backward hop rather than the roll.
         ///
-        /// The two are one dodge in the game, forked inside <c>Dodge()</c> on whether a
-        /// direction is being held -- see <see cref="DodgeBackstepPatches"/>, which is where
-        /// that fork is answered. All this has to do is say when: the flag is raised for the
-        /// one synchronous call and lowered again, so nothing else in the game can see it.
+        /// The two are one dodge in the game, forked inside <c>InitState</c> on whether she is
+        /// moving -- see <see cref="DodgeBackstepPatches"/>, which is where that fork is
+        /// answered. All this has to do is say when: the flag is raised for the one synchronous
+        /// call and lowered again, so nothing else in the game can see it.
         ///
-        /// The input is centred across the same call as well. Handing the game a centred stick
-        /// was the first attempt on its own and it was not enough -- the direction the fork
-        /// reads is computed across a frame boundary, so the one already in hand at the press
-        /// is the one it answers with -- but as part of the pair it costs nothing and covers
-        /// anything downstream that reads the input rather than the predicate. Both fields are
-        /// put back straight after, so a walk is not interrupted by a dodge.
+        /// The stick is deliberately left as it is. The game reads it on the way in to decide
+        /// whether the dodge may come out at all -- the recovery out of being thrown into the
+        /// air is one of the moves that needs a direction held -- and centring it for the call
+        /// refused exactly those.
         /// </summary>
         private void DodgeAsBackstep()
         {
-            var controller = InputController.controller;
-            var input = controller != null ? controller.inputData : null;
-
-            var movement = input != null ? input.inputMovement : Vector2.zero;
-            var character = input != null ? input.characterMovement : Vector3.zero;
-
-            if (input != null)
-            {
-                input.inputMovement = Vector2.zero;
-                input.characterMovement = Vector3.zero;
-            }
-
             DodgeBackstepPatches.Forcing = true;
             try
             {
@@ -530,12 +545,6 @@ namespace NobetaVR.Input
             finally
             {
                 DodgeBackstepPatches.Forcing = false;
-
-                if (input != null)
-                {
-                    input.inputMovement = movement;
-                    input.characterMovement = character;
-                }
             }
         }
 

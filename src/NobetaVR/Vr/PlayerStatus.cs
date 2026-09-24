@@ -27,7 +27,8 @@ namespace NobetaVR.Vr
         /// mode and the controllable flag happen to say.
         ///
         /// <c>StandUp</c> is in here for the knockdown as well as the respawn — the same
-        /// argument applies to both, and it ends when the animation does either way.
+        /// argument applies to both, and it ends when the animation does either way. It keeps
+        /// one way out, though: see <see cref="GettingUpFromKnockdown"/>.
         /// </summary>
         private static readonly HashSet<NobetaState> Down = new()
         {
@@ -82,6 +83,20 @@ namespace NobetaVR.Vr
                 return state.HasValue && Down.Contains(state.Value);
             }
         }
+
+        /// <summary>
+        /// Whether she is getting back to her feet in play, where the game still lets a dodge
+        /// cancel the get-up if a direction is held (<c>PlayerController.OnDodgeKeyDown</c>).
+        /// That escape is part of the combat, so the stick and B have to keep reaching the game
+        /// here even though everything else stands down.
+        ///
+        /// The camera mode and <c>controllable</c> are asked as well, so a scripted get-up
+        /// that happens to run in the same state is not opened up by it.
+        /// </summary>
+        internal static bool GettingUpFromKnockdown =>
+            BodyFacing.Mode == PlayerCamera.CameraMode.Normal
+            && Controllable
+            && State == NobetaState.StandUp;
 
         /// <summary>Whether she is dying or dead, as opposed to on her way back up.</summary>
         internal static bool Dead

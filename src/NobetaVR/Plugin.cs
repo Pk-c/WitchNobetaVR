@@ -144,6 +144,7 @@ namespace NobetaVR
         internal ConfigEntry<float> StaggerRecovery;
         internal ConfigEntry<float> HitstopInterval;
         internal ConfigEntry<bool> LogMeleeBalance;
+        internal ConfigEntry<float> SpellDamageMultiplier;
         internal ConfigEntry<bool> Haptics;
         internal ConfigEntry<NobetaVR.Vr.HapticsHands> HapticsHand;
         internal ConfigEntry<float> HapticsStrength;
@@ -1133,6 +1134,14 @@ namespace NobetaVR
               + "balance, which is why it is an interval on the blows and not a cooldown on the "
               + "enemy — it should be present as often as it can be without piling up.");
 
+            SpellDamageMultiplier = Config.Bind(
+                "Cheats", "SpellDamageMultiplier", 1f,
+                "Multiplies the damage her spells deal to enemies, from 1 to 20. One is the "
+              + "game's own damage and leaves every hit untouched. A testing aid rather than a "
+              + "balance setting: only attacks the game itself labels as magic are raised, so "
+              + "melee keeps its own figures, and the raise is undone after every hit, so "
+              + "turning this back down takes effect on the very next spell.");
+
             Haptics = Config.Bind(
                 "Haptics", "Haptics", true,
                 "Plays the game's own rumble on the controllers. The game has haptics already "
@@ -1191,9 +1200,9 @@ namespace NobetaVR
               + "headset the spin is the camera going over with her, which is the single most "
               + "reliable way to make someone ill, and it happens on a button you press under "
               + "pressure. The hop is the same dodge otherwise: the same invulnerability "
-              + "window, the same stamina, the same recovery. It is done by handing the game a "
-              + "centred stick for the length of the dodge, so nothing is overridden and the "
-              + "choice stays the game's own.");
+              + "window, the same stamina, the same recovery. Only the animation is swapped, "
+              + "so the stick still counts where the game asks for it: the recovery out of "
+              + "being thrown into the air still needs a direction held, as it does on a pad.");
 
             AirJumpKeepsJumpAnimation = Config.Bind(
                 "Comfort", "AirJumpKeepsJumpAnimation", true,

@@ -5,25 +5,22 @@ namespace NobetaVR.Input
     /// <summary>
     /// Makes the dodge come out as the backward hop rather than the roll.
     ///
-    /// The two are one dodge in the game: one <c>Dodge()</c>, one <c>NobetaState.Dodge</c>, and
-    /// a fork inside it that picks the animation and the speed together —
-    /// <c>NobetaAnimatorController.PlayDodgeForward</c> with <c>NobetaConfigData.GetDodgeSpeedF</c>
-    /// on one side, <c>PlayDodgeBack</c> with <c>GetDodgeSpeedB</c> on the other. What the fork
-    /// asks is <c>NobetaInputData.IsDefaultDirection()</c>: whether you are holding a direction
-    /// at all.
-    ///
-    /// Handing the game a centred stick was the first attempt and it was not enough — the
-    /// direction the fork reads is computed across a frame boundary, so the one already in hand
-    /// when the button is pressed is the one it answers with. So the question is answered
-    /// instead, for the length of the one call and no longer. Both halves of the fork move
-    /// together that way: the hop's animation comes with the hop's speed, rather than a back
-    /// animation played over a forward roll's travel.
+    /// The two are one dodge in the game: one <c>NobetaState.Dodge</c> on the ground,
+    /// <c>NobetaState.AirDodge</c> in the air, and a fork inside <c>PlayerController.InitState</c>
+    /// for each that picks the animation and the travel together —
+    /// <c>NobetaAnimatorController.PlayDodgeForward</c> on one side, <c>PlayDodgeBack</c> on the
+    /// other. What the fork asks is whether <c>NobetaRuntimeData.moveDirection</c> is zero, and
+    /// nothing the mod feeds in on the press frame reaches that: the redirect below is the whole
+    /// mechanism, armed only while <see cref="VrControls"/> is inside its own dodge call.
     ///
     /// <para>
-    /// <see cref="RollBecomesHop"/> is a backstop under that, armed only while the same call is
-    /// running. If the fork turns out not to be this predicate, the roll still cannot reach the
-    /// screen — and the log says which of the two paths did the work, so the backstop can be
-    /// removed once it is known to be dead weight.
+    /// The question the fork does not ask must be left alone. <c>NobetaInputData.IsDefaultDirection</c>
+    /// is read by <c>OnDodgeKeyDown</c> alone, as a gate: in <c>Braking</c>, <c>Land</c>,
+    /// <c>HighlyLand</c>, <c>DamagedLand</c>, <c>AirSlip</c>, <c>StandUp</c> and — outside the
+    /// brief window after a hit — <c>AirDamagedFly</c>, the game only lets the dodge out when a
+    /// direction is held. The mod used to force that predicate to "centred" for the call, which
+    /// never moved the fork and silently refused every one of those dodges: most visibly the
+    /// recovery out of being thrown into the air, and the air jump that follows it.
     /// </para>
     ///
     /// Why any of it: on a monitor the roll is the better dodge and its spin is a flourish. In
@@ -36,18 +33,11 @@ namespace NobetaVR.Input
     {
         /// <summary>
         /// Set only around <c>PlayerInputController.Dodge()</c>, which is synchronous, so
-        /// nothing else in the game can see either patch acting.
+        /// nothing else in the game can see the redirect acting.
         /// </summary>
         internal static bool Forcing;
 
         private static int _logged;
-
-        [HarmonyPostfix]
-        [HarmonyPatch(typeof(NobetaInputData), nameof(NobetaInputData.IsDefaultDirection))]
-        private static void DirectionReadsAsCentred(ref bool __result)
-        {
-            if (Forcing) __result = true;
-        }
 
         [HarmonyPrefix]
         [HarmonyPatch(typeof(NobetaAnimatorController), nameof(NobetaAnimatorController.PlayDodgeForward))]
@@ -59,7 +49,7 @@ namespace NobetaVR.Input
                 return true;
             }
 
-            Report("roll, redirected to the hop — the predicate was not the fork");
+            Report("roll, redirected to the hop");
 
             _redirecting = true;
             try { __instance.PlayDodgeBack(); }
@@ -75,15 +65,14 @@ namespace NobetaVR.Input
             // The redirect above already said what happened; this would only repeat it.
             if (_redirecting) return;
 
-            Report(Forcing ? "hop, forced at the fork" : "hop, the game's own choice");
+            Report("hop, the game's own choice");
         }
 
         private static bool _redirecting;
 
         /// <summary>
-        /// The first few dodges, and no more. Which side of the fork ran is the one thing that
-        /// cannot be read off a build, and it is the difference between this being solved at
-        /// the fork and being papered over at the animator.
+        /// The first few dodges, and no more: enough to show the redirect is reached, which is
+        /// the one thing that cannot be read off a build.
         /// </summary>
         private static void Report(string what)
         {
