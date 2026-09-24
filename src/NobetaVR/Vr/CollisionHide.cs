@@ -40,23 +40,29 @@ namespace NobetaVR.Vr
     /// </para>
     ///
     /// <para>
-    /// Gated on the view being in her head, the rule the hands and <see cref="BodyVisibility"/>
-    /// already answer to. When the view steps back — a cutscene, a death, the wake at a save
-    /// pillar — it is the game's camera again, and a camera that close to her is one the game
-    /// is right to hide her from.
+    /// Gated on the view not being the game's camera. That is the view in her head, and also
+    /// the shot the mod takes of her getting up at a save pillar — see
+    /// <c>VrCamera.SpawnFraming</c>. That shot stands in front of her while the game's boom is
+    /// still behind her, and at a pillar behind her is exactly where the pillar is, so the game
+    /// hid her from a camera nobody was looking through. Whether it did depended on where the
+    /// boom happened to point when she was placed, which is why she only vanished sometimes.
+    /// When the view is the game's own pose — a cutscene, a death — a camera that close to her
+    /// is one the game is right to hide her from.
     /// </para>
     /// </summary>
     internal static class CollisionHide
     {
-        private static bool _reported;
+        private static bool _reportedInHead;
+        private static bool _reportedSpawn;
 
         /// <summary>
-        /// Called once a frame, after the game's camera update, with whether the view is in her
-        /// head.
+        /// Called once a frame, after the game's camera update. <paramref name="inHead"/> is
+        /// whether the view is in her head, <paramref name="ownShot"/> whether it is the mod's
+        /// own spawn shot; either way it is not the game's camera.
         /// </summary>
-        internal static void Tick(PlayerCamera camera, bool viewInHerHead)
+        internal static void Tick(PlayerCamera camera, bool inHead, bool ownShot)
         {
-            if (!viewInHerHead || camera == null) return;
+            if (!(inHead || ownShot) || camera == null) return;
 
             var girl = camera.wizardGirl;
             var skin = girl != null ? girl.skinInstance : null;
@@ -65,10 +71,21 @@ namespace NobetaVR.Vr
 
             mesh.EnableAllParts(true);
 
-            if (_reported) return;
-            _reported = true;
-            Plugin.Log.LogInfo("the game's camera hid her (its boom is pressed against a wall "
-                             + "behind her), and the view is in her head, so she is shown again");
+            if (inHead)
+            {
+                if (_reportedInHead) return;
+                _reportedInHead = true;
+                Plugin.Log.LogInfo("the game's camera hid her (its boom is pressed against a wall "
+                                 + "behind her), and the view is in her head, so she is shown again");
+            }
+            else
+            {
+                if (_reportedSpawn) return;
+                _reportedSpawn = true;
+                Plugin.Log.LogInfo("the game's camera hid her (its boom is pressed against a wall "
+                                 + "behind her), and the view is the spawn shot in front of her, "
+                                 + "so she is shown again");
+            }
         }
     }
 }

@@ -952,8 +952,8 @@ namespace NobetaVR.Vr
             BodyVisibility.Tick(inHead);
 
             // And whatever the game's own camera hid of her because its boom, which nobody is
-            // looking down while the view is here, ran into a wall behind her.
-            CollisionHide.Tick(_playerCamera, inHead);
+            // looking down while the view is here or on the spawn shot, ran into a wall behind her.
+            CollisionHide.Tick(_playerCamera, inHead, ownFraming);
 
             // And her shadow, which has to be cast whole whatever the two above took out of
             // the picture, so it is posed after both have decided.
