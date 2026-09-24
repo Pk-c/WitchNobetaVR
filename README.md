@@ -68,13 +68,18 @@ Run NobetaVR-Uninstall.bat it will remove all the file linked to the VR mod alon
 | Swinging the wand | Melee |
 
 **Special actions :**
+
 -You can recover while mid-air or while grounded by pressing B (Dodge) with the right timing.
+
 -You can trigger parry by swinging your wand at the right moment, just before recieving an attack ( the timing is short ! )
 
 
-**Menu**
-| Left grip | Right grip | Spend your soul essence into skills | Trade
-| Left trigger |  Right trigger | Switch costumes |
+**Statue Menu**
+
+| Input | Action |
+| --- | --- |
+| Left grip - Right grip | Spend your soul essence into skills / Trade |
+| Left trigger -  Right trigger | Switch costumes |
 
 ## Building
 
