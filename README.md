@@ -81,7 +81,7 @@ Run NobetaVR-Uninstall.bat it will remove all the file linked to the VR mod alon
 | Left grip - Right grip | Spend your soul essence into skills / Trade |
 | Left trigger -  Right trigger | Switch costumes |
 
-**Known Issue**
+## Known Issues
 
 -Sometimes the camera may not have the perfect orientation when a cutscene begin, so you may have turn your head a bit, you can also turn physically the character will follow your orientation when you get back control.
 -If the application doesn't have focus you may not be able to confirm choice in menu.
