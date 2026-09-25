@@ -23,6 +23,12 @@ OR
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/A0Y524C5N8)
 
+---
+
+Check the presentation video : https://www.youtube.com/watch?v=jdqq6_6R2Xo
+
+---
+
 ## What it does
 
 - **First-person 6DOF view** anchored to the character skeleton's `head` bone,  direction of movement is based on headset, controls are adapted for First person VR
