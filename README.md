@@ -89,6 +89,7 @@ Run NobetaVR-Uninstall.bat it will remove all the file linked to the VR mod alon
 
 ## Known Issues
 
+-If your body position is not centered -> use the headset recenter function FIRST and then press both grip, it should fix every edge cases
 -Sometimes the camera may not have the perfect orientation when a cutscene begin, so you may have turn your head a bit, you can also turn physically the character will follow your orientation when you get back control.
 -If the application doesn't have focus you may not be able to confirm choice in menu.
 
