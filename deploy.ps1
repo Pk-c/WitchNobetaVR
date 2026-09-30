@@ -169,6 +169,7 @@ if ($Package) {
     # files, and nothing dropped into a game folder should read as the game's.
     Copy-Item (Join-Path $root 'LICENSE') (Join-Path $stageDir 'NobetaVR-LICENSE.txt') -Force
     Copy-Item (Join-Path $root 'THIRD-PARTY.txt') (Join-Path $stageDir 'NobetaVR-THIRD-PARTY.txt') -Force
+    Copy-Item (Join-Path $root 'packaging\NobetaVR-Uninstall.bat') $stageDir -Force
 
     $dist = Join-Path $root 'dist'
     New-Item -ItemType Directory -Force -Path $dist | Out-Null
