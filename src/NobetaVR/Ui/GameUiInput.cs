@@ -110,9 +110,9 @@ namespace NobetaVR.Ui
                 return;
             }
 
-            Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary),
+            Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Trigger),
                  ref _nextHeld, story.NextDialogue);
-            Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary),
+            Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Grip),
                  ref _skipHeld, story.SkipMenu);
         }
 
@@ -142,8 +142,8 @@ namespace NobetaVR.Ui
         /// </summary>
         private void SeedDialogueEdges(VrInput input)
         {
-            _nextHeld = input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
-            _skipHeld = input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary);
+            _nextHeld = input.Pressed(VrInput.Hand.Right, VrInput.Button.Trigger);
+            _skipHeld = input.Pressed(VrInput.Hand.Right, VrInput.Button.Grip);
         }
 
         /// <summary>
@@ -242,13 +242,13 @@ namespace NobetaVR.Ui
         /// </summary>
         private void Buttons(IUIController ui, VrInput input)
         {
-            Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary), ref _submitHeld, ui.Submit);
-            Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary), ref _cancelHeld, ui.Cancel);
+            Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Trigger), ref _submitHeld, ui.Submit);
+            Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Grip), ref _cancelHeld, ui.Cancel);
             Edge(input.Pressed(VrInput.Hand.Left, VrInput.Button.Trigger), ref _pageLeftHeld, ui.SwitchLeftward);
-            Edge(input.Pressed(VrInput.Hand.Right, VrInput.Button.Trigger), ref _pageRightHeld, ui.SwitchRightward);
-            Edge(input.Pressed(VrInput.Hand.Left, VrInput.Button.Grip), ref _specialHeld, ui.SpecialAction);
+            Edge(input.Pressed(VrInput.Hand.Left, VrInput.Button.Grip), ref _pageRightHeld, ui.SwitchRightward);
+            Edge(input.Pressed(VrInput.Hand.Left, VrInput.Button.Primary), ref _specialHeld, ui.SpecialAction);
 
-            Holding(ui, input.Pressed(VrInput.Hand.Right, VrInput.Button.Grip));
+            Holding(ui, input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary));
         }
 
         /// <summary>
