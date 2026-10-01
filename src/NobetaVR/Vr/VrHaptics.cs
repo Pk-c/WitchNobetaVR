@@ -406,10 +406,9 @@ namespace NobetaVR.Vr
             side.Legacy = !known || (caps.supportsImpulse && caps.numChannels > 0);
 
             // The provider's own id first, kept from RegisterDeviceDefinition, then the XR
-            // subsystem's, in case this provider does use one namespace for both.
-            var registered = side.Node == XRNode.LeftHand
-                ? Xr.XrActionSet.LeftDeviceId
-                : Xr.XrActionSet.RightDeviceId;
+            // subsystem's, in case this provider does use one namespace for both. Picked by the
+            // device's name, since each controller profile registered a pair of its own.
+            var registered = Xr.XrActionSet.DeviceId(side.Node, side.Device.name);
 
             foreach (var candidate in new[] { registered, legacyId })
             {

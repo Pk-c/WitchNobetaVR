@@ -17,7 +17,7 @@ namespace NobetaVR
     public sealed class Plugin : BasePlugin
     {
         public const string Guid = "fr.chromatic.nobetavr";
-        public const string Version = "0.1.0";
+        public const string Version = "0.1.1";
 
         internal static new ManualLogSource Log { get; private set; }
         internal static Plugin Instance { get; private set; }

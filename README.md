@@ -73,6 +73,20 @@ Run NobetaVR-Uninstall.bat it will remove all the file linked to the VR mod alon
 | Both sticks clicked | The mod's VR settings |
 | Swinging the wand | Melee |
 
+**HTC Vive wands**
+
+The trackpads stand in for the sticks: touch to move or turn, press for a stick click. The
+wands have no face buttons, so the right menu button is A and the left menu button is Y. X
+(use item) and B (dodge) have no default; bind them wherever you like in SteamVR → Settings →
+Controllers → Manage Controller Bindings.
+
+**Steam Frame controllers**
+
+Same as above, with the letters where the controller has them: A and B on the right, and X
+(d-pad down) and Y (the other d-pad directions) on the left. The right controller's X and Y
+also work: X uses the selected item and Y interacts, or opens the pause menu when held. The
+bumpers pull the trigger.
+
 **Special actions :**
 
 -You can recover while mid-air or while grounded by pressing B (Dodge) with the right timing.

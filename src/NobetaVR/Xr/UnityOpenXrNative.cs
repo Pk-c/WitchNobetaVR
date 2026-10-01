@@ -106,6 +106,20 @@ namespace NobetaVR.Xr
         [return: MarshalAs(UnmanagedType.U1)]
         public static extern bool GetRuntimeVersion(out ushort major, out ushort minor, out uint patch);
 
+        // -- extensions ---------------------------------------------------------------
+        //
+        // What a package feature does with its `openxrExtensionStrings`, without the feature.
+        // A request is only a wish until the instance is created: it has to be made before
+        // CreateSubsystems, and whether it was granted is asked afterwards.
+
+        [DllImport(Lib, EntryPoint = "unity_ext_RequestEnableExtensionString", CharSet = CharSet.Ansi)]
+        [return: MarshalAs(UnmanagedType.U1)]
+        public static extern bool RequestEnableExtensionString(string extensionString);
+
+        [DllImport(Lib, EntryPoint = "unity_ext_IsExtensionEnabled", CharSet = CharSet.Ansi)]
+        [return: MarshalAs(UnmanagedType.U1)]
+        public static extern bool IsExtensionEnabled(string extensionName);
+
         // -- proc address chain --------------------------------------------------------
         //
         // How the provider gets from "a loader library is open" to "the OpenXR entry points

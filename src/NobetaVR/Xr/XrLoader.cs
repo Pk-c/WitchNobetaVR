@@ -101,12 +101,18 @@ namespace NobetaVR.Xr
 
             SetApplicationInfo();
 
+            // Where the package requests its features' extensions: after the application info,
+            // before the instance exists.
+            XrActionSet.RequestExtensions();
+
             Native.GetRuntimeVersion(out var rtMajor, out var rtMinor, out var rtPatch);
             log.LogInfo($"OpenXR runtime: '{Native.RuntimeName() ?? "unnamed"}' {rtMajor}.{rtMinor}.{rtPatch}");
 
             // No features are requested. The package uses features to enable optional OpenXR
             // extensions; a plain stereo display with head tracking needs none of them, and
-            // every feature we do not ask for is a way this can fail that we do not have.
+            // every feature we do not ask for is a way this can fail that we do not have. The
+            // one extension a controller profile needs is requested above, and a refusal only
+            // leaves that controller to the runtime's remapping.
             _eventCallback = OnNativeEvent;
             Native.SetCallbacks(_eventCallback);
 

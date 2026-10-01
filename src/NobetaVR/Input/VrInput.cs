@@ -46,6 +46,15 @@ namespace NobetaVR.Input
         private const string SecondaryButton = "SecondaryButton";
         private const string MenuButton = "MenuButton";
 
+        /// <summary>
+        /// The other hand's primary and secondary button, on a controller that has spare
+        /// buttons to carry them — the Steam Frame's right hand has X and Y as well as A and B.
+        /// Not Unity names: <see cref="Xr.XrActionSet"/> declares them, and a device without
+        /// them simply answers no.
+        /// </summary>
+        private const string OffhandPrimaryButton = "OffhandPrimaryButton";
+        private const string OffhandSecondaryButton = "OffhandSecondaryButton";
+
         private InputDevice _left;
         private InputDevice _right;
         private bool _leftValid;
@@ -92,6 +101,10 @@ namespace NobetaVR.Input
                 if (Held(_left, _leftValid, usage)) held |= 1 << b;
                 if (Held(_right, _rightValid, usage)) held |= 1 << (b + Buttons);
             }
+
+            // Folded in as the other hand's own press, so everything reading X or Y — the tap
+            // and the hold on Y alike — works from either without knowing there are two.
+            held |= Offhand(_right, _rightValid, 0) | Offhand(_left, _leftValid, Buttons);
 
             // The grip is settled from the analog squeeze rather than from the runtime's own
             // button; see Squeeze. Before `_held` is replaced, because the hysteresis there
@@ -200,6 +213,18 @@ namespace NobetaVR.Input
                     || pull >= ((_held & bit) != 0 ? press * ReleaseFraction : press);
 
             return down ? held | bit : held & ~bit;
+        }
+
+        /// <summary>
+        /// One device's offhand buttons, as bits of the other hand: <paramref name="shift"/> is
+        /// where that hand's buttons start in the mask.
+        /// </summary>
+        private static int Offhand(InputDevice device, bool valid, int shift)
+        {
+            var bits = 0;
+            if (Held(device, valid, OffhandPrimaryButton)) bits |= 1 << ((int)Button.Primary + shift);
+            if (Held(device, valid, OffhandSecondaryButton)) bits |= 1 << ((int)Button.Secondary + shift);
+            return bits;
         }
 
         private static bool Held(InputDevice device, bool valid, string usage)
