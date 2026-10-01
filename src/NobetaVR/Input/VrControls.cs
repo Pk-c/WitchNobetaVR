@@ -97,8 +97,9 @@ namespace NobetaVR.Input
 
         // Held state from the previous frame, so a press can be told from a hold. Actions that
         // fire once need the edge; actions the game tracks itself need the level.
-        private bool _jumpHeld, _dodgeHeld, _useItemHeld, _chantHeld;
-        private bool _shootHeld, _runHeld, _aimHeld;
+        private bool _jumpHeld, _dodgeHeld, _useItemHeld;
+        private bool _shootHeld, _runHeld, _chantHeld, _cycleitemHeld;
+        private bool _cycleitemCalled = false, _dodgeCalled = false;
 
         // Y is two actions on one button, so its press has to be timed rather than acted on.
         private bool _yHeld, _pauseFired;
@@ -107,7 +108,7 @@ namespace NobetaVR.Input
         // The grips are three actions across two buttons: one each, and a third for both.
         private bool _leftGripHeld, _rightGripHeld;
         private float _leftGripAt, _rightGripAt;
-        private bool _gripsConsumed, _cyclePending;
+        private bool _gripsConsumed;
 
         // Both grips again, for the one thing they can still mean while the game has her.
         private bool _realignHeld;
@@ -209,7 +210,7 @@ namespace NobetaVR.Input
                 if (gettingUp)
                 {
                     Move();
-                    DodgeButton();
+                    DodgeAction();
                     return "getting up";
                 }
 
@@ -276,17 +277,18 @@ namespace NobetaVR.Input
             {
                 if (_shootHeld) InputController.Shoot(false);
                 if (_runHeld) InputController.Dash(false);
-                if (_aimHeld) InputController.Aim(false);
+                if (_chantHeld) InputController.Aim(false);
                 if (_wasMoving && !keepStickAndDodge) InputController.Move(Vector2.zero);
             }
 
-            _shootHeld = _runHeld = _aimHeld = false;
+            _shootHeld = _runHeld = _chantHeld = false;
             if (!keepStickAndDodge) _wasMoving = false;
             Focusing = false;
             _snapArmed = true;
 
-            _jumpHeld = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
-            if (!keepStickAndDodge) _dodgeHeld = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary);
+            _jumpHeld = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Grip);
+            if (!keepStickAndDodge) _dodgeHeld = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Grip);
+            // _useItemHeld = ( _input.Pressed(VrInput.Hand.Left, VrInput.Button.Trigger) && _input.Pressed(VrInput.Hand.Right, VrInput.Button.Trigger));
             _useItemHeld = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Primary);
             _chantHeld = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Trigger);
             _yHeld = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Secondary);
@@ -294,7 +296,6 @@ namespace NobetaVR.Input
 
             _leftGripHeld = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Grip);
             _rightGripHeld = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Grip);
-            _cyclePending = false;
             _gripsConsumed = _leftGripHeld || _rightGripHeld;   // nothing fires until both are up
         }
 
@@ -362,7 +363,7 @@ namespace NobetaVR.Input
 
             var leftReleased = !left && _leftGripHeld;
 
-            if (left && !_leftGripHeld) { _leftGripAt = now; _cyclePending = true; }
+            if (left && !_leftGripHeld) _leftGripAt = now;
             if (right && !_rightGripHeld) _rightGripAt = now;
 
             _leftGripHeld = left;
@@ -372,8 +373,6 @@ namespace NobetaVR.Input
                 && Mathf.Abs(_leftGripAt - _rightGripAt) <= window)
             {
                 _gripsConsumed = true;
-                _cyclePending = false;
-                Aim(false);
                 Vr.HeadPose.Recenter();
             }
 
@@ -382,18 +381,6 @@ namespace NobetaVR.Input
             if (!left && !right) _gripsConsumed = false;
             if (_gripsConsumed) return;
 
-            if (!left)
-            {
-                if (leftReleased && _cyclePending) CycleItem();
-                _cyclePending = false;
-            }
-            else if (_cyclePending && now - _leftGripAt >= window)
-            {
-                _cyclePending = false;
-                CycleItem();
-            }
-
-            Aim(right);
         }
 
         /// <summary>One step along the item bar, in whichever direction the setting asks for.</summary>
@@ -414,8 +401,7 @@ namespace NobetaVR.Input
         /// </summary>
         private void Aim(bool held)
         {
-            if (_aimHeld == held || InputController == null) return;
-            _aimHeld = held;
+            _chantHeld = held;
             Focusing = held;
             InputController.Aim(held);
         }
@@ -468,21 +454,20 @@ namespace NobetaVR.Input
             if (InputController == null) return;
 
             // A — jump
-            var jump = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
+            var jump = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Grip);
             if (jump && !_jumpHeld) InputController.Jump();
             _jumpHeld = jump;
 
-            // B — dodge
-            DodgeButton();
-
             // X — use the selected item
-            var useItem = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Primary);
+            var useItem = ( _input.Pressed(VrInput.Hand.Left, VrInput.Button.Trigger) && _input.Pressed(VrInput.Hand.Right, VrInput.Button.Trigger));
             if (useItem && !_useItemHeld) InputController.UseItem();
             _useItemHeld = useItem;
 
-            // Left trigger — pray, which is how she takes her mana back
+            // Left menu — inspect/pray; on long press pause menu
+
+            // Left trigger — chant
             var chant = _input.Pressed(VrInput.Hand.Left, VrInput.Button.Trigger);
-            if (chant && !_chantHeld) InputController.Chant();
+            if (chant && !_chantHeld) { InputController.Chant(); Aim(true); }
             _chantHeld = chant;
 
             // Y — interact, or the pause menu when it is held
@@ -493,6 +478,7 @@ namespace NobetaVR.Input
             if (shoot != _shootHeld)
             {
                 InputController.Shoot(shoot);
+		InputController.Aim(false);
                 _shootHeld = shoot;
             }
 
@@ -503,22 +489,39 @@ namespace NobetaVR.Input
                 InputController.Dash(run);
                 _runHeld = run;
             }
+
+            // Right menu - cycle item
+            var cycleitem = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Primary);
+            if (cycleitem != _cycleitemHeld)
+            {
+                _cycleitemCalled=!_cycleitemCalled; // only call on press or release, not in both
+                if(_cycleitemCalled)
+                        CycleItem();
+                _cycleitemHeld = cycleitem;
+            }
+
+            // Left menu - dodge
+            var dodge = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Grip);
+            if (dodge != _dodgeHeld)
+            {
+                _dodgeCalled=!_dodgeCalled; // only call on press or release, not in both
+                if(_dodgeCalled)
+                    DodgeAction();
+
+                _dodgeHeld = dodge;
+            }
+
+
         }
 
         /// <summary>
         /// B, on its own, because it is also live while she gets up from a knockdown.
         /// </summary>
-        private void DodgeButton()
+        private void DodgeAction()
         {
-            if (InputController == null) return;
-
-            var dodge = _input.Pressed(VrInput.Hand.Right, VrInput.Button.Secondary);
-            if (dodge && !_dodgeHeld)
-            {
-                if (Plugin.Instance.DodgeAlwaysBackstep.Value) DodgeAsBackstep();
-                else InputController.Dodge();
-            }
-            _dodgeHeld = dodge;
+            if (Plugin.Instance.DodgeAlwaysBackstep.Value) DodgeAsBackstep();
+            else InputController.Dodge();
+            
         }
 
         /// <summary>
