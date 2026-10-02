@@ -5,8 +5,7 @@
 A VR mod for **[Little Witch Nobeta](https://store.steampowered.com/app/1049890/)**
 (Pupuya Games).
 
-LWN is a third person game, this mod turn it into a first person native like VR Experience.
-With motion control, confort option and game adjustments.
+LWN is a third person game, this mod turn it into a first person native like VR Experience With 6Dof, roomscale movement, motion control, comfort options and game adjustments.
 
 It is strongly advised to look at the **Controls** section of this page before you start playing !
 This game have some very specific actions that are difficult to guess.
